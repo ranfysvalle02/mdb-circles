@@ -218,7 +218,8 @@
   <script>
     const BASE_URL = ''; 
     const state = {
-        accessToken: null,
+        accessToken: localStorage.getItem('accessToken') || null,
+        refreshToken: localStorage.getItem('refreshToken') || null,
         currentUser: null,
         myCircles: [],
         feed: {
@@ -236,7 +237,6 @@
         welcomeMessage: document.getElementById('welcomeMessage'),
         profileContainer: document.getElementById('profileContainer'),
         usersContainer: document.getElementById('usersContainer'),
-        // NEW JS: Add the new container to the DOM object map
         followingContainer: document.getElementById('followingContainer'),
         myCirclesContainer: document.getElementById('myCirclesContainer'),
         feedContainer: document.getElementById('feedContainer'),
@@ -251,28 +251,102 @@
     const getYouTubeID = url => { const arr = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/); return (arr && arr[1]) ? arr[1] : null; };
 
     // --- API & AUTH ---
-    async function apiFetch(endpoint, options = {}) {
-        options.headers = { ...options.headers, 'Content-Type': 'application/json' };
-        if (state.accessToken) options.headers['Authorization'] = `Bearer ${state.accessToken}`;
+    let isRefreshing = false;
+    let failedQueue = [];
 
-        const response = await fetch(`${BASE_URL}${endpoint}`, options);
+    const processQueue = (error, token = null) => {
+        failedQueue.forEach(prom => {
+            if (error) {
+                prom.reject(error);
+            } else {
+                prom.resolve(token);
+            }
+        });
+        failedQueue = [];
+    };
+
+    async function apiFetch(endpoint, options = {}) {
+        const customOptions = { ...options };
+        customOptions.headers = { ...customOptions.headers, 'Content-Type': 'application/json' };
+        if (state.accessToken) {
+            customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`;
+        }
+
+        let response = await fetch(`${BASE_URL}${endpoint}`, customOptions);
+
+        if (response.status === 401 && state.refreshToken) {
+            if (isRefreshing) {
+                return new Promise((resolve, reject) => {
+                    failedQueue.push({ resolve, reject });
+                }).then(() => {
+                    customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`;
+                    return fetch(`${BASE_URL}${endpoint}`, customOptions);
+                });
+            }
+
+            isRefreshing = true;
+
+            try {
+                const refreshResponse = await fetch(`${BASE_URL}/auth/refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refresh_token: state.refreshToken }),
+                });
+
+                if (!refreshResponse.ok) throw new Error("Refresh failed");
+                
+                const tokenData = await refreshResponse.json();
+                storeTokens(tokenData.access_token, tokenData.refresh_token);
+                processQueue(null, tokenData.access_token);
+                
+                customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`;
+                response = await fetch(`${BASE_URL}${endpoint}`, customOptions);
+
+            } catch (err) {
+                processQueue(err, null);
+                logout();
+                return Promise.reject(err);
+            } finally {
+                isRefreshing = false;
+            }
+        }
+        
         if (!response.ok) {
             const err = await response.json().catch(() => ({ detail: `Error: ${response.status}` }));
             showStatus(err.detail || 'An unknown error occurred.', 'danger');
             throw new Error(err.detail);
         }
+
         return response.status === 204 ? null : response.json();
     }
 
-    const storeTokens = (access) => { state.accessToken = access; localStorage.setItem('accessToken', access); };
-    const logout = () => { state.accessToken = null; state.currentUser = null; localStorage.clear(); renderUI(); };
-    const login = async (username, password) => { const data = await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); storeTokens(data.access_token); await fetchCurrentUser(); renderUI(); showStatus('Login successful!', 'success'); return true; };
+    const storeTokens = (access, refresh) => { 
+        state.accessToken = access; 
+        state.refreshToken = refresh;
+        localStorage.setItem('accessToken', access); 
+        localStorage.setItem('refreshToken', refresh);
+    };
+    const logout = () => { 
+        state.accessToken = null; 
+        state.refreshToken = null;
+        state.currentUser = null; 
+        localStorage.clear(); 
+        renderUI(); 
+    };
+    const login = async (username, password) => { 
+        const data = await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); 
+        storeTokens(data.access_token, data.refresh_token); 
+        await fetchCurrentUser(); 
+        renderUI(); 
+        showStatus('Login successful!', 'success'); 
+        return true; 
+    };
     const register = async (username, password) => { await apiFetch('/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) }); showStatus('Registration successful! Please log in.', 'success'); return true; };
     
     async function fetchCurrentUser() {
         if (!state.accessToken) return;
         try { state.currentUser = await apiFetch('/users/me'); } 
-        catch (error) { console.error("Token might be expired, logging out.", error); logout(); }
+        catch (error) { console.error("Token might be expired or invalid, logging out.", error); logout(); }
     }
 
     // --- RENDERING LOGIC ---
@@ -288,7 +362,6 @@
 
     async function renderDashboard() {
         renderProfile();
-        // NEW JS: Render the list of followed users when dashboard loads
         renderFollowingList();
         dom.usersContainer.innerHTML = '<p class="text-muted small text-center">Search for a user to follow.</p>';
         try {
@@ -313,7 +386,6 @@
         `;
     }
 
-    // NEW JS: A generic function to render a list of users into any container
     function renderUserList(users, container, emptyMessage) {
         if (!users || users.length === 0) {
             container.innerHTML = `<p class="text-muted small text-center">${emptyMessage}</p>`;
@@ -335,7 +407,6 @@
         }).join('');
     }
 
-    // NEW JS: Specific function to render the "Following" list
     function renderFollowingList() {
         if (!state.currentUser) return;
         renderUserList(state.currentUser.following, dom.followingContainer, "You aren't following anyone yet.");
@@ -496,14 +567,12 @@
             await apiFetch(`/users/${username}/follow`, { method: isFollowing ? 'DELETE' : 'POST' });
             showStatus(`Successfully ${isFollowing ? 'unfollowed' : 'followed'} ${username}!`, 'success');
 
-            // NEW JS: After follow/unfollow, update everything that depends on user data
             await fetchCurrentUser();
             renderProfile();
-            renderFollowingList(); // Re-render the "Following" list
+            renderFollowingList();
             
-            // Re-render the search results to update the button state there, if applicable
             const currentSearch = document.getElementById('userSearchInput').value.trim();
-            if (currentSearch === username) {
+            if (currentSearch.toLowerCase() === username.toLowerCase()) {
                 const users = await apiFetch(`/users/search?username=${encodeURIComponent(username)}`);
                 renderUserList(users, dom.usersContainer, "No user found with that name.");
             }
@@ -525,10 +594,9 @@
         if (!query) return;
         
         setButtonLoading(btn, true);
-        dom.usersContainer.innerHTML = ''; // Clear previous results
+        dom.usersContainer.innerHTML = ''; 
         try {
             const users = await apiFetch(`/users/search?username=${encodeURIComponent(query)}`);
-            // UPDATED JS: Use the generic renderUserList function for search results
             renderUserList(users, dom.usersContainer, "No user found with that name.");
         } catch (error) {
             console.error("User search failed", error);
@@ -585,8 +653,11 @@
         });
 
         (async () => {
-            state.accessToken = localStorage.getItem('accessToken');
-            if (state.accessToken) await fetchCurrentUser();
+            if (state.accessToken) {
+                await fetchCurrentUser();
+            } else {
+                logout();
+            }
             renderUI();
             renderPostContentFields();
         })();
