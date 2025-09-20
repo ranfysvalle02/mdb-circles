@@ -418,13 +418,35 @@ async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
         following=following_users
     )
 
-@app.get("/users", response_model=list[UserPublicProfile], tags=["Users"])
-async def list_all_users():
-    """Retrieves a list of all public user profiles."""
-    users_cursor = users_collection.find({})
+@app.get("/users/search", response_model=list[UserPublicProfile], tags=["Users"])
+async def search_for_user(
+    username: str = Query(..., min_length=1, description="The exact username to search for."),
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """
+    Searches for a user by their exact username.
+    
+    - This is a privacy-focused endpoint to prevent browsing all users.
+    - Excludes the current user from the search results.
+    
+    **Requires Authentication.**
+    """
+    # Find a user that matches the username but is not the current user.
+    found_user = users_collection.find_one({
+        "username": username, 
+        "_id": {"$ne": current_user.id} # Ensure we don't find ourselves
+    })
+    
+    if not found_user:
+        return [] # Return an empty list if no user is found
+        
+    # If found, wrap it in a list and return it.
     return [
-        UserPublicProfile(**u, following_count=len(u.get("following", [])), followers_count=len(u.get("followers", [])))
-        for u in users_cursor
+        UserPublicProfile(
+            **found_user, 
+            following_count=len(found_user.get("following", [])), 
+            followers_count=len(found_user.get("followers", []))
+        )
     ]
 
 @app.post("/users/{username_to_follow}/follow", status_code=status.HTTP_204_NO_CONTENT, tags=["Users"])

@@ -115,9 +115,19 @@
                       <p class="text-muted small">Click a circle to filter your feed.</p>
                       <div id="myCirclesContainer" class="list-group"></div>
                   </div>
+                  
                   <div class="glass-card">
-                      <h3><i class="bi bi-people"></i> Find Users</h3>
-                      <div id="usersContainer" class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;"></div>
+                      <h3><i class="bi bi-person-check"></i> Following</h3>
+                      <div id="followingContainer" class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;"></div>
+                  </div>
+                  
+                  <div class="glass-card">
+                      <h3><i class="bi bi-search"></i> Find Users</h3>
+                      <div class="input-group">
+                        <input type="text" id="userSearchInput" class="form-control" placeholder="Enter username...">
+                        <button id="userSearchBtn" class="btn btn-primary"><i class="bi bi-search"></i></button>
+                      </div>
+                      <div id="usersContainer" class="list-group list-group-flush mt-3"></div>
                   </div>
               </div>
           </div>
@@ -226,6 +236,8 @@
         welcomeMessage: document.getElementById('welcomeMessage'),
         profileContainer: document.getElementById('profileContainer'),
         usersContainer: document.getElementById('usersContainer'),
+        // NEW JS: Add the new container to the DOM object map
+        followingContainer: document.getElementById('followingContainer'),
         myCirclesContainer: document.getElementById('myCirclesContainer'),
         feedContainer: document.getElementById('feedContainer'),
         feedLoader: document.getElementById('feed-loader'),
@@ -276,10 +288,12 @@
 
     async function renderDashboard() {
         renderProfile();
+        // NEW JS: Render the list of followed users when dashboard loads
+        renderFollowingList();
+        dom.usersContainer.innerHTML = '<p class="text-muted small text-center">Search for a user to follow.</p>';
         try {
-            const [users, myCircles] = await Promise.all([apiFetch('/users'), apiFetch('/circles/mine')]);
+            const myCircles = await apiFetch('/circles/mine');
             state.myCircles = myCircles;
-            renderUsers(users);
             renderMyCircles(myCircles);
             resetAndRenderFeed();
         } catch (error) { console.error("Failed to load dashboard data", error); }
@@ -299,19 +313,32 @@
         `;
     }
 
-    function renderUsers(users) {
-        const fIds = state.currentUser.following.map(u => u.id);
-        dom.usersContainer.innerHTML = users.map(user => {
+    // NEW JS: A generic function to render a list of users into any container
+    function renderUserList(users, container, emptyMessage) {
+        if (!users || users.length === 0) {
+            container.innerHTML = `<p class="text-muted small text-center">${emptyMessage}</p>`;
+            return;
+        }
+        
+        const followingIds = state.currentUser.following.map(u => u.id);
+        container.innerHTML = users.map(user => {
             if (user.username === state.currentUser.username) return '';
+            const isFollowing = followingIds.includes(user.id);
             return `
             <div class="list-group-item d-flex justify-content-between align-items-center">
                 <div class="d-flex align-items-center">
                     <div class="avatar avatar-sm me-2 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div>
                     <span>${user.username}</span>
                 </div>
-                <button class="btn btn-sm ${fIds.includes(user.id) ? 'btn-danger' : 'btn-primary'}" data-action="toggle-follow" data-username="${user.username}">${fIds.includes(user.id) ? 'Unfollow' : 'Follow'}</button>
+                <button class="btn btn-sm ${isFollowing ? 'btn-danger' : 'btn-primary'}" data-action="toggle-follow" data-username="${user.username}">${isFollowing ? 'Unfollow' : 'Follow'}</button>
             </div>`;
         }).join('');
+    }
+
+    // NEW JS: Specific function to render the "Following" list
+    function renderFollowingList() {
+        if (!state.currentUser) return;
+        renderUserList(state.currentUser.following, dom.followingContainer, "You aren't following anyone yet.");
     }
 
     function renderMyCircles(circles) {
@@ -468,10 +495,18 @@
         try {
             await apiFetch(`/users/${username}/follow`, { method: isFollowing ? 'DELETE' : 'POST' });
             showStatus(`Successfully ${isFollowing ? 'unfollowed' : 'followed'} ${username}!`, 'success');
+
+            // NEW JS: After follow/unfollow, update everything that depends on user data
             await fetchCurrentUser();
             renderProfile();
-            const users = await apiFetch('/users');
-            renderUsers(users);
+            renderFollowingList(); // Re-render the "Following" list
+            
+            // Re-render the search results to update the button state there, if applicable
+            const currentSearch = document.getElementById('userSearchInput').value.trim();
+            if (currentSearch === username) {
+                const users = await apiFetch(`/users/search?username=${encodeURIComponent(username)}`);
+                renderUserList(users, dom.usersContainer, "No user found with that name.");
+            }
         } catch(error) {}
     }
     
@@ -482,6 +517,25 @@
             showStatus('Post deleted.', 'success');
             resetAndRenderFeed();
         } catch(error) {}
+    }
+
+    async function handleUserSearch() {
+        const btn = document.getElementById('userSearchBtn');
+        const query = document.getElementById('userSearchInput').value.trim();
+        if (!query) return;
+        
+        setButtonLoading(btn, true);
+        dom.usersContainer.innerHTML = ''; // Clear previous results
+        try {
+            const users = await apiFetch(`/users/search?username=${encodeURIComponent(query)}`);
+            // UPDATED JS: Use the generic renderUserList function for search results
+            renderUserList(users, dom.usersContainer, "No user found with that name.");
+        } catch (error) {
+            console.error("User search failed", error);
+            dom.usersContainer.innerHTML = '<p class="text-danger small text-center">Search failed.</p>';
+        } finally {
+            setButtonLoading(btn, false);
+        }
     }
 
     // --- INITIALIZATION ---
@@ -499,13 +553,18 @@
         document.getElementById('createPostBtn').addEventListener('click', () => postModal.show());
         document.getElementById('submitPostButton').addEventListener('click', handleCreatePost);
         dom.postTypeSelect.addEventListener('change', renderPostContentFields);
+        
+        document.getElementById('userSearchBtn').addEventListener('click', handleUserSearch);
+        document.getElementById('userSearchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleUserSearch();
+        });
 
         document.body.addEventListener('click', e => {
             const target = e.target.closest('[data-action]');
             if (!target) return;
             
             const { action } = target.dataset;
-            e.preventDefault();
+            if (target.tagName === 'A') e.preventDefault();
 
             if (action === 'toggle-follow') {
                 const { username } = target.dataset;
