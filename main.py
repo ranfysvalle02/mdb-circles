@@ -3,7 +3,7 @@
 # ==============================================================================
 # Standard library imports for OS interaction, time/date handling, and type hinting.
 import os
-import re # ## --- CHANGE START --- ##: Added for case-insensitive regex search.
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from contextlib import asynccontextmanager
@@ -14,8 +14,8 @@ import uvicorn  # ASGI server for running the application.
 import jwt      # For encoding and decoding JSON Web Tokens (JWTs).
 from jwt.exceptions import PyJWTError
 
-from fastapi import FastAPI, HTTPException, Body, Depends, status, Query
-from fastapi.staticfiles import StaticFiles # ## --- CHANGE START --- ##: For serving static assets.
+from fastapi import FastAPI, HTTPException, Body, Depends, status, Query, Request ## --- CHANGE START --- ##: Added Request
+from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Circles Social API",
     description="A complete API for a social application with user authentication, circles, roles, and posts.",
-    version="1.3.0", # Version Bump
+    version="1.4.0", # Version Bump
     lifespan=lifespan,
 )
 
@@ -122,11 +122,8 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
 
-## --- CHANGE START --- ##
-# Added a model for the refresh token request body.
 class TokenRefreshRequest(BaseModel):
     refresh_token: str
-## --- CHANGE END --- ##
 
 class CircleMember(BaseModel):
     user_id: PyObjectId
@@ -181,16 +178,13 @@ class FeedResponse(BaseModel):
 # 3. HELPER & DEPENDENCY FUNCTIONS
 # ==============================================================================
 
-## --- CHANGE START --- ##
-# Enhanced JWT functions to include a 'token_type' claim for better security.
-# This prevents access tokens from being used in refresh endpoints and vice-versa.
 def create_jwt_token(data: dict, expires_delta: timedelta, token_type: str) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + expires_delta
     to_encode.update({
         "exp": expire,
         "iat": datetime.now(timezone.utc),
-        "token_type": token_type  # Add token type to payload
+        "token_type": token_type
     })
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -207,6 +201,40 @@ def create_refresh_token(username: str) -> str:
         expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
         token_type="refresh"
     )
+
+## --- CHANGE START --- ##
+# NEW DEPENDENCY: Gets the current user if a token is provided, but doesn't
+# raise an error if the token is missing or invalid. Returns UserInDB or None.
+async def get_optional_current_user(request: Request) -> UserInDB | None:
+    """
+    Checks for a valid access token in the request headers. If found, returns
+    the corresponding user. If not found or invalid, returns None.
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return None
+    
+    try:
+        scheme, token = auth_header.split()
+        if scheme.lower() != "bearer":
+            return None
+            
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("token_type") != "access":
+            return None # Must be an access token
+
+        username: str | None = payload.get("sub")
+        if not username:
+            return None
+
+        user = users_collection.find_one({"username": username})
+        if not user:
+            return None
+            
+        return UserInDB(**user)
+    except (ValueError, PyJWTError):
+        # Catches errors from split() or jwt.decode()
+        return None
 ## --- CHANGE END --- ##
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
@@ -218,12 +246,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str | None = payload.get("sub")
-        ## --- CHANGE START --- ##
-        # Enforce that only 'access' tokens can be used for this dependency.
         token_type: str | None = payload.get("token_type")
         if username is None or token_type != "access":
             raise credentials_exception
-        ## --- CHANGE END --- ##
     except PyJWTError:
         raise credentials_exception
     user = users_collection.find_one({"username": username})
@@ -277,13 +302,8 @@ async def login_for_access_token(form_data: UserAuth):
     refresh_token = create_refresh_token(user["username"])
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
-## --- CHANGE START --- ##
-# NEW ENDPOINT: Added a secure token refresh endpoint.
 @app.post("/auth/refresh", response_model=TokenResponse, tags=["Authentication"])
 async def refresh_access_token(body: TokenRefreshRequest):
-    """
-    Generates a new access token from a valid refresh token.
-    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid refresh token",
@@ -304,86 +324,46 @@ async def refresh_access_token(body: TokenRefreshRequest):
         raise credentials_exception
         
     new_access_token = create_access_token(username)
-    # Optionally, issue a new refresh token (for refresh token rotation)
     new_refresh_token = create_refresh_token(username)
     return TokenResponse(access_token=new_access_token, refresh_token=new_refresh_token)
-## --- CHANGE END --- ##
 
 # --- User Endpoints ---
 @app.get("/users/me", response_model=UserPrivateProfile, tags=["Users"])
 async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
-    """
-    Fetches the profile for the current user.
-
-    **Requires Authentication.**
-    
-    **IMPROVEMENT:** This endpoint now uses a more efficient MongoDB aggregation
-    pipeline (`$lookup`) to fetch the user and their followed profiles in a single
-    database query, avoiding the N+1 problem.
-    """
-    ## --- CHANGE START --- ##
     pipeline = [
         {"$match": {"_id": current_user.id}},
         {"$lookup": {
-            "from": "users",
-            "localField": "following",
-            "foreignField": "_id",
-            "as": "following_details"
+            "from": "users", "localField": "following", "foreignField": "_id", "as": "following_details"
         }},
         {"$addFields": {
             "followers_count": {"$size": "$followers"},
             "following_count": {"$size": "$following"},
             "following": {
                 "$map": {
-                    "input": "$following_details",
-                    "as": "user",
-                    "in": {
-                        "_id": "$$user._id",
-                        "username": "$$user.username",
-                        "followers_count": {"$size": "$$user.followers"},
-                        "following_count": {"$size": "$$user.following"}
-                    }
+                    "input": "$following_details", "as": "user",
+                    "in": { "_id": "$$user._id", "username": "$$user.username", "followers_count": {"$size": "$$user.followers"}, "following_count": {"$size": "$$user.following"}}
                 }
             }
         }}
     ]
-    
     result = list(users_collection.aggregate(pipeline))
     if not result:
-        # This should theoretically never happen if the user is authenticated
         raise HTTPException(status_code=404, detail="User not found")
-        
     return UserPrivateProfile(**result[0])
-    ## --- CHANGE END --- ##
 
 @app.get("/users/search", response_model=list[UserPublicProfile], tags=["Users"])
 async def search_for_user(
     username: str = Query(..., min_length=1, description="The username to search for (case-insensitive)."),
     current_user: UserInDB = Depends(get_current_user)
 ):
-    """
-    Searches for a user by their username (case-insensitive).
-    Excludes the current user from the search results.
-    **Requires Authentication.**
-    """
-    ## --- CHANGE START --- ##
-    # Using a case-insensitive regex for a better user experience.
-    # The `^` and `$` ensure it's still an exact match, just without case sensitivity.
     safe_username = re.escape(username)
     found_user = users_collection.find_one({
         "username": {"$regex": f"^{safe_username}$", "$options": "i"},
         "_id": {"$ne": current_user.id}
     })
-    ## --- CHANGE END --- ##
     if not found_user:
         return []
-    return [
-        UserPublicProfile(
-            **found_user,
-            following_count=len(found_user.get("following", [])),
-            followers_count=len(found_user.get("followers", []))
-        )
-    ]
+    return [UserPublicProfile(**found_user, following_count=len(found_user.get("following", [])), followers_count=len(found_user.get("followers", [])))]
 
 @app.post("/users/{username_to_follow}/follow", status_code=status.HTTP_204_NO_CONTENT, tags=["Users"])
 async def follow_user(username_to_follow: str, current_user: UserInDB = Depends(get_current_user)):
@@ -425,22 +405,66 @@ async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depe
 async def get_circle_details(circle: dict = Depends(check_circle_membership)):
     return CircleOut(**circle, member_count=len(circle.get("members", [])))
 
+## --- CHANGE START --- ##
+# NEW ENDPOINT: Gets the feed for a specific circle, with permission checks.
+@app.get("/circles/{circle_id}/feed", response_model=FeedResponse, tags=["Circles"])
+async def get_circle_feed(
+    circle_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=50),
+    current_user: UserInDB | None = Depends(get_optional_current_user)
+):
+    """
+    Retrieves the feed for a specific circle.
+    - If the circle is public, anyone can view it.
+    - If the circle is private, the user must be logged in and a member.
+    """
+    circle = await get_circle_or_404(circle_id)
+
+    # Permission Check
+    if not circle["is_public"]:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="You must be logged in to view this private circle's feed.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        is_member = any(m['user_id'] == current_user.id for m in circle.get('members', []))
+        if not is_member:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not a member of this private circle."
+            )
+
+    # Fetch posts for the circle
+    match_stage = {"$match": {"circle_id": circle["_id"]}}
+    
+    count_pipeline = [match_stage, {"$count": "total"}]
+    total_posts = next(posts_collection.aggregate(count_pipeline), {}).get("total", 0)
+
+    posts_pipeline = [
+        match_stage,
+        {"$sort": {"created_at": DESCENDING}},
+        {"$skip": skip},
+        {"$limit": limit}
+    ]
+    posts_cursor = posts_collection.aggregate(posts_pipeline)
+
+    posts_list = [PostOut(**p, circle_name=circle["name"]) for p in posts_cursor]
+    
+    return FeedResponse(posts=posts_list, has_more=(skip + len(posts_list)) < total_posts)
+## --- CHANGE END --- ##
+
 # --- Post & Feed Endpoints ---
 @app.post("/circles/{circle_id}/posts", response_model=PostOut, status_code=status.HTTP_201_CREATED, tags=["Posts"])
 async def create_post_in_circle(post_data: PostCreate, circle: dict = Depends(check_circle_membership), current_user: UserInDB = Depends(get_current_user)):
-    ## --- CHANGE START --- ##
-    # Added robust server-side validation for the `content` field based on `post_type`.
-    # This prevents malformed post data from being saved.
-    content = post_data.content
-    ptype = post_data.post_type
+    content, ptype = post_data.content, post_data.post_type
     if ptype == PostTypeEnum.text_update and not content.get("text"):
         raise HTTPException(status_code=422, detail="Text content cannot be empty for a text_update.")
     elif ptype == PostTypeEnum.wishlist_item and not (content.get("item_name") and content.get("url")):
         raise HTTPException(status_code=422, detail="Wishlist item must include 'item_name' and 'url'.")
     elif ptype == PostTypeEnum.youtube_video and not (content.get("title") and content.get("youtube_url")):
         raise HTTPException(status_code=422, detail="YouTube video post must include 'title' and 'youtube_url'.")
-    ## --- CHANGE END --- ##
-
     new_post = {
         "circle_id": circle["_id"], "author_id": current_user.id,
         "author_username": current_user.username, "post_type": ptype.value,
@@ -472,9 +496,7 @@ async def get_my_feed(
     limit: int = Query(10, ge=1, le=50),
     circle_id: str | None = Query(None, description="Filter feed by a specific circle ID.")
 ):
-    # ## --- CHANGE START --- ##: Removed the obsolete FIX comment.
     user_circles_cursor = circles_collection.find({"members.user_id": current_user.id})
-    # ## --- CHANGE END --- ##
     user_circles = {c["_id"]: c["name"] for c in user_circles_cursor}
 
     if not user_circles:
@@ -500,13 +522,6 @@ async def get_my_feed(
 # ==============================================================================
 # 5. STATIC FILE SERVING
 # ==============================================================================
-## --- CHANGE START --- ##
-# This is a more robust way to serve a Single-Page Application (SPA).
-# 1. We explicitly mount a '/static' directory for assets like CSS, JS bundles, images, etc.
-# 2. The catch-all route now specifically serves the main 'index.html' file,
-#    which is the standard behavior required for SPA client-side routing.
-
-# Ensure the static directory exists to prevent startup errors
 if not os.path.exists("static"):
     os.makedirs("static")
     print("Created 'static' directory for frontend files.")
@@ -519,7 +534,6 @@ async def serve_frontend(full_path: str):
     if not os.path.exists(static_file_path):
         return HTTPException(status_code=404, detail="Frontend entry point not found.")
     return FileResponse(static_file_path)
-## --- CHANGE END --- ##
 
 # ==============================================================================
 # 6. SERVER EXECUTION
