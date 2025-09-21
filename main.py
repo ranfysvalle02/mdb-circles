@@ -55,6 +55,7 @@ async def lifespan(app: FastAPI):
     circles_collection.create_index([("name", ASCENDING)])
     posts_collection.create_index([("circle_id", ASCENDING)])
     posts_collection.create_index([("created_at", DESCENDING)])
+    posts_collection.create_index([("score", DESCENDING), ("created_at", DESCENDING)]) # Index for sorting by score
     print("🚀 Database connection established and indexes ensured.")
     yield
     client.close()
@@ -64,7 +65,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Circles Social API",
     description="A complete API for a social application with user authentication, circles, roles, and posts.",
-    version="1.5.0", # Version Bump
+    version="1.6.0", # Version Bump
     lifespan=lifespan,
 )
 
@@ -157,6 +158,7 @@ class PostCreate(BaseModel):
     post_type: PostTypeEnum
     content: dict[str, Any] = Field(..., example={"text": "Hello world!"})
 
+## --- CHANGE START --- ##
 class PostOut(BaseModel):
     id: PyObjectId = Field(alias="_id")
     circle_id: PyObjectId
@@ -166,6 +168,10 @@ class PostOut(BaseModel):
     post_type: PostTypeEnum
     content: dict[str, Any]
     created_at: datetime
+    score: int = 0
+    upvotes_count: int = 0
+    downvotes_count: int = 0
+    user_vote: int = 0  # 1 for upvote, -1 for downvote, 0 for no vote
     class Config:
         json_encoders = {ObjectId: str}
         populate_by_name = True
@@ -173,6 +179,10 @@ class PostOut(BaseModel):
 class FeedResponse(BaseModel):
     posts: list[PostOut]
     has_more: bool
+
+class VoteRequest(BaseModel):
+    direction: int = Field(..., ge=-1, le=1, description="1 for upvote, -1 for downvote, 0 to clear vote.")
+## --- CHANGE END --- ##
 
 # ==============================================================================
 # 3. HELPER & DEPENDENCY FUNCTIONS
@@ -256,6 +266,56 @@ async def check_circle_membership(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not a member of this private circle")
     return circle
 
+## --- CHANGE START --- ##
+def _get_posts_aggregation_pipeline(
+    match_stage: dict,
+    sort_stage: dict,
+    skip: int,
+    limit: int,
+    current_user: UserInDB | None,
+) -> list[dict]:
+    """Helper to construct the aggregation pipeline for fetching posts."""
+    pipeline = [match_stage]
+    
+    # Add fields for vote counts and score
+    add_fields_stage = {
+        "$addFields": {
+            "upvotes_count": {"$size": {"$ifNull": ["$upvotes", []]}},
+            "downvotes_count": {"$size": {"$ifNull": ["$downvotes", []]}},
+        }
+    }
+    pipeline.append(add_fields_stage)
+    
+    pipeline.append({
+        "$addFields": {
+            "score": {"$subtract": ["$upvotes_count", "$downvotes_count"]}
+        }
+    })
+    
+    # Add user's vote status if logged in
+    if current_user:
+        pipeline.append({
+            "$addFields": {
+                "user_vote": {
+                    "$cond": {
+                        "if": {"$in": [current_user.id, {"$ifNull": ["$upvotes", []]}]},
+                        "then": 1,
+                        "else": {
+                            "$cond": {
+                                "if": {"$in": [current_user.id, {"$ifNull": ["$downvotes", []]}]},
+                                "then": -1,
+                                "else": 0
+                            }
+                        }
+                    }
+                }
+            }
+        })
+
+    pipeline.extend([sort_stage, {"$skip": skip}, {"$limit": limit}])
+    return pipeline
+## --- CHANGE END --- ##
+
 # ==============================================================================
 # 4. API ENDPOINTS
 # ==============================================================================
@@ -311,7 +371,6 @@ async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
     if not result: raise HTTPException(status_code=404, detail="User not found")
     return UserPrivateProfile(**result[0])
 
-## --- CHANGE START --- ##
 @app.get("/users/suggestions", response_model=list[UserPublicProfile], tags=["Users"])
 async def get_user_suggestions(
     current_user: UserInDB = Depends(get_current_user),
@@ -345,7 +404,6 @@ async def get_user_suggestions(
     ]
     suggestions_cursor = circles_collection.aggregate(pipeline)
     return [UserPublicProfile(**user) for user in suggestions_cursor]
-## --- CHANGE END --- ##
 
 @app.get("/users/search", response_model=list[UserPublicProfile], tags=["Users"])
 async def search_for_user(
@@ -423,8 +481,12 @@ async def get_circle_feed(
     count_pipeline = [match_stage, {"$count": "total"}]
     total_posts = next(posts_collection.aggregate(count_pipeline), {}).get("total", 0)
 
-    posts_pipeline = [match_stage, {"$sort": {"created_at": DESCENDING}}, {"$skip": skip}, {"$limit": limit}]
+    ## --- CHANGE START --- ##
+    sort_stage = {"$sort": {"created_at": DESCENDING}}
+    posts_pipeline = _get_posts_aggregation_pipeline(match_stage, sort_stage, skip, limit, current_user)
     posts_cursor = posts_collection.aggregate(posts_pipeline)
+    ## --- CHANGE END --- ##
+    
     posts_list = [PostOut(**p, circle_name=circle["name"]) for p in posts_cursor]
     return FeedResponse(posts=posts_list, has_more=(skip + len(posts_list)) < total_posts)
 
@@ -436,13 +498,45 @@ async def create_post_in_circle(post_data: PostCreate, circle: dict = Depends(ch
     elif ptype == PostTypeEnum.wishlist_item and not (content.get("item_name") and content.get("url")): raise HTTPException(status_code=422, detail="Wishlist item must include 'item_name' and 'url'.")
     elif ptype == PostTypeEnum.youtube_video and not (content.get("title") and content.get("youtube_url")): raise HTTPException(status_code=422, detail="YouTube video post must include 'title' and 'youtube_url'.")
     
+    ## --- CHANGE START --- ##
     new_post = {
         "circle_id": circle["_id"], "author_id": current_user.id, "author_username": current_user.username,
-        "post_type": ptype.value, "content": content, "created_at": datetime.now(timezone.utc)
+        "post_type": ptype.value, "content": content, "created_at": datetime.now(timezone.utc),
+        "upvotes": [], "downvotes": []
     }
+    ## --- CHANGE END --- ##
     result = posts_collection.insert_one(new_post)
     created_post = posts_collection.find_one({"_id": result.inserted_id})
     return PostOut(**created_post, circle_name=circle["name"])
+
+## --- CHANGE START --- ##
+@app.post("/posts/{post_id}/vote", status_code=status.HTTP_200_OK, tags=["Posts"])
+async def vote_on_post(post_id: str, vote_data: VoteRequest, current_user: UserInDB = Depends(get_current_user)):
+    if not ObjectId.is_valid(post_id): raise HTTPException(status_code=400, detail="Invalid Post ID")
+    post_object_id = ObjectId(post_id)
+    
+    update_query = {}
+    direction = vote_data.direction
+    
+    # First, pull the user from both arrays to ensure a clean state
+    update_query["$pull"] = {"upvotes": current_user.id, "downvotes": current_user.id}
+    posts_collection.update_one({"_id": post_object_id}, update_query)
+
+    # Now, add the user to the correct array if the vote is not neutral
+    if direction == 1:
+        posts_collection.update_one({"_id": post_object_id}, {"$addToSet": {"upvotes": current_user.id}})
+    elif direction == -1:
+        posts_collection.update_one({"_id": post_object_id}, {"$addToSet": {"downvotes": current_user.id}})
+        
+    # Recalculate and return the score
+    updated_post = posts_collection.find_one({"_id": post_object_id})
+    if not updated_post: raise HTTPException(status_code=404, detail="Post not found")
+    
+    score = len(updated_post.get("upvotes", [])) - len(updated_post.get("downvotes", []))
+    posts_collection.update_one({"_id": post_object_id}, {"$set": {"score": score}})
+    
+    return {"status": "success", "new_score": score}
+## --- CHANGE END --- ##
 
 @app.delete("/circles/{circle_id}/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Posts"])
 async def delete_post(circle_id: str, post_id: str, current_user: UserInDB = Depends(get_current_user), circle: dict = Depends(get_circle_or_404)):
@@ -477,8 +571,12 @@ async def get_my_feed(
     count_pipeline = [match_stage, {"$count": "total"}]
     total_posts = next(posts_collection.aggregate(count_pipeline), {}).get("total", 0)
 
-    posts_pipeline = [match_stage, {"$sort": {"created_at": DESCENDING}}, {"$skip": skip}, {"$limit": limit}]
+    ## --- CHANGE START --- ##
+    sort_stage = {"$sort": {"created_at": DESCENDING}}
+    posts_pipeline = _get_posts_aggregation_pipeline(match_stage, sort_stage, skip, limit, current_user)
     posts_cursor = posts_collection.aggregate(posts_pipeline)
+    ## --- CHANGE END --- ##
+    
     posts_list = [PostOut(**p, circle_name=user_circles.get(p["circle_id"], "Unknown")) for p in posts_cursor]
     return FeedResponse(posts=posts_list, has_more=(skip + len(posts_list)) < total_posts)
 
