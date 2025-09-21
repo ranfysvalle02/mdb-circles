@@ -14,7 +14,7 @@ import uvicorn  # ASGI server for running the application.
 import jwt      # For encoding and decoding JSON Web Tokens (JWTs).
 from jwt.exceptions import PyJWTError
 
-from fastapi import FastAPI, HTTPException, Body, Depends, status, Query, Request ## --- CHANGE START --- ##: Added Request
+from fastapi import FastAPI, HTTPException, Body, Depends, status, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import FileResponse
@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Circles Social API",
     description="A complete API for a social application with user authentication, circles, roles, and posts.",
-    version="1.4.0", # Version Bump
+    version="1.5.0", # Version Bump
     lifespan=lifespan,
 )
 
@@ -202,40 +202,22 @@ def create_refresh_token(username: str) -> str:
         token_type="refresh"
     )
 
-## --- CHANGE START --- ##
-# NEW DEPENDENCY: Gets the current user if a token is provided, but doesn't
-# raise an error if the token is missing or invalid. Returns UserInDB or None.
 async def get_optional_current_user(request: Request) -> UserInDB | None:
-    """
-    Checks for a valid access token in the request headers. If found, returns
-    the corresponding user. If not found or invalid, returns None.
-    """
     auth_header = request.headers.get("Authorization")
     if not auth_header:
         return None
-    
     try:
         scheme, token = auth_header.split()
-        if scheme.lower() != "bearer":
-            return None
-            
+        if scheme.lower() != "bearer": return None
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get("token_type") != "access":
-            return None # Must be an access token
-
+        if payload.get("token_type") != "access": return None
         username: str | None = payload.get("sub")
-        if not username:
-            return None
-
+        if not username: return None
         user = users_collection.find_one({"username": username})
-        if not user:
-            return None
-            
+        if not user: return None
         return UserInDB(**user)
     except (ValueError, PyJWTError):
-        # Catches errors from split() or jwt.decode()
         return None
-## --- CHANGE END --- ##
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
     credentials_exception = HTTPException(
@@ -283,12 +265,7 @@ async def check_circle_membership(
 async def register_user(user_data: UserRegister):
     if users_collection.find_one({"username": user_data.username}):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already registered")
-    new_user_doc = {
-        "username": user_data.username,
-        "password_hash": pwd_context.hash(user_data.password),
-        "following": [],
-        "followers": []
-    }
+    new_user_doc = { "username": user_data.username, "password_hash": pwd_context.hash(user_data.password), "following": [], "followers": [] }
     result = users_collection.insert_one(new_user_doc)
     created_user = users_collection.find_one({"_id": result.inserted_id})
     return UserPublicProfile(**created_user, following_count=0, followers_count=0)
@@ -304,27 +281,18 @@ async def login_for_access_token(form_data: UserAuth):
 
 @app.post("/auth/refresh", response_model=TokenResponse, tags=["Authentication"])
 async def refresh_access_token(body: TokenRefreshRequest):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid refresh token",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    credentials_exception = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token", headers={"WWW-Authenticate": "Bearer"})
     try:
         payload = jwt.decode(body.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get("token_type") != "refresh":
-            raise credentials_exception
+        if payload.get("token_type") != "refresh": raise credentials_exception
         username: str | None = payload.get("sub")
-        if username is None:
-            raise credentials_exception
+        if username is None: raise credentials_exception
     except PyJWTError:
         raise credentials_exception
-    
     user = users_collection.find_one({"username": username})
-    if user is None:
-        raise credentials_exception
-        
+    if user is None: raise credentials_exception
     new_access_token = create_access_token(username)
-    new_refresh_token = create_refresh_token(username)
+    new_refresh_token = create_refresh_token(username) # Also refresh the refresh token for better security
     return TokenResponse(access_token=new_access_token, refresh_token=new_refresh_token)
 
 # --- User Endpoints ---
@@ -332,24 +300,52 @@ async def refresh_access_token(body: TokenRefreshRequest):
 async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
     pipeline = [
         {"$match": {"_id": current_user.id}},
-        {"$lookup": {
-            "from": "users", "localField": "following", "foreignField": "_id", "as": "following_details"
-        }},
+        {"$lookup": {"from": "users", "localField": "following", "foreignField": "_id", "as": "following_details"}},
         {"$addFields": {
             "followers_count": {"$size": "$followers"},
             "following_count": {"$size": "$following"},
-            "following": {
-                "$map": {
-                    "input": "$following_details", "as": "user",
-                    "in": { "_id": "$$user._id", "username": "$$user.username", "followers_count": {"$size": "$$user.followers"}, "following_count": {"$size": "$$user.following"}}
-                }
-            }
+            "following": { "$map": { "input": "$following_details", "as": "user", "in": { "_id": "$$user._id", "username": "$$user.username", "followers_count": {"$size": "$$user.followers"}, "following_count": {"$size": "$$user.following"}}}}
         }}
     ]
     result = list(users_collection.aggregate(pipeline))
-    if not result:
-        raise HTTPException(status_code=404, detail="User not found")
+    if not result: raise HTTPException(status_code=404, detail="User not found")
     return UserPrivateProfile(**result[0])
+
+## --- CHANGE START --- ##
+@app.get("/users/suggestions", response_model=list[UserPublicProfile], tags=["Users"])
+async def get_user_suggestions(
+    current_user: UserInDB = Depends(get_current_user),
+    limit: int = Query(5, ge=1, le=20)
+):
+    """
+    Suggests users to follow based on membership in common circles.
+    It excludes the current user and anyone they already follow.
+    """
+    pipeline = [
+        {"$match": {"members.user_id": current_user.id}},
+        {"$unwind": "$members"},
+        {"$group": {"_id": "$members.user_id"}},
+        {"$match": {"_id": {"$nin": [current_user.id] + current_user.following}}},
+        {"$limit": limit},
+        {"$lookup": {
+            "from": "users",
+            "localField": "_id",
+            "foreignField": "_id",
+            "as": "user_details"
+        }},
+        {"$unwind": "$user_details"},
+        {"$replaceRoot": {"newRoot": "$user_details"}},
+        {"$addFields": {
+            "followers_count": {"$size": "$followers"},
+            "following_count": {"$size": "$following"}
+        }},
+        {"$project": {
+            "password_hash": 0, "following": 0, "followers": 0
+        }}
+    ]
+    suggestions_cursor = circles_collection.aggregate(pipeline)
+    return [UserPublicProfile(**user) for user in suggestions_cursor]
+## --- CHANGE END --- ##
 
 @app.get("/users/search", response_model=list[UserPublicProfile], tags=["Users"])
 async def search_for_user(
@@ -357,29 +353,36 @@ async def search_for_user(
     current_user: UserInDB = Depends(get_current_user)
 ):
     safe_username = re.escape(username)
-    found_user = users_collection.find_one({
-        "username": {"$regex": f"^{safe_username}$", "$options": "i"},
-        "_id": {"$ne": current_user.id}
-    })
-    if not found_user:
-        return []
-    return [UserPublicProfile(**found_user, following_count=len(found_user.get("following", [])), followers_count=len(found_user.get("followers", [])))]
+    pipeline = [
+        {"$match": {
+            "username": {"$regex": f"^{safe_username}$", "$options": "i"},
+            "_id": {"$ne": current_user.id}
+        }},
+        {"$limit": 1},
+        {"$addFields": {
+            "followers_count": {"$size": "$followers"},
+            "following_count": {"$size": "$following"}
+        }},
+        {"$project": {
+            "password_hash": 0, "following": 0, "followers": 0
+        }}
+    ]
+    results = list(users_collection.aggregate(pipeline))
+    return [UserPublicProfile(**user) for user in results]
 
 @app.post("/users/{username_to_follow}/follow", status_code=status.HTTP_204_NO_CONTENT, tags=["Users"])
 async def follow_user(username_to_follow: str, current_user: UserInDB = Depends(get_current_user)):
     if current_user.username.lower() == username_to_follow.lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot follow yourself")
     target_user = users_collection.find_one({"username": {"$regex": f"^{re.escape(username_to_follow)}$", "$options": "i"}})
-    if not target_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User to follow not found")
+    if not target_user: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User to follow not found")
     users_collection.update_one({"_id": current_user.id}, {"$addToSet": {"following": target_user["_id"]}})
     users_collection.update_one({"_id": target_user["_id"]}, {"$addToSet": {"followers": current_user.id}})
 
 @app.delete("/users/{username_to_unfollow}/follow", status_code=status.HTTP_204_NO_CONTENT, tags=["Users"])
 async def unfollow_user(username_to_unfollow: str, current_user: UserInDB = Depends(get_current_user)):
     target_user = users_collection.find_one({"username": {"$regex": f"^{re.escape(username_to_unfollow)}$", "$options": "i"}})
-    if not target_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User to unfollow not found")
+    if not target_user: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User to unfollow not found")
     users_collection.update_one({"_id": current_user.id}, {"$pull": {"following": target_user["_id"]}})
     users_collection.update_one({"_id": target_user["_id"]}, {"$pull": {"followers": current_user.id}})
 
@@ -393,9 +396,8 @@ async def list_my_circles(current_user: UserInDB = Depends(get_current_user)):
 async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depends(get_current_user)):
     first_member = CircleMember(user_id=current_user.id, username=current_user.username, role=RoleEnum.admin)
     new_circle_doc = {
-        "name": circle_data.name, "description": circle_data.description,
-        "is_public": circle_data.is_public, "owner_id": current_user.id,
-        "members": [first_member.model_dump()], "created_at": datetime.now(timezone.utc)
+        "name": circle_data.name, "description": circle_data.description, "is_public": circle_data.is_public,
+        "owner_id": current_user.id, "members": [first_member.model_dump()], "created_at": datetime.now(timezone.utc)
     }
     result = circles_collection.insert_one(new_circle_doc)
     created_circle = circles_collection.find_one({"_id": result.inserted_id})
@@ -405,8 +407,6 @@ async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depe
 async def get_circle_details(circle: dict = Depends(check_circle_membership)):
     return CircleOut(**circle, member_count=len(circle.get("members", [])))
 
-## --- CHANGE START --- ##
-# NEW ENDPOINT: Gets the feed for a specific circle, with permission checks.
 @app.get("/circles/{circle_id}/feed", response_model=FeedResponse, tags=["Circles"])
 async def get_circle_feed(
     circle_id: str,
@@ -414,61 +414,31 @@ async def get_circle_feed(
     limit: int = Query(10, ge=1, le=50),
     current_user: UserInDB | None = Depends(get_optional_current_user)
 ):
-    """
-    Retrieves the feed for a specific circle.
-    - If the circle is public, anyone can view it.
-    - If the circle is private, the user must be logged in and a member.
-    """
     circle = await get_circle_or_404(circle_id)
-
-    # Permission Check
     if not circle["is_public"]:
-        if not current_user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="You must be logged in to view this private circle's feed.",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        is_member = any(m['user_id'] == current_user.id for m in circle.get('members', []))
-        if not is_member:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You are not a member of this private circle."
-            )
-
-    # Fetch posts for the circle
-    match_stage = {"$match": {"circle_id": circle["_id"]}}
+        if not current_user: raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="You must be logged in to view this private circle's feed.", headers={"WWW-Authenticate": "Bearer"})
+        if not any(m['user_id'] == current_user.id for m in circle.get('members', [])): raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not a member of this private circle.")
     
+    match_stage = {"$match": {"circle_id": circle["_id"]}}
     count_pipeline = [match_stage, {"$count": "total"}]
     total_posts = next(posts_collection.aggregate(count_pipeline), {}).get("total", 0)
 
-    posts_pipeline = [
-        match_stage,
-        {"$sort": {"created_at": DESCENDING}},
-        {"$skip": skip},
-        {"$limit": limit}
-    ]
+    posts_pipeline = [match_stage, {"$sort": {"created_at": DESCENDING}}, {"$skip": skip}, {"$limit": limit}]
     posts_cursor = posts_collection.aggregate(posts_pipeline)
-
     posts_list = [PostOut(**p, circle_name=circle["name"]) for p in posts_cursor]
-    
     return FeedResponse(posts=posts_list, has_more=(skip + len(posts_list)) < total_posts)
-## --- CHANGE END --- ##
 
 # --- Post & Feed Endpoints ---
 @app.post("/circles/{circle_id}/posts", response_model=PostOut, status_code=status.HTTP_201_CREATED, tags=["Posts"])
 async def create_post_in_circle(post_data: PostCreate, circle: dict = Depends(check_circle_membership), current_user: UserInDB = Depends(get_current_user)):
     content, ptype = post_data.content, post_data.post_type
-    if ptype == PostTypeEnum.text_update and not content.get("text"):
-        raise HTTPException(status_code=422, detail="Text content cannot be empty for a text_update.")
-    elif ptype == PostTypeEnum.wishlist_item and not (content.get("item_name") and content.get("url")):
-        raise HTTPException(status_code=422, detail="Wishlist item must include 'item_name' and 'url'.")
-    elif ptype == PostTypeEnum.youtube_video and not (content.get("title") and content.get("youtube_url")):
-        raise HTTPException(status_code=422, detail="YouTube video post must include 'title' and 'youtube_url'.")
+    if ptype == PostTypeEnum.text_update and not content.get("text"): raise HTTPException(status_code=422, detail="Text content cannot be empty for a text_update.")
+    elif ptype == PostTypeEnum.wishlist_item and not (content.get("item_name") and content.get("url")): raise HTTPException(status_code=422, detail="Wishlist item must include 'item_name' and 'url'.")
+    elif ptype == PostTypeEnum.youtube_video and not (content.get("title") and content.get("youtube_url")): raise HTTPException(status_code=422, detail="YouTube video post must include 'title' and 'youtube_url'.")
+    
     new_post = {
-        "circle_id": circle["_id"], "author_id": current_user.id,
-        "author_username": current_user.username, "post_type": ptype.value,
-        "content": content, "created_at": datetime.now(timezone.utc)
+        "circle_id": circle["_id"], "author_id": current_user.id, "author_username": current_user.username,
+        "post_type": ptype.value, "content": content, "created_at": datetime.now(timezone.utc)
     }
     result = posts_collection.insert_one(new_post)
     created_post = posts_collection.find_one({"_id": result.inserted_id})
@@ -476,18 +446,15 @@ async def create_post_in_circle(post_data: PostCreate, circle: dict = Depends(ch
 
 @app.delete("/circles/{circle_id}/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Posts"])
 async def delete_post(circle_id: str, post_id: str, current_user: UserInDB = Depends(get_current_user), circle: dict = Depends(get_circle_or_404)):
-    if not ObjectId.is_valid(post_id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Post ID")
+    if not ObjectId.is_valid(post_id): raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Post ID")
     post = posts_collection.find_one({"_id": ObjectId(post_id), "circle_id": ObjectId(circle_id)})
-    if not post:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found in this circle")
+    if not post: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found in this circle")
+    
     member_info = next((m for m in circle.get('members', []) if m['user_id'] == current_user.id), None)
     user_is_mod_or_admin = member_info and RoleEnum(member_info['role']) in [RoleEnum.moderator, RoleEnum.admin]
-    user_is_author = post['author_id'] == current_user.id
-    if not user_is_author and not user_is_mod_or_admin:
+    if not (post['author_id'] == current_user.id or user_is_mod_or_admin):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to delete this post")
     posts_collection.delete_one({"_id": ObjectId(post_id)})
-    return
 
 @app.get("/feed", response_model=FeedResponse, tags=["Feed"])
 async def get_my_feed(
@@ -496,11 +463,9 @@ async def get_my_feed(
     limit: int = Query(10, ge=1, le=50),
     circle_id: str | None = Query(None, description="Filter feed by a specific circle ID.")
 ):
-    user_circles_cursor = circles_collection.find({"members.user_id": current_user.id})
+    user_circles_cursor = circles_collection.find({"members.user_id": current_user.id}, {"_id": 1, "name": 1})
     user_circles = {c["_id"]: c["name"] for c in user_circles_cursor}
-
-    if not user_circles:
-        return FeedResponse(posts=[], has_more=False)
+    if not user_circles: return FeedResponse(posts=[], has_more=False)
     
     if circle_id:
         if not ObjectId.is_valid(circle_id) or ObjectId(circle_id) not in user_circles:
@@ -514,25 +479,19 @@ async def get_my_feed(
 
     posts_pipeline = [match_stage, {"$sort": {"created_at": DESCENDING}}, {"$skip": skip}, {"$limit": limit}]
     posts_cursor = posts_collection.aggregate(posts_pipeline)
-
     posts_list = [PostOut(**p, circle_name=user_circles.get(p["circle_id"], "Unknown")) for p in posts_cursor]
-    
     return FeedResponse(posts=posts_list, has_more=(skip + len(posts_list)) < total_posts)
 
 # ==============================================================================
 # 5. STATIC FILE SERVING
 # ==============================================================================
-if not os.path.exists("static"):
-    os.makedirs("static")
-    print("Created 'static' directory for frontend files.")
-
+if not os.path.exists("static"): os.makedirs("static"); print("Created 'static' directory.")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/{full_path:path}", response_class=FileResponse, include_in_schema=False)
 async def serve_frontend(full_path: str):
     static_file_path = "static/index.html"
-    if not os.path.exists(static_file_path):
-        return HTTPException(status_code=404, detail="Frontend entry point not found.")
+    if not os.path.exists(static_file_path): return HTTPException(status_code=404, detail="Frontend entry point not found.")
     return FileResponse(static_file_path)
 
 # ==============================================================================

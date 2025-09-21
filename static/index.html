@@ -27,9 +27,9 @@
     .stars { background: #000 url(https://www.script-tutorials.com/demos/360/images/stars.png) repeat top center; }
     .twinkling { background: transparent url(https://www.script-tutorials.com/demos/360/images/twinkling.png) repeat top center; animation: move-twink-back 200s linear infinite; }
     .container { max-width: 1100px; }
-    h1, h2, h3, h4 { font-family: 'Orbitron', sans-serif; color: #fff; }
+    h1, h2, h3, h4, h5 { font-family: 'Orbitron', sans-serif; color: #fff; }
     h1 { text-shadow: 0 0 15px var(--primary-glow); }
-    h3 { border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1rem; }
+    h3, h4 { border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1rem; }
     .glass-card { background: var(--card-background); border-radius: 15px; padding: 25px; border: 1px solid var(--border-color); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 8px 32px 0 rgba(10, 4, 31, 0.37); margin-bottom: 25px; animation: fadeIn 0.6s ease-out forwards; transition: transform 0.3s ease, box-shadow 0.3s ease; }
     .glass-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px 0 rgba(10, 4, 31, 0.5); }
     @media (min-width: 992px) {
@@ -120,14 +120,17 @@
                       <div id="followingContainer" class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;"></div>
                   </div>
                   <div class="glass-card">
-                      <h3><i class="bi bi-search"></i> Find Users</h3>
+                      <h3><i class="bi bi-people"></i> Find Users</h3>
+                      <h5 class="text-primary fs-6">Suggestions from Your Circles</h5>
+                      <div id="userSuggestionsContainer" class="list-group list-group-flush mb-3"></div>
+                      <h5 class="text-primary fs-6 pt-3" style="border-top: 1px solid var(--border-color);">Search for a User</h5>
                       <div class="input-group">
                         <input type="text" id="userSearchInput" class="form-control" placeholder="Enter username...">
                         <button id="userSearchBtn" class="btn btn-primary"><i class="bi bi-search"></i></button>
                       </div>
                       <div id="usersContainer" class="list-group list-group-flush mt-3"></div>
                   </div>
-              </div>
+                  </div>
           </div>
           <div class="col-12 col-lg-8">
             <div id="feedContainer" class="feed-timeline"></div>
@@ -139,7 +142,7 @@
         <div id="circleHeader" class="glass-card"></div>
         <div id="circleFeedContainer" class="feed-timeline"></div>
       </div>
-      </div>
+    </div>
 
     <div id="feed-loader" class="hidden">
         <div class="spinner-border text-primary" role="status">
@@ -150,99 +153,22 @@
   
   <div id="globalStatus"></div>
 
-  <div class="modal fade" id="authModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title">Login or Register</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body">
-            <input type="text" id="usernameInput" class="form-control mb-3" placeholder="Username (e.g., alice)">
-            <input type="password" id="passwordInput" class="form-control" placeholder="Password (e.g., password123)">
-        </div>
-        <div class="modal-footer">
-          <button id="loginModalButton" class="btn btn-primary">Login</button>
-          <button id="registerModalButton" class="btn btn-success">Register</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  
-  <div class="modal fade" id="createCircleModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-          <div class="modal-header"><h5 class="modal-title">Create New Circle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-          <div class="modal-body">
-              <form id="createCircleForm">
-                  <div class="mb-3"><input type="text" id="circleName" class="form-control" placeholder="Circle Name" required></div>
-                  <div class="mb-3"><textarea id="circleDescription" class="form-control" placeholder="Description (Optional)"></textarea></div>
-                  <div class="form-check form-switch mb-3">
-                      <input class="form-check-input" type="checkbox" role="switch" id="isPublicSwitch" checked>
-                      <label class="form-check-label" for="isPublicSwitch">Public Circle</label>
-                  </div>
-              </form>
-          </div>
-          <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-              <button id="submitCircleButton" type="button" class="btn btn-success"><i class="bi bi-check-lg"></i> Create Circle</button>
-          </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal fade" id="createPostModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title">Create New Post</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body">
-          <form id="createPostForm">
-            <div class="mb-3">
-              <label for="circleSelect" class="form-label">Share to Circle</label>
-              <select id="circleSelect" class="form-select"></select>
-            </div>
-            <div class="mb-3">
-              <label for="postTypeSelect" class="form-label">Post Type</label>
-              <select id="postTypeSelect" class="form-select">
-                  <option value="text_update">Text Update</option>
-                  <option value="wishlist_item">Wishlist Item (Amazon, etc.)</option>
-                  <option value="youtube_video">YouTube Video</option>
-              </select>
-            </div>
-            <div id="postContentFields"></div>
-          </form>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button id="submitPostButton" type="button" class="btn btn-primary"><i class="bi bi-send"></i> Submit Post</button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <div class="modal fade" id="authModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Login or Register</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="text" id="usernameInput" class="form-control mb-3" placeholder="Username (e.g., alice)"><input type="password" id="passwordInput" class="form-control" placeholder="Password (e.g., password123)"></div><div class="modal-footer"><button id="loginModalButton" class="btn btn-primary">Login</button><button id="registerModalButton" class="btn btn-success">Register</button></div></div></div></div>
+  <div class="modal fade" id="createCircleModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Create New Circle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createCircleForm"><div class="mb-3"><input type="text" id="circleName" class="form-control" placeholder="Circle Name" required></div><div class="mb-3"><textarea id="circleDescription" class="form-control" placeholder="Description (Optional)"></textarea></div><div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" role="switch" id="isPublicSwitch" checked><label class="form-check-label" for="isPublicSwitch">Public Circle</label></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button id="submitCircleButton" type="button" class="btn btn-success"><i class="bi bi-check-lg"></i> Create Circle</button></div></div></div></div>
+  <div class="modal fade" id="createPostModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Create New Post</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createPostForm"><div class="mb-3"><label for="circleSelect" class="form-label">Share to Circle</label><select id="circleSelect" class="form-select"></select></div><div class="mb-3"><label for="postTypeSelect" class="form-label">Post Type</label><select id="postTypeSelect" class="form-select"><option value="text_update">Text Update</option><option value="wishlist_item">Wishlist Item</option><option value="youtube_video">YouTube Video</option></select></div><div id="postContentFields"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button id="submitPostButton" type="button" class="btn btn-primary"><i class="bi bi-send"></i> Submit Post</button></div></div></div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     const BASE_URL = ''; 
 
-    // ## --- CHANGE START --- ##: Added state management for the new Circle View
     const state = {
         accessToken: localStorage.getItem('accessToken') || null,
         refreshToken: localStorage.getItem('refreshToken') || null,
         currentUser: null,
         myCircles: [],
-        dashboardFeed: {
-            filter: { circle_id: null },
-            skip: 0,
-            limit: 10,
-            hasMore: true,
-            isLoading: false,
-        },
-        circleView: {
-            currentCircle: null,
-            skip: 0,
-            limit: 10,
-            hasMore: true,
-            isLoading: false,
-        }
+        dashboardFeed: { filter: { circle_id: null }, skip: 0, limit: 10, hasMore: true, isLoading: false },
+        circleView: { currentCircle: null, skip: 0, limit: 10, hasMore: true, isLoading: false }
     };
-    // ## --- CHANGE END --- ##
 
     const dom = {
         authSection: document.getElementById('authSection'),
@@ -253,6 +179,7 @@
         userActions: document.getElementById('userActions'),
         profileContainer: document.getElementById('profileContainer'),
         usersContainer: document.getElementById('usersContainer'),
+        userSuggestionsContainer: document.getElementById('userSuggestionsContainer'), // ## --- CHANGE START --- ##
         followingContainer: document.getElementById('followingContainer'),
         myCirclesContainer: document.getElementById('myCirclesContainer'),
         feedContainer: document.getElementById('feedContainer'),
@@ -267,10 +194,8 @@
     const showStatus = (msg, type = 'success') => { const id = `a${Date.now()}`; document.getElementById('globalStatus').innerHTML = `<div id="${id}" class="alert alert-${type} alert-dismissible fade show"> ${msg} <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`; setTimeout(() => bootstrap.Alert.getOrCreateInstance(`#${id}`)?.close(), 4000); };
     const getYouTubeID = url => { const arr = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/); return (arr && arr[1]) ? arr[1] : null; };
 
-    // API & Auth logic remains mostly the same
     let isRefreshing = false;
     let failedQueue = [];
-
     const processQueue = (error, token = null) => { failedQueue.forEach(prom => { if (error) { prom.reject(error); } else { prom.resolve(token); } }); failedQueue = []; };
 
     async function apiFetch(endpoint, options = {}) {
@@ -306,18 +231,11 @@
     const register = async (username, password) => { await apiFetch('/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) }); showStatus('Registration successful! Please log in.', 'success'); return true; };
     async function fetchCurrentUser() { if (!state.accessToken) return; try { state.currentUser = await apiFetch('/users/me'); } catch (error) { console.error("Token might be expired or invalid, logging out.", error); logout(); } }
 
-    // ## --- CHANGE START --- ##: Major refactor of UI rendering to support routing
-    // --- ROUTING & VIEW MANAGEMENT ---
     async function handleRoute() {
         await fetchCurrentUser();
         const hash = window.location.hash;
         const circleRouteMatch = hash.match(/^#\/circle\/(.+)$/);
-
-        if (circleRouteMatch) {
-            await showCircleView(circleRouteMatch[1]);
-        } else {
-            await showDashboardView();
-        }
+        if (circleRouteMatch) { await showCircleView(circleRouteMatch[1]); } else { await showDashboardView(); }
     }
 
     async function showDashboardView() {
@@ -341,19 +259,16 @@
         dom.dashboardView.classList.add('hidden');
         dom.appSection.classList.remove('hidden');
         dom.circleView.classList.remove('hidden');
-
-        // Show a simplified header
         dom.welcomeMessage.textContent = `Viewing a Circle`;
-        dom.userActions.classList.toggle('hidden', !state.currentUser); // Hide actions if not logged in
-
+        dom.userActions.classList.toggle('hidden', !state.currentUser);
         resetAndRenderCircleFeed();
     }
-    // --- END ROUTING ---
 
     async function renderDashboard() {
         renderProfile();
         renderFollowingList();
-        dom.usersContainer.innerHTML = '<p class="text-muted small text-center">Search for a user to follow.</p>';
+        renderUserSuggestions(); // ## --- CHANGE START --- ##
+        dom.usersContainer.innerHTML = '<p class="text-muted small text-center">Or search by exact username.</p>';
         try {
             const myCircles = await apiFetch('/circles/mine');
             state.myCircles = myCircles;
@@ -362,31 +277,32 @@
         } catch (error) { console.error("Failed to load dashboard data", error); }
     }
     
-    function renderProfile() { /* No changes here */ if (!state.currentUser) return; dom.profileContainer.innerHTML = `<div class="d-flex align-items-center"><div class="avatar avatar-lg me-3 d-flex align-items-center justify-content-center fs-2"><i class="bi bi-person-circle"></i></div><div><h4 class="mb-0">${state.currentUser.username}</h4><p class="mb-1"><strong>Following:</strong> ${state.currentUser.following_count}</p><p class="mb-0"><strong>Followers:</strong> ${state.currentUser.followers_count}</p></div></div>`; }
-    function renderUserList(users, container, emptyMessage) { /* No changes here */ if (!users || users.length === 0) { container.innerHTML = `<p class="text-muted small text-center">${emptyMessage}</p>`; return; } const followingIds = state.currentUser.following.map(u => u.id); container.innerHTML = users.map(user => { if (user.username === state.currentUser.username) return ''; const isFollowing = followingIds.includes(user.id); return `<div class="list-group-item d-flex justify-content-between align-items-center"><div class="d-flex align-items-center"><div class="avatar avatar-sm me-2 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div><span>${user.username}</span></div><button class="btn btn-sm ${isFollowing ? 'btn-danger' : 'btn-primary'}" data-action="toggle-follow" data-username="${user.username}">${isFollowing ? 'Unfollow' : 'Follow'}</button></div>`; }).join(''); }
-    function renderFollowingList() { /* No changes here */ if (!state.currentUser) return; renderUserList(state.currentUser.following, dom.followingContainer, "You aren't following anyone yet."); }
+    function renderProfile() { if (!state.currentUser) return; dom.profileContainer.innerHTML = `<div class="d-flex align-items-center"><div class="avatar avatar-lg me-3 d-flex align-items-center justify-content-center fs-2"><i class="bi bi-person-circle"></i></div><div><h4 class="mb-0">${state.currentUser.username}</h4><p class="mb-1"><strong>Following:</strong> ${state.currentUser.following_count}</p><p class="mb-0"><strong>Followers:</strong> ${state.currentUser.followers_count}</p></div></div>`; }
+    function renderUserList(users, container, emptyMessage) { if (!users || users.length === 0) { container.innerHTML = `<p class="text-muted small text-center">${emptyMessage}</p>`; return; } const followingIds = state.currentUser ? state.currentUser.following.map(u => u._id) : []; container.innerHTML = users.map(user => { if (state.currentUser && user.username === state.currentUser.username) return ''; const isFollowing = followingIds.includes(user._id); return `<div class="list-group-item d-flex justify-content-between align-items-center"><div class="d-flex align-items-center"><div class="avatar avatar-sm me-2 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div><span>${user.username}</span></div><button class="btn btn-sm ${isFollowing ? 'btn-danger' : 'btn-primary'}" data-action="toggle-follow" data-username="${user.username}">${isFollowing ? 'Unfollow' : 'Follow'}</button></div>`; }).join(''); }
+    function renderFollowingList() { if (!state.currentUser) return; renderUserList(state.currentUser.following, dom.followingContainer, "You aren't following anyone yet."); }
+    
+    // ## --- CHANGE START --- ##
+    async function renderUserSuggestions() {
+        if (!state.currentUser) return;
+        try {
+            const suggestions = await apiFetch('/users/suggestions');
+            renderUserList(suggestions, dom.userSuggestionsContainer, "No new suggestions from your circles.");
+        } catch (error) {
+            console.error("Failed to load user suggestions", error);
+            dom.userSuggestionsContainer.innerHTML = '<p class="text-danger small text-center">Could not load suggestions.</p>';
+        }
+    }
+    // ## --- CHANGE END --- ##
 
     function renderMyCircles(circles) {
         const { circle_id } = state.dashboardFeed.filter;
         let html = `<a href="#" class="list-group-item clickable list-group-item-action ${!circle_id ? 'active' : ''}" data-action="filter-feed" data-circle-id=""><i class="bi bi-collection-fill me-2"></i>All My Circles</a>`;
-        html += circles.map(c => `
-            <div class="list-group-item d-flex justify-content-between align-items-center">
-                <a href="#" class="flex-grow-1 text-decoration-none text-white clickable ${circle_id === c._id ? 'active' : ''}" data-action="filter-feed" data-circle-id="${c._id}"><i class="bi bi-hash"></i>${c.name}</a>
-                <button class="btn btn-secondary btn-sm py-0 px-2 ms-2" title="Share Circle" data-action="share-circle" data-circle-id="${c._id}"><i class="bi bi-share"></i></button>
-            </div>`).join('');
+        html += circles.map(c => `<div class="list-group-item d-flex justify-content-between align-items-center p-0"><a href="#" class="flex-grow-1 text-decoration-none text-white clickable list-group-item-action border-0 ${circle_id === c._id ? 'active' : ''}" data-action="filter-feed" data-circle-id="${c._id}"><i class="bi bi-hash"></i>${c.name}</a><button class="btn btn-secondary btn-sm py-0 px-2 me-2" title="Share Circle" data-action="share-circle" data-circle-id="${c._id}"><i class="bi bi-share"></i></button></div>`).join('');
         dom.myCirclesContainer.innerHTML = html || `<div class="empty-placeholder small">No circles yet.</div>`;
         document.getElementById('circleSelect').innerHTML = circles.map(c => `<option value="${c._id}">${c.name}</option>`).join('');
     }
-    // ## --- CHANGE END --- ##
 
-    // --- FEED LOGIC REFACTORED FOR MULTIPLE VIEWS ---
-    function resetAndRenderDashboardFeed() {
-        state.dashboardFeed.skip = 0;
-        state.dashboardFeed.hasMore = true;
-        dom.feedContainer.innerHTML = '';
-        renderDashboardFeed();
-    }
-
+    function resetAndRenderDashboardFeed() { state.dashboardFeed.skip = 0; state.dashboardFeed.hasMore = true; dom.feedContainer.innerHTML = ''; renderDashboardFeed(); }
     async function renderDashboardFeed() {
         if (!state.dashboardFeed.hasMore || state.dashboardFeed.isLoading) return;
         state.dashboardFeed.isLoading = true;
@@ -404,42 +320,25 @@
         finally { state.dashboardFeed.isLoading = false; dom.feedLoader.classList.add('hidden'); }
     }
 
-    function resetAndRenderCircleFeed() {
-        state.circleView.skip = 0;
-        state.circleView.hasMore = true;
-        dom.circleFeedContainer.innerHTML = '';
-        dom.circleHeader.innerHTML = '';
-        renderCircleFeed();
-    }
-    
+    function resetAndRenderCircleFeed() { state.circleView.skip = 0; state.circleView.hasMore = true; dom.circleFeedContainer.innerHTML = ''; dom.circleHeader.innerHTML = ''; renderCircleFeed(); }
     async function renderCircleFeed() {
         const feedState = state.circleView;
         if (!feedState.hasMore || feedState.isLoading) return;
         feedState.isLoading = true;
         dom.feedLoader.classList.remove('hidden');
-
         try {
-            // Fetch circle details on first load
             if (feedState.skip === 0) {
                 const circleDetails = await apiFetch(`/circles/${feedState.currentCircle._id}`);
-                feedState.currentCircle = circleDetails; // Update with full details
-                dom.circleHeader.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h2><i class="bi bi-hash"></i> ${circleDetails.name}</h2>
-                            <p class="text-muted mb-0">${circleDetails.description || 'A shared space for posts.'}</p>
-                        </div>
-                        <a href="#" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back to My Feed</a>
-                    </div>`;
+                feedState.currentCircle = circleDetails; 
+                dom.circleHeader.innerHTML = `<div class="d-flex justify-content-between align-items-center"><div><h2><i class="bi bi-hash"></i> ${circleDetails.name}</h2><p class="text-muted mb-0">${circleDetails.description || 'A shared space for posts.'}</p></div><a href="#" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back to My Feed</a></div>`;
             }
-
             const url = `/circles/${feedState.currentCircle._id}/feed?skip=${feedState.skip}&limit=${feedState.limit}`;
             const feedData = await apiFetch(url);
             appendPosts(feedData.posts, dom.circleFeedContainer);
             feedState.hasMore = feedData.has_more;
             feedState.skip += feedData.posts.length;
             if (dom.circleFeedContainer.innerHTML === '' && !feedData.has_more) { dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder">This circle has no posts yet.</div>`; }
-        } catch (error) { dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder text-danger">Could not load this circle's feed. It may be private.</div>`; dom.circleHeader.innerHTML = ''; }
+        } catch (error) { dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder text-danger">Could not load this circle's feed. It may be private or you may need to log in.</div>`; dom.circleHeader.innerHTML = ''; }
         finally { feedState.isLoading = false; dom.feedLoader.classList.add('hidden'); }
     }
 
@@ -449,41 +348,47 @@
             let contentHtml = '';
             switch(post.post_type) {
                 case 'wishlist_item': contentHtml = `<h5 class="card-title"><a href="${post.content.url}" target="_blank" rel="noopener noreferrer">${post.content.item_name} <i class="bi bi-box-arrow-up-right"></i></a></h5><p class="card-text text-muted">${post.content.notes || ''}</p>`; break;
-                case 'youtube_video': const videoId = getYouTubeID(post.content.youtube_url); contentHtml = `<h5 class="card-title">${post.content.title}</h5>${videoId ? `<div class="video-container my-2"><iframe src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe></div>` : ''}<p class="card-text text-muted">${post.content.notes || ''}</p>`; break;
+                case 'youtube_video': const videoId = getYouTubeID(post.content.youtube_url); contentHtml = `<h5 class="card-title">${post.content.title}</h5>${videoId ? `<div class="video-container my-2"><iframe src="https://www.youtube.com/embed/${videoId}" title="${post.content.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>` : ''}<p class="card-text text-muted">${post.content.notes || ''}</p>`; break;
                 default: contentHtml = `<p class="card-text" style="white-space: pre-wrap;">${post.content.text}</p>`;
             }
-            return `<div class="glass-card post-card"><div class="d-flex justify-content-between align-items-start"><div class="d-flex align-items-center"><div class="avatar me-3 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div><div><strong class="d-block">${post.author_username}</strong><small class="text-muted">in <span class="fw-bold">${post.circle_name}</span> &bull; ${new Date(post.created_at).toLocaleString()}</small></div></div><div><span class="badge bg-primary rounded-pill">${post.post_type.replace(/_/g, ' ')}</span>${canDelete(post) ? `<button class="btn btn-danger btn-sm ms-2 py-0 px-2" data-action="delete-post" data-post-id="${post.id}" data-circle-id="${post.circle_id}"><i class="bi bi-trash"></i></button>` : ''}</div></div><div class="mt-3">${contentHtml}</div></div>`;
+            return `<div class="glass-card post-card"><div class="d-flex justify-content-between align-items-start"><div class="d-flex align-items-center"><div class="avatar me-3 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div><div><strong class="d-block">${post.author_username}</strong><small class="text-muted">in <span class="fw-bold">${post.circle_name}</span> &bull; ${new Date(post.created_at).toLocaleString()}</small></div></div><div><span class="badge bg-primary rounded-pill">${post.post_type.replace(/_/g, ' ')}</span>${canDelete(post) ? `<button class="btn btn-danger btn-sm ms-2 py-0 px-2" data-action="delete-post" data-post-id="${post._id}" data-circle-id="${post.circle_id}"><i class="bi bi-trash"></i></button>` : ''}</div></div><div class="mt-3">${contentHtml}</div></div>`;
         }).join('');
         container.insertAdjacentHTML('beforeend', postsHtml);
     }
     
-    const observer = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting) {
-            // Decide which feed to load based on current view
-            if (!dom.circleView.classList.contains('hidden')) {
-                renderCircleFeed();
-            } else if (!dom.dashboardView.classList.contains('hidden')) {
-                renderDashboardFeed();
-            }
-        }
-    }, { rootMargin: '200px' });
+    const observer = new IntersectionObserver((entries) => { if (entries[0].isIntersecting) { if (!dom.circleView.classList.contains('hidden')) { renderCircleFeed(); } else if (!dom.dashboardView.classList.contains('hidden')) { renderDashboardFeed(); } } }, { rootMargin: '200px' });
     observer.observe(dom.feedLoader);
 
-    // --- FORM & EVENT HANDLERS ---
-    function renderPostContentFields() { /* No changes here */ const type = dom.postTypeSelect.value; let html = ''; switch(type) { case 'wishlist_item': html = `<input type="text" name="item_name" class="form-control mb-2" placeholder="Item Name" required><input type="url" name="url" class="form-control mb-2" placeholder="Item URL (e.g., Amazon link)" required><textarea name="notes" class="form-control" placeholder="Notes (optional)"></textarea>`; break; case 'youtube_video': html = `<input type="text" name="title" class="form-control mb-2" placeholder="Video Title" required><input type="url" name="youtube_url" class="form-control mb-2" placeholder="YouTube URL" required><textarea name="notes" class="form-control" placeholder="Notes (optional)"></textarea>`; break; default: html = `<textarea name="text" class="form-control" placeholder="What's on your mind?" required></textarea>`; } dom.postContentFields.innerHTML = html; }
-    async function handleAuthAction(e, action) { /* No changes here except handleRoute() call */ const btn = e.currentTarget; const u = document.getElementById('usernameInput').value, p = document.getElementById('passwordInput').value; if (!u || !p) return showStatus('Username and password are required', 'warning'); setButtonLoading(btn, true); try { if (await action(u, p)) bootstrap.Modal.getInstance('#authModal').hide(); } catch (error) {} finally { setButtonLoading(btn, false); } }
-    async function handleCreateCircle() { /* No changes here */ const btn = document.getElementById('submitCircleButton'); const name = document.getElementById('circleName').value; const description = document.getElementById('circleDescription').value; const is_public = document.getElementById('isPublicSwitch').checked; setButtonLoading(btn, true); try { await apiFetch('/circles', { method: 'POST', body: JSON.stringify({ name, description, is_public }) }); showStatus('Circle created!', 'success'); bootstrap.Modal.getInstance('#createCircleModal').hide(); document.getElementById('createCircleForm').reset(); const myCircles = await apiFetch('/circles/mine'); state.myCircles = myCircles; renderMyCircles(myCircles); } catch(error) {} finally { setButtonLoading(btn, false); } }
-    async function handleCreatePost() { /* No changes here, but now refreshes current view */ const btn = document.getElementById('submitPostButton'); const circle_id = document.getElementById('circleSelect').value; if (!circle_id) return showStatus('You must select a circle to post in.', 'warning'); const post_type = dom.postTypeSelect.value; const content = {}; dom.postContentFields.querySelectorAll('[name]').forEach(input => { if (input.value) content[input.name] = input.value; }); setButtonLoading(btn, true); try { await apiFetch(`/circles/${circle_id}/posts`, { method: 'POST', body: JSON.stringify({ post_type, content }) }); showStatus('Post created!', 'success'); bootstrap.Modal.getInstance('#createPostModal').hide(); if (state.circleView.currentCircle) resetAndRenderCircleFeed(); else resetAndRenderDashboardFeed(); } catch(error) {} finally { setButtonLoading(btn, false); } }
-    async function handleToggleFollow(username) { /* No changes here */ const isFollowing = state.currentUser.following.some(u => u.username === username); try { await apiFetch(`/users/${username}/follow`, { method: isFollowing ? 'DELETE' : 'POST' }); showStatus(`Successfully ${isFollowing ? 'unfollowed' : 'followed'} ${username}!`, 'success'); await fetchCurrentUser(); renderProfile(); renderFollowingList(); const currentSearch = document.getElementById('userSearchInput').value.trim(); if (currentSearch.toLowerCase() === username.toLowerCase()) { const users = await apiFetch(`/users/search?username=${encodeURIComponent(username)}`); renderUserList(users, dom.usersContainer, "No user found with that name."); } } catch(error) {} }
+    function renderPostContentFields() { const type = dom.postTypeSelect.value; let html = ''; switch(type) { case 'wishlist_item': html = `<input type="text" name="item_name" class="form-control mb-2" placeholder="Item Name" required><input type="url" name="url" class="form-control mb-2" placeholder="Item URL" required><textarea name="notes" class="form-control" placeholder="Notes (optional)"></textarea>`; break; case 'youtube_video': html = `<input type="text" name="title" class="form-control mb-2" placeholder="Video Title" required><input type="url" name="youtube_url" class="form-control mb-2" placeholder="YouTube URL" required><textarea name="notes" class="form-control" placeholder="Notes (optional)"></textarea>`; break; default: html = `<textarea name="text" class="form-control" placeholder="What's on your mind?" required></textarea>`; } dom.postContentFields.innerHTML = html; }
+    async function handleAuthAction(e, action) { const btn = e.currentTarget; const u = document.getElementById('usernameInput').value, p = document.getElementById('passwordInput').value; if (!u || !p) return showStatus('Username and password are required', 'warning'); setButtonLoading(btn, true); try { if (await action(u, p)) bootstrap.Modal.getInstance('#authModal').hide(); } catch (error) {} finally { setButtonLoading(btn, false); } }
+    async function handleCreateCircle() { const btn = document.getElementById('submitCircleButton'); const name = document.getElementById('circleName').value; const description = document.getElementById('circleDescription').value; const is_public = document.getElementById('isPublicSwitch').checked; setButtonLoading(btn, true); try { await apiFetch('/circles', { method: 'POST', body: JSON.stringify({ name, description, is_public }) }); showStatus('Circle created!', 'success'); bootstrap.Modal.getInstance('#createCircleModal').hide(); document.getElementById('createCircleForm').reset(); const myCircles = await apiFetch('/circles/mine'); state.myCircles = myCircles; renderMyCircles(myCircles); } catch(error) {} finally { setButtonLoading(btn, false); } }
+    async function handleCreatePost() { const btn = document.getElementById('submitPostButton'); const circle_id = document.getElementById('circleSelect').value; if (!circle_id) return showStatus('You must select a circle to post in.', 'warning'); const post_type = dom.postTypeSelect.value; const content = {}; dom.postContentFields.querySelectorAll('[name]').forEach(input => { if (input.value) content[input.name] = input.value; }); setButtonLoading(btn, true); try { await apiFetch(`/circles/${circle_id}/posts`, { method: 'POST', body: JSON.stringify({ post_type, content }) }); showStatus('Post created!', 'success'); bootstrap.Modal.getInstance('#createPostModal').hide(); document.getElementById('createPostForm').reset(); renderPostContentFields(); if (state.circleView.currentCircle?._id === circle_id) { resetAndRenderCircleFeed(); } else if (!state.circleView.currentCircle) { resetAndRenderDashboardFeed(); } } catch(error) {} finally { setButtonLoading(btn, false); } }
+    // ## --- CHANGE START --- ##
+    async function handleToggleFollow(username) {
+        if (!state.currentUser) return showStatus('Please log in to follow users.', 'warning');
+        const isFollowing = state.currentUser.following.some(u => u.username === username);
+        try {
+            await apiFetch(`/users/${username}/follow`, { method: isFollowing ? 'DELETE' : 'POST' });
+            showStatus(`Successfully ${isFollowing ? 'unfollowed' : 'followed'} ${username}!`, 'success');
+            await fetchCurrentUser();
+            renderProfile();
+            renderFollowingList();
+            renderUserSuggestions(); // Refresh suggestions after a follow/unfollow action
+            const currentSearch = document.getElementById('userSearchInput').value.trim();
+            if (currentSearch.toLowerCase() === username.toLowerCase()) {
+                const users = await apiFetch(`/users/search?username=${encodeURIComponent(username)}`);
+                renderUserList(users, dom.usersContainer, "No user found with that name.");
+            }
+        } catch(error) {}
+    }
+    // ## --- CHANGE END --- ##
     async function handleDeletePost(postId, circleId) { if (!confirm('Are you sure you want to delete this post?')) return; try { await apiFetch(`/circles/${circleId}/posts/${postId}`, { method: 'DELETE' }); showStatus('Post deleted.', 'success'); if (state.circleView.currentCircle) resetAndRenderCircleFeed(); else resetAndRenderDashboardFeed(); } catch(error) {} }
-    async function handleUserSearch() { /* No changes here */ const btn = document.getElementById('userSearchBtn'); const query = document.getElementById('userSearchInput').value.trim(); if (!query) return; setButtonLoading(btn, true); dom.usersContainer.innerHTML = ''; try { const users = await apiFetch(`/users/search?username=${encodeURIComponent(query)}`); renderUserList(users, dom.usersContainer, "No user found with that name."); } catch (error) { console.error("User search failed", error); dom.usersContainer.innerHTML = '<p class="text-danger small text-center">Search failed.</p>'; } finally { setButtonLoading(btn, false); } }
+    async function handleUserSearch() { const btn = document.getElementById('userSearchBtn'); const query = document.getElementById('userSearchInput').value.trim(); if (!query) return; setButtonLoading(btn, true); dom.usersContainer.innerHTML = ''; try { const users = await apiFetch(`/users/search?username=${encodeURIComponent(query)}`); renderUserList(users, dom.usersContainer, "No user found with that name."); } catch (error) { console.error("User search failed", error); dom.usersContainer.innerHTML = '<p class="text-danger small text-center">Search failed.</p>'; } finally { setButtonLoading(btn, false); } }
 
-    // --- INITIALIZATION ---
     document.addEventListener('DOMContentLoaded', () => {
         const authModal = new bootstrap.Modal('#authModal');
         const postModal = new bootstrap.Modal('#createPostModal');
         const circleModal = new bootstrap.Modal('#createCircleModal');
-
         document.getElementById('loginButton').addEventListener('click', () => authModal.show());
         document.getElementById('loginModalButton').addEventListener('click', e => handleAuthAction(e, login));
         document.getElementById('registerModalButton').addEventListener('click', e => handleAuthAction(e, register));
@@ -497,31 +402,19 @@
         document.getElementById('userSearchInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleUserSearch(); });
 
         document.body.addEventListener('click', e => {
+            const link = e.target.closest('a');
+            if (link && link.getAttribute('href') === '#') { e.preventDefault(); window.location.hash = ''; }
             const target = e.target.closest('[data-action]');
             if (!target) return;
             const { action } = target.dataset;
-            if (target.tagName === 'A' && action !== 'filter-feed') e.preventDefault();
             if (action === 'toggle-follow') { handleToggleFollow(target.dataset.username); }
             if (action === 'delete-post') { handleDeletePost(target.dataset.postId, target.dataset.circleId); }
-            if (action === 'filter-feed') {
-                e.preventDefault();
-                state.dashboardFeed.filter.circle_id = target.dataset.circleId || null;
-                renderMyCircles(state.myCircles); // Re-render to show active state
-                resetAndRenderDashboardFeed();
-            }
-            if (action === 'share-circle') {
-                const { circleId } = target.dataset;
-                const url = `${window.location.origin}${window.location.pathname}#/circle/${circleId}`;
-                navigator.clipboard.writeText(url).then(() => showStatus('Share link copied to clipboard!', 'success'));
-            }
+            if (action === 'filter-feed') { state.dashboardFeed.filter.circle_id = target.dataset.circleId || null; renderMyCircles(state.myCircles); resetAndRenderDashboardFeed(); }
+            if (action === 'share-circle') { const { circleId } = target.dataset; const url = `${window.location.origin}${window.location.pathname}#/circle/${circleId}`; navigator.clipboard.writeText(url).then(() => showStatus('Share link copied to clipboard!', 'success')); }
         });
-
-        // Add listener for hash changes (e.g., browser back/forward buttons)
         window.addEventListener('hashchange', handleRoute);
-
-        // Initial setup
         renderPostContentFields();
-        handleRoute(); // Let the router decide the initial view
+        handleRoute();
     });
   </script>
 </body>
