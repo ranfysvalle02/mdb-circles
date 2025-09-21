@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Circles Social API",
     description="A complete API for a social application with user authentication, circles, roles, and posts.",
-    version="1.6.0", # Version Bump
+    version="1.9.0", # Version Bump for post type filtering
     lifespan=lifespan,
 )
 
@@ -87,6 +87,10 @@ class RoleEnum(str, Enum):
     member = "member"
     moderator = "moderator"
     admin = "admin"
+
+class SortByEnum(str, Enum):
+    newest = "newest"
+    top = "top"
 
 class UserRegister(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
@@ -137,6 +141,14 @@ class CircleCreate(BaseModel):
     name: str = Field(..., min_length=3, max_length=100)
     description: str | None = Field(None, max_length=500)
     is_public: bool = True
+    password: str | None = Field(None, min_length=8, max_length=128)
+
+class CircleJoin(BaseModel):
+    password: str
+
+class CircleStatusOut(BaseModel):
+    name: str
+    is_password_protected: bool
 
 class CircleOut(BaseModel):
     id: PyObjectId = Field(alias="_id")
@@ -145,6 +157,7 @@ class CircleOut(BaseModel):
     is_public: bool
     owner_id: PyObjectId
     member_count: int
+    is_password_protected: bool
     class Config:
         json_encoders = {ObjectId: str}
         populate_by_name = True
@@ -158,7 +171,6 @@ class PostCreate(BaseModel):
     post_type: PostTypeEnum
     content: dict[str, Any] = Field(..., example={"text": "Hello world!"})
 
-## --- CHANGE START --- ##
 class PostOut(BaseModel):
     id: PyObjectId = Field(alias="_id")
     circle_id: PyObjectId
@@ -182,7 +194,6 @@ class FeedResponse(BaseModel):
 
 class VoteRequest(BaseModel):
     direction: int = Field(..., ge=-1, le=1, description="1 for upvote, -1 for downvote, 0 to clear vote.")
-## --- CHANGE END --- ##
 
 # ==============================================================================
 # 3. HELPER & DEPENDENCY FUNCTIONS
@@ -260,13 +271,15 @@ async def check_circle_membership(
     current_user: UserInDB = Depends(get_current_user),
     circle: dict = Depends(get_circle_or_404)
 ) -> dict:
-    if circle["is_public"]:
-        return circle
-    if not any(member['user_id'] == current_user.id for member in circle.get('members', [])):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not a member of this private circle")
+    is_password_protected = "password_hash" in circle and circle["password_hash"]
+    if is_password_protected or not circle["is_public"]:
+        if not any(member['user_id'] == current_user.id for member in circle.get('members', [])):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="You are not a member of this circle."
+            )
     return circle
 
-## --- CHANGE START --- ##
 def _get_posts_aggregation_pipeline(
     match_stage: dict,
     sort_stage: dict,
@@ -314,7 +327,6 @@ def _get_posts_aggregation_pipeline(
 
     pipeline.extend([sort_stage, {"$skip": skip}, {"$limit": limit}])
     return pipeline
-## --- CHANGE END --- ##
 
 # ==============================================================================
 # 4. API ENDPOINTS
@@ -448,7 +460,11 @@ async def unfollow_user(username_to_unfollow: str, current_user: UserInDB = Depe
 @app.get("/circles/mine", response_model=list[CircleOut], tags=["Circles"])
 async def list_my_circles(current_user: UserInDB = Depends(get_current_user)):
     circles_cursor = circles_collection.find({"members.user_id": current_user.id}).sort("name", ASCENDING)
-    return [CircleOut(**c, member_count=len(c.get("members", []))) for c in circles_cursor]
+    result = []
+    for c in circles_cursor:
+        is_protected = "password_hash" in c and c.get("password_hash") is not None
+        result.append(CircleOut(**c, member_count=len(c.get("members", [])), is_password_protected=is_protected))
+    return result
 
 @app.post("/circles", response_model=CircleOut, status_code=status.HTTP_201_CREATED, tags=["Circles"])
 async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depends(get_current_user)):
@@ -457,35 +473,89 @@ async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depe
         "name": circle_data.name, "description": circle_data.description, "is_public": circle_data.is_public,
         "owner_id": current_user.id, "members": [first_member.model_dump()], "created_at": datetime.now(timezone.utc)
     }
+    if circle_data.password:
+        new_circle_doc["password_hash"] = pwd_context.hash(circle_data.password)
+    
     result = circles_collection.insert_one(new_circle_doc)
     created_circle = circles_collection.find_one({"_id": result.inserted_id})
-    return CircleOut(**created_circle, member_count=1)
+    
+    is_protected = "password_hash" in created_circle and created_circle.get("password_hash") is not None
+    return CircleOut(**created_circle, member_count=1, is_password_protected=is_protected)
+
+@app.get("/circles/{circle_id}/status", response_model=CircleStatusOut, tags=["Circles"])
+async def get_circle_public_status(circle: dict = Depends(get_circle_or_404)):
+    """A public endpoint to check if a circle is password protected without requiring membership."""
+    is_protected = "password_hash" in circle and circle.get("password_hash") is not None
+    return CircleStatusOut(name=circle["name"], is_password_protected=is_protected)
+
+@app.post("/circles/{circle_id}/join", status_code=status.HTTP_204_NO_CONTENT, tags=["Circles"])
+async def join_password_protected_circle(
+    join_data: CircleJoin,
+    circle: dict = Depends(get_circle_or_404),
+    current_user: UserInDB = Depends(get_current_user)
+):
+    if not circle.get("password_hash"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This circle is not password protected.")
+    
+    if any(m['user_id'] == current_user.id for m in circle.get("members", [])):
+        return # User is already a member
+
+    if not pwd_context.verify(join_data.password, circle["password_hash"]):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Incorrect password")
+
+    new_member = CircleMember(user_id=current_user.id, username=current_user.username, role=RoleEnum.member)
+    circles_collection.update_one(
+        {"_id": circle["_id"]},
+        {"$addToSet": {"members": new_member.model_dump()}}
+    )
 
 @app.get("/circles/{circle_id}", response_model=CircleOut, tags=["Circles"])
 async def get_circle_details(circle: dict = Depends(check_circle_membership)):
-    return CircleOut(**circle, member_count=len(circle.get("members", [])))
+    is_protected = "password_hash" in circle and circle.get("password_hash") is not None
+    return CircleOut(**circle, member_count=len(circle.get("members", [])), is_password_protected=is_protected)
 
 @app.get("/circles/{circle_id}/feed", response_model=FeedResponse, tags=["Circles"])
 async def get_circle_feed(
     circle_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=50),
+    sort_by: SortByEnum = Query(SortByEnum.newest, description="Sort posts by 'newest' or 'top' score."),
+    ## --- CHANGE START --- ##
+    post_type_filter: PostTypeEnum | None = Query(None, description="Filter posts by a specific type."),
+    ## --- CHANGE END --- ##
     current_user: UserInDB | None = Depends(get_optional_current_user)
 ):
     circle = await get_circle_or_404(circle_id)
-    if not circle["is_public"]:
-        if not current_user: raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="You must be logged in to view this private circle's feed.", headers={"WWW-Authenticate": "Bearer"})
-        if not any(m['user_id'] == current_user.id for m in circle.get('members', [])): raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not a member of this private circle.")
+    is_password_protected = "password_hash" in circle and circle.get("password_hash")
+
+    # Access Check
+    is_member = current_user and any(m['user_id'] == current_user.id for m in circle.get('members', []))
+    can_view = (circle["is_public"] and not is_password_protected) or is_member
+
+    if not can_view:
+        if not current_user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="You must be logged in to view this circle's feed.")
+        else:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not a member of this circle.")
     
-    match_stage = {"$match": {"circle_id": circle["_id"]}}
+    ## --- CHANGE START --- ##
+    match_query = {"circle_id": circle["_id"]}
+    if post_type_filter:
+        match_query["post_type"] = post_type_filter.value
+    
+    match_stage = {"$match": match_query}
+    ## --- CHANGE END --- ##
+
     count_pipeline = [match_stage, {"$count": "total"}]
     total_posts = next(posts_collection.aggregate(count_pipeline), {}).get("total", 0)
 
-    ## --- CHANGE START --- ##
-    sort_stage = {"$sort": {"created_at": DESCENDING}}
+    if sort_by == SortByEnum.top:
+        sort_stage = {"$sort": {"score": DESCENDING, "created_at": DESCENDING}}
+    else: # Default to newest
+        sort_stage = {"$sort": {"created_at": DESCENDING}}
+
     posts_pipeline = _get_posts_aggregation_pipeline(match_stage, sort_stage, skip, limit, current_user)
     posts_cursor = posts_collection.aggregate(posts_pipeline)
-    ## --- CHANGE END --- ##
     
     posts_list = [PostOut(**p, circle_name=circle["name"]) for p in posts_cursor]
     return FeedResponse(posts=posts_list, has_more=(skip + len(posts_list)) < total_posts)
@@ -498,18 +568,15 @@ async def create_post_in_circle(post_data: PostCreate, circle: dict = Depends(ch
     elif ptype == PostTypeEnum.wishlist_item and not (content.get("item_name") and content.get("url")): raise HTTPException(status_code=422, detail="Wishlist item must include 'item_name' and 'url'.")
     elif ptype == PostTypeEnum.youtube_video and not (content.get("title") and content.get("youtube_url")): raise HTTPException(status_code=422, detail="YouTube video post must include 'title' and 'youtube_url'.")
     
-    ## --- CHANGE START --- ##
     new_post = {
         "circle_id": circle["_id"], "author_id": current_user.id, "author_username": current_user.username,
         "post_type": ptype.value, "content": content, "created_at": datetime.now(timezone.utc),
-        "upvotes": [], "downvotes": []
+        "upvotes": [], "downvotes": [], "score": 0
     }
-    ## --- CHANGE END --- ##
     result = posts_collection.insert_one(new_post)
     created_post = posts_collection.find_one({"_id": result.inserted_id})
     return PostOut(**created_post, circle_name=circle["name"])
 
-## --- CHANGE START --- ##
 @app.post("/posts/{post_id}/vote", status_code=status.HTTP_200_OK, tags=["Posts"])
 async def vote_on_post(post_id: str, vote_data: VoteRequest, current_user: UserInDB = Depends(get_current_user)):
     if not ObjectId.is_valid(post_id): raise HTTPException(status_code=400, detail="Invalid Post ID")
@@ -536,7 +603,6 @@ async def vote_on_post(post_id: str, vote_data: VoteRequest, current_user: UserI
     posts_collection.update_one({"_id": post_object_id}, {"$set": {"score": score}})
     
     return {"status": "success", "new_score": score}
-## --- CHANGE END --- ##
 
 @app.delete("/circles/{circle_id}/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Posts"])
 async def delete_post(circle_id: str, post_id: str, current_user: UserInDB = Depends(get_current_user), circle: dict = Depends(get_circle_or_404)):
@@ -555,27 +621,41 @@ async def get_my_feed(
     current_user: UserInDB = Depends(get_current_user),
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=50),
-    circle_id: str | None = Query(None, description="Filter feed by a specific circle ID.")
+    circle_id: str | None = Query(None, description="Filter feed by a specific circle ID."),
+    sort_by: SortByEnum = Query(SortByEnum.newest, description="Sort posts by 'newest' or 'top' score."),
+    ## --- CHANGE START --- ##
+    post_type_filter: PostTypeEnum | None = Query(None, description="Filter posts by a specific type.")
+    ## --- CHANGE END --- ##
 ):
     user_circles_cursor = circles_collection.find({"members.user_id": current_user.id}, {"_id": 1, "name": 1})
     user_circles = {c["_id"]: c["name"] for c in user_circles_cursor}
     if not user_circles: return FeedResponse(posts=[], has_more=False)
     
+    ## --- CHANGE START --- ##
+    match_query = {}
     if circle_id:
         if not ObjectId.is_valid(circle_id) or ObjectId(circle_id) not in user_circles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot filter by a circle you are not a member of.")
-        match_stage = {"$match": {"circle_id": ObjectId(circle_id)}}
+        match_query["circle_id"] = ObjectId(circle_id)
     else:
-        match_stage = {"$match": {"circle_id": {"$in": list(user_circles.keys())}}}
+        match_query["circle_id"] = {"$in": list(user_circles.keys())}
+    
+    if post_type_filter:
+        match_query["post_type"] = post_type_filter.value
+
+    match_stage = {"$match": match_query}
+    ## --- CHANGE END --- ##
         
     count_pipeline = [match_stage, {"$count": "total"}]
     total_posts = next(posts_collection.aggregate(count_pipeline), {}).get("total", 0)
 
-    ## --- CHANGE START --- ##
-    sort_stage = {"$sort": {"created_at": DESCENDING}}
+    if sort_by == SortByEnum.top:
+        sort_stage = {"$sort": {"score": DESCENDING, "created_at": DESCENDING}}
+    else:
+        sort_stage = {"$sort": {"created_at": DESCENDING}}
+
     posts_pipeline = _get_posts_aggregation_pipeline(match_stage, sort_stage, skip, limit, current_user)
     posts_cursor = posts_collection.aggregate(posts_pipeline)
-    ## --- CHANGE END --- ##
     
     posts_list = [PostOut(**p, circle_name=user_circles.get(p["circle_id"], "Unknown")) for p in posts_cursor]
     return FeedResponse(posts=posts_list, has_more=(skip + len(posts_list)) < total_posts)
@@ -583,13 +663,25 @@ async def get_my_feed(
 # ==============================================================================
 # 5. STATIC FILE SERVING
 # ==============================================================================
+# To serve the index.html file, create a 'static' directory in the same
+# location as your main.py and place the index.html file inside it.
 if not os.path.exists("static"): os.makedirs("static"); print("Created 'static' directory.")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/{full_path:path}", response_class=FileResponse, include_in_schema=False)
 async def serve_frontend(full_path: str):
     static_file_path = "static/index.html"
-    if not os.path.exists(static_file_path): return HTTPException(status_code=404, detail="Frontend entry point not found.")
+    # Basic path traversal check
+    if ".." in full_path:
+        return HTTPException(status_code=404, detail="Not Found")
+    
+    # If a path is specified, try to find a file, otherwise serve index.html
+    requested_path = os.path.join("static", full_path)
+    if full_path and os.path.isfile(requested_path):
+        return FileResponse(requested_path)
+    
+    if not os.path.exists(static_file_path): 
+        return HTTPException(status_code=404, detail="Frontend entry point not found.")
     return FileResponse(static_file_path)
 
 # ==============================================================================
