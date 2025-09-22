@@ -16,6 +16,9 @@ db = client.circles_app
 users_collection = db.get_collection("users")
 circles_collection = db.get_collection("circles")
 posts_collection = db.get_collection("posts")
+follow_requests_collection = db.get_collection("follow_requests")
+follow_tokens_collection = db.get_collection("follow_tokens")
+
 
 # ==============================================================================
 # 2. SEEDING LOGIC
@@ -28,6 +31,8 @@ def seed_data():
     users_collection.delete_many({})
     circles_collection.delete_many({})
     posts_collection.delete_many({})
+    follow_requests_collection.delete_many({}) # Clear follow requests
+    follow_tokens_collection.delete_many({})   # Clear expired tokens
     print("✅ Collections cleared.")
 
     # --- Create Users ---
@@ -54,16 +59,31 @@ def seed_data():
     users = {u['username']: u for u in all_users_cursor}
     print(f"✅ Created {len(users)} users.")
 
-    # --- Establish Follows ---
-    print("\n🤝 Seeding follow relationships...")
+    # --- Establish Pre-approved Follows ---
+    print("\n🤝 Seeding pre-approved follow relationships...")
+    # Bob follows Alice
     users_collection.update_one({"_id": users['bob']['_id']}, {"$addToSet": {"following": users['alice']['_id']}})
     users_collection.update_one({"_id": users['alice']['_id']}, {"$addToSet": {"followers": users['bob']['_id']}})
+    
+    # Charlie follows Alice and Bob
     users_collection.update_one({"_id": users['charlie']['_id']}, {"$addToSet": {"following": {"$each": [users['alice']['_id'], users['bob']['_id']]}}})
     users_collection.update_one({"_id": users['alice']['_id']}, {"$addToSet": {"followers": users['charlie']['_id']}})
     users_collection.update_one({"_id": users['bob']['_id']}, {"$addToSet": {"followers": users['charlie']['_id']}})
+    
+    # Diana follows Alice
     users_collection.update_one({"_id": users['diana']['_id']}, {"$addToSet": {"following": users['alice']['_id']}})
     users_collection.update_one({"_id": users['alice']['_id']}, {"$addToSet": {"followers": users['diana']['_id']}})
-    print("✅ Follows created.")
+    print("✅ Pre-approved follows created.")
+
+    # --- Create a Pending Follow Request ---
+    print("\n⏳ Seeding a pending follow request...")
+    # Eve requests to follow Alice
+    follow_requests_collection.insert_one({
+        "requester_id": users['eve']['_id'],
+        "recipient_id": users['alice']['_id'],
+        "created_at": datetime.now(timezone.utc)
+    })
+    print("✅ Pending request from 'eve' to 'alice' created.")
     
     # --- Create Circles ---
     print("\n🎨 Seeding circles with members...")
@@ -85,17 +105,31 @@ def seed_data():
         chosen_circle = circles[circle_name]
         member = random.choice(chosen_circle['members'])
         author = users[member['username']]
-        post_type, content = ("","")
+        
+        content = {}
         if circle_name == "Wanderlust Wishlist":
-            post_type = random.choice(["wishlist_item", "text_update"])
-            content = {"item_name": "Explore " + random.choice(["Patagonia", "the Amazon", "ancient Rome", "Tokyo"]), "url": "https://example.com/travel", "notes": "Bucket list item #" + str(i+1)} if post_type == "wishlist_item" else {"text": "Just dreaming of my next adventure. Where should I go? ✈️"}
+            content["link"] = "https://example.com/travel"
+            content["text"] = "Dreaming of my next adventure to " + random.choice(["Patagonia", "the Amazon", "Tokyo"]) + "! ✈️"
+            content["tags"] = ["travel", "wanderlust", "adventure", "bucketlist"]
         elif circle_name == "Media Club":
-            post_type = random.choice(["youtube_video", "text_update"])
-            content = {"title": "Amazing Movie " + str(i+1), "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "notes": "This was a cinematic masterpiece!"} if post_type == "youtube_video" else {"text": "Just finished watching a new series. Mind blown! 🤯 We need to discuss."}
-        else:
-             post_type = random.choice(["wishlist_item", "text_update"])
-             content = {"item_name": "New " + random.choice(["Smartphone", "Laptop", "Drone", "VR Headset"]), "url": "https://example.com/tech", "notes": "Hoping to get this for my birthday!"} if post_type == "wishlist_item" else {"text": "What does everyone think about the latest AI advancements?"}
-        posts_to_create.append({"circle_id": chosen_circle["_id"], "author_id": author["_id"], "author_username": author["username"], "post_type": post_type, "content": content, "created_at": datetime.now(timezone.utc) - timedelta(hours=i*2 + random.randint(1, 5))})
+            content["link"] = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            content["text"] = "Just finished watching a new series. Mind blown! 🤯 We need to discuss."
+            content["tags"] = ["movies", "tvshows", "recommendation"]
+        else: # Tech & Gadgets
+             content["link"] = "https://example.com/tech"
+             content["text"] = "What does everyone think about the latest " + random.choice(["Smartphone", "Laptop", "AI advancements"]) + "?"
+             content["tags"] = ["tech", "gadgets", "news"]
+
+        posts_to_create.append({
+            "circle_id": chosen_circle["_id"],
+            "author_id": author["_id"],
+            "author_username": author["username"],
+            "content": content,
+            "upvotes": [],
+            "downvotes": [],
+            "score": 0,
+            "created_at": datetime.now(timezone.utc) - timedelta(hours=i*2 + random.randint(1, 5))
+        })
     posts_collection.insert_many(posts_to_create)
     print(f"✅ {len(posts_to_create)} posts created.")
 
@@ -103,6 +137,7 @@ def seed_data():
     print("You can now run the FastAPI server and test with the following users (password for all is 'password123'):")
     for username in users:
         print(f"- {username}")
+    print("\nLog in as 'alice' to see the pending follow request from 'eve'.")
 
 if __name__ == "__main__":
     try:

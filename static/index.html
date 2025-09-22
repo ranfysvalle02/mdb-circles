@@ -10,258 +10,84 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Exo+2:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <style>
-    /*
-      * ===================================================================
-      * THEME & COLOR PALETTE DEFINITIONS
-      * Defines CSS custom properties (variables) for two themes: dark (default) and light.
-      * This allows for easy theme switching by changing the `data-theme` attribute on the root element.
-      * ===================================================================
-    */
-
-    /* Dark Theme (Default) */
     :root {
-      /* Base Colors */
-      --primary-color: #00dcff;
-      --secondary-color: #a27bff;
-      --background-color: #0a041f;
-
-      /* UI Element Colors */
-      --card-background: rgba(26, 19, 52, 0.25);
-      --border-color: rgba(162, 123, 255, 0.3);
-      --timeline-color: rgba(162, 123, 255, 0.4);
-      --list-item-hover-bg: rgba(255, 255, 255, 0.1);
-
-      --list-item-active-bg: rgba(0, 220, 255, 0.15);
-      --list-item-active-color: #ffffff;
-      --list-item-active-border-color: var(--primary-color);
-
-      /* Text & Link Colors */
-      --text-color: #e0e0e0;
-      --heading-color: #ffffff;
-      --text-muted-color: #a0a0b0;
-      --link-color: var(--primary-color);
-      --link-hover-color: #ffffff;
-
-      /* Glow Effects for a futuristic feel */
-      --primary-glow: rgba(0, 220, 255, 0.5);
-      --secondary-glow: rgba(162, 123, 255, 0.5);
-
-      /* Form Specific Variables */
-      --form-input-bg: rgba(10, 4, 31, 0.5);
+      --primary-color: #00dcff; --secondary-color: #a27bff; --background-color: #0a041f;
+      --card-background: rgba(26, 19, 52, 0.25); --border-color: rgba(162, 123, 255, 0.3);
+      --timeline-color: rgba(162, 123, 255, 0.4); --list-item-hover-bg: rgba(255, 255, 255, 0.1);
+      --list-item-active-bg: rgba(0, 220, 255, 0.15); --list-item-active-color: #ffffff;
+      --list-item-active-border-color: var(--primary-color); --text-color: #e0e0e0;
+      --heading-color: #ffffff; --text-muted-color: #a0a0b0; --link-color: var(--primary-color);
+      --link-hover-color: #ffffff; --primary-glow: rgba(0, 220, 255, 0.5);
+      --secondary-glow: rgba(162, 123, 255, 0.5); --form-input-bg: rgba(10, 4, 31, 0.5);
     }
-
-    /* Light Theme - Activated when html[data-theme="light"] */
     :root[data-theme="light"] {
-      /* Base Colors */
-      --primary-color: #007bff;
-      --secondary-color: #6f42c1;
-      --background-color: #f4f7fc;
-
-      /* UI Element Colors */
-      --card-background: rgba(255, 255, 255, 0.5);
-      --border-color: rgba(0, 0, 0, 0.15);
-      --timeline-color: rgba(0, 123, 255, 0.4);
-      --list-item-hover-bg: rgba(0, 0, 0, 0.075);
-      --list-item-active-bg: var(--primary-color);
-      --list-item-active-color: #ffffff;
-      --list-item-active-border-color: var(--primary-color);
-
-      /* Text & Link Colors */
-      --text-color: #212529;
-      --heading-color: #1a1334;
-      --text-muted-color: #6c757d;
-      --link-color: var(--primary-color);
-      --link-hover-color: var(--secondary-color);
-
-      /* Glow Effects */
-      --primary-glow: rgba(0, 123, 255, 0.4);
-      --secondary-glow: rgba(111, 66, 193, 0.4);
-
-      /* Form Specific Variables */
-      --form-input-bg: rgba(255, 255, 255, 0.6);
+      --primary-color: #007bff; --secondary-color: #6f42c1; --background-color: #f4f7fc;
+      --card-background: rgba(255, 255, 255, 0.5); --border-color: rgba(0, 0, 0, 0.15);
+      --timeline-color: rgba(0, 123, 255, 0.4); --list-item-hover-bg: rgba(0, 0, 0, 0.075);
+      --list-item-active-bg: var(--primary-color); --list-item-active-color: #ffffff;
+      --list-item-active-border-color: var(--primary-color); --text-color: #212529;
+      --heading-color: #1a1334; --text-muted-color: #6c757d; --link-color: var(--primary-color);
+      --link-hover-color: var(--secondary-color); --primary-glow: rgba(0, 123, 255, 0.4);
+      --secondary-glow: rgba(111, 66, 193, 0.4); --form-input-bg: rgba(255, 255, 255, 0.6);
     }
-
-    /*
-      * ===================================================================
-      * BASE & LAYOUT STYLES
-      * Sets up the foundational styles for the body, particle background, and animations.
-      * ===================================================================
-    */
-    /* The particle background container is fixed to cover the entire viewport behind all content. */
-    #particles-js {
-      position: fixed;
-      width: 100%;
-      height: 100%;
-      top: 0;
-      left: 0;
-      z-index: -2;
-      background-color: var(--background-color);
-    }
-    body {
-      font-family: 'Exo 2', sans-serif;
-      color: var(--text-color);
-      background-color: transparent; /* Body is transparent to show the particles.js canvas behind it */
-      min-height: 100vh; margin: 0;
-      padding-top: 1rem; padding-bottom: 1rem;
-      overflow-x: hidden;
-      transition: color 0.3s, background-color 0.3s;
-    }
-    /* Simple fade-in animation for elements */
+    #particles-js { position: fixed; width: 100%; height: 100%; top: 0; left: 0; z-index: -2; background-color: var(--background-color); }
+    body { font-family: 'Exo 2', sans-serif; color: var(--text-color); background-color: transparent; min-height: 100vh; margin: 0; padding-top: 1rem; padding-bottom: 1rem; overflow-x: hidden; transition: color 0.3s, background-color 0.3s; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
     .container { max-width: 1100px; }
-
-    /*
-      * ===================================================================
-      * THEME-AWARE TYPOGRAPHY & LINKS
-      * Styles for text elements that adapt to the current theme using CSS variables.
-      * ===================================================================
-    */
-    h1, h2, h3, h4, h5 {
-        font-family: 'Orbitron', sans-serif;
-        color: var(--heading-color);
-    }
+    h1, h2, h3, h4, h5 { font-family: 'Orbitron', sans-serif; color: var(--heading-color); }
     h1 { text-shadow: 0 0 15px var(--primary-glow); }
     h3, h4 { border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1rem; }
-
-    a {
-      color: var(--link-color);
-      text-decoration: none;
-      transition: color 0.2s ease;
-    }
-    a:hover {
-      color: var(--link-hover-color);
-      text-decoration: underline;
-    }
-    .card-title a { color: var(--heading-color); }
-    .card-title a:hover { color: var(--primary-color); }
-
-    /*
-      * ===================================================================
-      * AUTHENTICATION SECTION & ANIMATIONS
-      * Styles for the login/register forms and the smooth transitions between views.
-      * ===================================================================
-    */
+    a { color: var(--link-color); text-decoration: none; transition: color 0.2s ease; }
+    a:hover { color: var(--link-hover-color); text-decoration: underline; }
+    .card-title a { color: var(--heading-color); } .card-title a:hover { color: var(--primary-color); }
     #authSection { min-height: 350px; display: flex; align-items: center; justify-content: center; position: relative; }
     #authSection .auth-view { width: 100%; max-width: 420px; }
     #authFormContainer { display: flex; flex-direction: column; gap: 1rem; }
-    /* Grid layout for auth buttons to align them cleanly */
     .auth-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-top: 0.5rem; }
     .auth-actions #backToWelcomeBtn { grid-column: 1 / 2; }
     .auth-actions #loginSubmitButton { grid-column: 2 / 3; }
     .auth-actions #registerSubmitButton { grid-column: 3 / 4; }
-
-    /* Keyframes for smoothly animating auth views in and out */
     @keyframes gentleFadeInUp { from { opacity: 0; transform: translateY(15px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
     @keyframes gentleFadeOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.98); } }
     .animate-in { animation: gentleFadeInUp 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
     .animate-out { animation: gentleFadeOut 0.4s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards; }
-
     #themeToggleBtnLogin { position: absolute; top: 15px; right: 15px; z-index: 10; }
-
-    /* Final fix for clear, accessible form labels in the auth section. */
-    #authFormContainer .form-label {
-      text-align: left;
-      display: block;
-      margin-bottom: 0.25rem;
-      font-weight: 500;
-      color: var(--text-muted-color);
-    }
+    #authFormContainer .form-label { text-align: left; display: block; margin-bottom: 0.25rem; font-weight: 500; color: var(--text-muted-color); }
     #authFormContainer .form-control { background-color: var(--form-input-bg); }
-
-    /*
-      * ===================================================================
-      * COMPONENT STYLES
-      * Reusable component styles like cards, buttons, forms, and modals.
-      * ===================================================================
-    */
-    /* The "glassmorphism" effect card style */
-    .glass-card {
-      background: var(--card-background);
-      border-radius: 15px;
-      padding: 25px;
-      border: 1px solid var(--border-color);
-      backdrop-filter: blur(12px); /* Creates the frosted glass effect */
-      -webkit-backdrop-filter: blur(12px); /* Safari support */
-      box-shadow: 0 8px 32px 0 rgba(10, 4, 31, 0.37);
-      margin-bottom: 25px;
-      animation: fadeIn 0.6s ease-out forwards;
-      transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s;
-    }
+    .glass-card { background: var(--card-background); border-radius: 15px; padding: 25px; border: 1px solid var(--border-color); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 8px 32px 0 rgba(10, 4, 31, 0.37); margin-bottom: 25px; animation: fadeIn 0.6s ease-out forwards; transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s; }
     .glass-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px 0 rgba(10, 4, 31, 0.5); }
-
-    /* Animated gradient buttons */
-    .btn { font-family: 'Orbitron', sans-serif; font-weight: 600; border-radius: 8px; border: none; padding: 10px 15px; transition: all 0.3s ease; background-size: 200% 100%; /* Key for the gradient shift animation */ color: white; letter-spacing: 1px; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
+    .btn { font-family: 'Orbitron', sans-serif; font-weight: 600; border-radius: 8px; border: none; padding: 10px 15px; transition: all 0.3s ease; background-size: 200% 100%; color: white; letter-spacing: 1px; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
     .btn-primary { background-image: linear-gradient(to right, #6a11cb 0%, #2575fc 51%, #6a11cb 100%); }
     .btn-success { background-image: linear-gradient(to right, #11cb6a 0%, #259cfc 51%, #11cb6a 100%); }
     .btn-secondary { background-image: linear-gradient(to right, #434343 0%, #000000 51%, #434343 100%); }
     .btn-danger { background-image: linear-gradient(to right, #cb1111 0%, #fc2575 51%, #cb1111 100%); }
-    /* On hover, the background position is shifted to create the sliding gradient effect. */
     .btn:hover { background-position: right center; transform: translateY(-2px) scale(1.05); box-shadow: 0 0 15px var(--secondary-glow); color: #fff; text-decoration: none; }
-
-    /* Custom form styles */
-    .form-control, .form-select { background-color: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 8px; transition: border-color 0.2s, box-shadow 0.2s; }
+    .form-control, .form-select { background-color: var(--form-input-bg); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 8px; transition: border-color 0.2s, box-shadow 0.2s; }
     .form-control::placeholder { color: #aaa; }
     .form-control:focus, .form-select:focus { background-color: rgba(0, 0, 0, 0.4); color: var(--text-color); box-shadow: 0 0 12px var(--primary-glow); border-color: var(--primary-color); }
-
-    /* Custom list group styles */
     .list-group-item { background-color: transparent; border-color: var(--border-color); color: var(--text-color); }
     .list-group-item.clickable { cursor: pointer; transition: background-color 0.2s ease, transform 0.2s ease, color 0.2s ease; }
     .list-group-item.clickable:hover { background-color: var(--list-item-hover-bg); transform: translateX(5px); }
-
-    /* Specific overrides for list items in different themes to ensure text color and active states are correct. */
     [data-theme="light"] a.list-group-item-action{ color: black !important; font-weight: bold; }
-    [data-theme="light"] .list-group-item-action.active {
-      color: var(--list-item-active-color) !important;
-      background-color: var(--list-item-active-bg);
-      border-color: var(--list-item-active-border-color) !important;
-      font-weight: bold;
-      box-shadow: inset 0 0 10px rgba(0,0,0,0.2), 0 0 8px var(--primary-glow);
-    }
+    [data-theme="light"] .list-group-item-action.active { color: var(--list-item-active-color) !important; background-color: var(--list-item-active-bg); border-color: var(--list-item-active-border-color) !important; font-weight: bold; box-shadow: inset 0 0 10px rgba(0,0,0,0.2), 0 0 8px var(--primary-glow); }
     [data-theme="dark"] a.list-group-item-action{ color: white !important; font-weight: bold; }
-    [data-theme="dark"] .list-group-item-action.active {
-      color: var(--list-item-active-color) !important;
-      background-color: var(--list-item-active-bg);
-      border-color: var(--list-item-active-border-color) !important;
-      font-weight: bold;
-      box-shadow: inset 0 0 10px rgba(0,0,0,0.2), 0 0 8px var(--primary-glow);
-    }
-
-    /* Custom modal styles to match the glassmorphism theme */
+    [data-theme="dark"] .list-group-item-action.active { color: var(--list-item-active-color) !important; background-color: var(--list-item-active-bg); border-color: var(--list-item-active-border-color) !important; font-weight: bold; box-shadow: inset 0 0 10px rgba(0,0,0,0.2), 0 0 8px var(--primary-glow); }
     .modal-content { background: var(--card-background); border-radius: 15px; border: 1px solid var(--border-color); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); }
     .modal-header, .modal-footer { border-color: var(--border-color); }
-    .btn-close { filter: invert(1) grayscale(100%) brightness(200%); } /* Makes the 'X' button white for dark theme */
-    :root[data-theme="light"] .btn-close { filter: none; } /* Resets the filter for light theme */
-
-    /*
-      * ===================================================================
-      * FEED & POST STYLES
-      * Styles for the main content feed, posts, votes, and sidebar.
-      * ===================================================================
-    */
-    /* Makes the sidebar sticky on larger screens */
-    @media (min-width: 992px) {
-        #sidebar { position: sticky; top: 1.5rem; height: calc(100vh - 3rem); overflow-y: auto; }
-        #sidebar::-webkit-scrollbar { width: 5px; }
-        #sidebar::-webkit-scrollbar-track { background: transparent; }
-        #sidebar::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; }
-    }
-    /* The vertical line for the timeline effect */
+    .btn-close { filter: invert(1) grayscale(100%) brightness(200%); }
+    :root[data-theme="light"] .btn-close { filter: none; }
+    @media (min-width: 992px) { #sidebar { position: sticky; top: 1.5rem; height: calc(100vh - 3rem); overflow-y: auto; } #sidebar::-webkit-scrollbar { width: 5px; } #sidebar::-webkit-scrollbar-track { background: transparent; } #sidebar::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; } }
     .feed-timeline { border-left: 2px solid var(--timeline-color); padding-left: 25px; }
-    /* The ::before pseudo-element creates the circular node on the timeline for each post */
     .post-card-wrapper { position: relative; }
     .post-card-wrapper::before { content: ''; position: absolute; left: -35px; top: 25px; height: 18px; width: 18px; background-color: var(--secondary-glow); border: 3px solid var(--text-color); border-radius: 50%; z-index: 1; }
     .avatar { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--border-color); background-color: rgba(255,255,255,0.1); }
-    .avatar-lg { width: 60px; height: 60px; }
-    .avatar-sm { width: 30px; height: 30px; }
+    .avatar-lg { width: 60px; height: 60px; } .avatar-sm { width: 30px; height: 30px; }
     .hidden { display: none !important; }
     #globalStatus { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1056; }
     .empty-placeholder { color: var(--text-muted-color); text-align: center; padding: 2rem; }
-    .post-card .badge { text-transform: capitalize; }
-    /* Responsive container for embedded videos */
-    .post-card .video-container { position: relative; padding-bottom: 56.25%; /* 16:9 Aspect Ratio */ height: 0; overflow: hidden; max-width: 100%; background: #000; border-radius: 8px; }
+    .post-card .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background: #000; border-radius: 8px; }
     .post-card .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
     #feed-loader { text-align: center; padding: 1.5rem; }
-    /* Styles for the upvote/downvote controls */
     .vote-controls { display: flex; flex-direction: column; align-items: center; justify-content: start; gap: 0.2rem; margin-right: 15px; }
     .vote-btn { background: none; border: none; color: var(--text-muted-color); cursor: pointer; padding: 0.2rem 0.5rem; font-size: 1.5rem; transition: color 0.2s, transform 0.2s; }
     .vote-btn:hover { color: var(--heading-color); transform: scale(1.1); }
@@ -269,6 +95,12 @@
     .vote-btn.down.voted { color: var(--secondary-color); text-shadow: 0 0 8px var(--secondary-glow); }
     .vote-score { font-family: 'Orbitron', sans-serif; font-size: 1.1rem; font-weight: bold; color: var(--heading-color); }
     .post-card-body { flex: 1; }
+    .link-preview { border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-top: 1rem; background: rgba(0,0,0,0.2); transition: background-color 0.2s; }
+    .link-preview:hover { background: rgba(0,0,0,0.3); }
+    .link-preview-title { font-size: 1.1rem; font-weight: bold; }
+    .link-preview-host { font-size: 0.9rem; color: var(--text-muted-color); }
+    .post-tags .badge { cursor: pointer; }
+    .request-actions .btn { padding: 0.2rem 0.5rem; font-size: 0.8rem; }
   </style>
 </head>
 <body>
@@ -277,127 +109,36 @@
   <div class="container">
     <h1 class="text-center my-4 d-flex align-items-center justify-content-center gap-3">
         <span>myCircles</span>
-        <svg id="animated-logo-final" width="65" height="65" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="transform: translateY(-4px);">
-            <defs>
-                <filter id="glow-filter-final">
-                    <feGaussianBlur stdDeviation="2" result="coloredBlur"></feGaussianBlur>
-                    <feMerge>
-                        <feMergeNode in="coloredBlur"></feMergeNode>
-                        <feMergeNode in="SourceGraphic"></feMergeNode>
-                    </feMerge>
-                </filter>
-            </defs>
-            <circle cx="50" cy="50" r="48" fill="none" stroke="var(--border-color)" stroke-width="0.5" stroke-dasharray="1 8" opacity="0.5">
-                <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="60s" repeatCount="indefinite" />
-            </circle>
-
-            <circle cx="50" cy="50" r="42" fill="none" stroke="var(--secondary-color)" stroke-width="2" stroke-dasharray="80 200" stroke-linecap="round" opacity="0.8">
-                 <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="-360 50 50" dur="10s" repeatCount="indefinite" />
-            </circle>
-
-            <circle cx="50" cy="50" r="34" fill="none" stroke="var(--primary-color)" stroke-width="2.5" stroke-dasharray="107 107" stroke-linecap="round" filter="url(#glow-filter-final)"> <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="4s" repeatCount="indefinite" />
-            </circle>
-
-            <circle cx="50" cy="50" r="26" fill="none" stroke="var(--primary-color)" stroke-width="2" stroke-dasharray="50 150" stroke-linecap="round">
-                <animateTransform attributeName="transform" type="rotate" from="360 50 50" to="0 50 50" dur="7s" repeatCount="indefinite" />
-            </circle>
-
-            <circle cx="50" cy="50" r="18" fill="none" stroke="var(--secondary-color)" stroke-width="1" stroke-dasharray="20 15" opacity="0.7">
-                 <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="-360 50 50" dur="3s" repeatCount="indefinite" />
-            </circle>
-
-            <circle cx="50" cy="50" r="5" fill="var(--primary-glow)">
-                <animate attributeName="r" values="5;8;5" dur="2.2s" repeatCount="indefinite" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.45 0 0.55 1; 0.45 0 0.55 1"></animate>
-                <animate attributeName="opacity" values="1;0.5;1" dur="2.2s" repeatCount="indefinite"></animate>
-            </circle>
-        </svg>
+        <svg id="animated-logo-final" width="65" height="65" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="transform: translateY(-4px);"><defs><filter id="glow-filter-final"><feGaussianBlur stdDeviation="2" result="coloredBlur"></feGaussianBlur><feMerge><feMergeNode in="coloredBlur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter></defs><circle cx="50" cy="50" r="48" fill="none" stroke="var(--border-color)" stroke-width="0.5" stroke-dasharray="1 8" opacity="0.5"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="60s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="42" fill="none" stroke="var(--secondary-color)" stroke-width="2" stroke-dasharray="80 200" stroke-linecap="round" opacity="0.8"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="-360 50 50" dur="10s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="34" fill="none" stroke="var(--primary-color)" stroke-width="2.5" stroke-dasharray="107 107" stroke-linecap="round" filter="url(#glow-filter-final)"> <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="4s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="26" fill="none" stroke="var(--primary-color)" stroke-width="2" stroke-dasharray="50 150" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="360 50 50" to="0 50 50" dur="7s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="18" fill="none" stroke="var(--secondary-color)" stroke-width="1" stroke-dasharray="20 15" opacity="0.7"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="-360 50 50" dur="3s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="5" fill="var(--primary-glow)"><animate attributeName="r" values="5;8;5" dur="2.2s" repeatCount="indefinite" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.45 0 0.55 1; 0.45 0 0.55 1"></animate><animate attributeName="opacity" values="1;0.5;1" dur="2.2s" repeatCount="indefinite"></animate></circle></svg>
     </h1>
 
     <div id="authSection" class="glass-card text-center hidden">
         <button id="themeToggleBtnLogin" class="btn btn-secondary btn-sm" title="Toggle Theme"></button>
-
-        <div id="authWelcome" class="auth-view">
-            <h2 class="h1">Welcome Back</h2>
-            <p class="text-muted fs-5">Join your circle of friends and share what's new.</p>
-            <button id="loginButton" class="btn btn-primary mt-3 px-4 py-2"><i class="bi bi-box-arrow-in-right"></i> Login / Register</button>
-        </div>
-        <div id="authFormContainer" class="auth-view hidden">
-            <h2 class="mb-3">Join the Circle</h2>
-            <div>
-              <label for="usernameInput" class="form-label">Username</label>
-              <input type="text" class="form-control" id="usernameInput" placeholder="e.g., alice" autocomplete="username">
-            </div>
-            <div>
-              <label for="passwordInput" class="form-label">Password</label>
-              <input type="password" class="form-control" id="passwordInput" placeholder="e.g., password123" autocomplete="current-password">
-            </div>
-            <div class="auth-actions">
-                <button id="backToWelcomeBtn" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back</button>
-                <button id="loginSubmitButton" class="btn btn-primary">Login</button>
-                <button id="registerSubmitButton" class="btn btn-success">Register</button>
-            </div>
-        </div>
+        <div id="authWelcome" class="auth-view"><h2 class="h1">Welcome Back</h2><p class="text-muted fs-5">Join your circle of friends and share what's new.</p><button id="loginButton" class="btn btn-primary mt-3 px-4 py-2"><i class="bi bi-box-arrow-in-right"></i> Login / Register</button></div>
+        <div id="authFormContainer" class="auth-view hidden"><h2 class="mb-3">Join the Circle</h2><div><label for="usernameInput" class="form-label">Username</label><input type="text" class="form-control" id="usernameInput" placeholder="e.g., alice" autocomplete="username"></div><div><label for="passwordInput" class="form-label">Password</label><input type="password" class="form-control" id="passwordInput" placeholder="e.g., password123" autocomplete="current-password"></div><div class="auth-actions"><button id="backToWelcomeBtn" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back</button><button id="loginSubmitButton" class="btn btn-primary">Login</button><button id="registerSubmitButton" class="btn btn-success">Register</button></div></div>
     </div>
 
     <div id="appSection" class="hidden">
       <div id="appHeader" class="glass-card d-flex justify-content-between align-items-center mb-4">
         <h2 id="welcomeMessage" class="mb-0 fs-4"></h2>
-        <div id="userActions">
-            <button id="createPostBtn" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> New Post</button>
-            <button id="createCircleBtn" class="btn btn-success btn-sm"><i class="bi bi-plus-circle"></i> New Circle</button>
-            <button id="themeToggleBtn" class="btn btn-secondary btn-sm" title="Toggle Theme"></button>
-            <button id="logoutButton" class="btn btn-secondary btn-sm"><i class="bi bi-box-arrow-left"></i> Logout</button>
-        </div>
+        <div id="userActions"><button id="createPostBtn" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> New Post</button><button id="createCircleBtn" class="btn btn-success btn-sm"><i class="bi bi-plus-circle"></i> New Circle</button><button id="themeToggleBtn" class="btn btn-secondary btn-sm" title="Toggle Theme"></button><button id="logoutButton" class="btn btn-secondary btn-sm"><i class="bi bi-box-arrow-left"></i> Logout</button></div>
       </div>
 
       <div id="dashboardView" class="hidden">
         <div class="row">
           <div class="col-12 col-lg-4">
-              <div id="sidebar">
-                  <div class="glass-card">
-                    <h3><i class="bi bi-person-circle"></i> My Profile</h3>
-                    <div id="profileContainer"></div>
-                  </div>
-                  <div class="glass-card">
-                      <h3><i class="bi bi-grid-3x3-gap"></i> My Circles</h3>
-                      <p class="text-muted small">Click a circle to filter your feed.</p>
-                      <div id="myCirclesContainer" class="list-group"></div>
-                  </div>
-                  <div class="glass-card">
-                      <h3><i class="bi bi-person-check"></i> Following</h3>
-                      <div id="followingContainer" class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;"></div>
-                  </div>
-                  <div class="glass-card">
-                      <h3><i class="bi bi-people"></i> Find Users</h3>
-                      <h5 class="text-primary fs-6">Suggestions from Your Circles</h5>
-                      <div id="userSuggestionsContainer" class="list-group list-group-flush mb-3"></div>
-                      <h5 class="text-primary fs-6 pt-3" style="border-top: 1px solid var(--border-color);">Search for a User</h5>
-                      <div class="input-group">
-                        <input type="text" id="userSearchInput" class="form-control" placeholder="Enter username...">
-                        <button id="userSearchBtn" class="btn btn-primary"><i class="bi bi-search"></i></button>
-                      </div>
-                      <div id="usersContainer" class="list-group list-group-flush mt-3"></div>
-                  </div>
-              </div>
+            <div id="sidebar">
+              <div class="glass-card"><h3><i class="bi bi-person-circle"></i> My Profile</h3><div id="profileContainer"></div></div>
+              <div class="glass-card"><h3><i class="bi bi-person-plus"></i> Follow Requests</h3><div id="followRequestsContainer" class="list-group list-group-flush"></div></div>
+              <div class="glass-card"><h3><i class="bi bi-grid-3x3-gap"></i> My Circles</h3><p class="text-muted small">Click a circle to filter your feed.</p><div id="myCirclesContainer" class="list-group"></div></div>
+              <div class="glass-card"><h3><i class="bi bi-person-check"></i> Following</h3><div id="followingContainer" class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;"></div></div>
+              <div class="glass-card"><h3><i class="bi bi-people"></i> Discover Users</h3><h5 class="text-primary fs-6">Suggestions for You</h5><div id="userSuggestionsContainer" class="list-group list-group-flush mb-3"></div><h5 class="text-primary fs-6 pt-3" style="border-top: 1px solid var(--border-color);">Search Publicly</h5><div class="input-group"><input type="text" id="userSearchInput" class="form-control" placeholder="Search for anyone..."><button id="userSearchBtn" class="btn btn-primary"><i class="bi bi-search"></i></button></div><div id="usersContainer" class="list-group list-group-flush mt-3"></div></div>
+            </div>
           </div>
           <div class="col-12 col-lg-8">
-            <div class="d-flex justify-content-end align-items-center mb-3 gap-3">
-                <div class="d-flex align-items-center gap-2">
-                    <label for="dashboardTypeSelect" class="form-label mb-0 text-muted small">Filter by:</label>
-                    <select id="dashboardTypeSelect" class="form-select form-select-sm" style="width: auto;">
-                        <option value="">All Types</option>
-                        <option value="text_update">Text Update</option>
-                        <option value="wishlist_item">Wishlist Item</option>
-                        <option value="youtube_video">YouTube Video</option>
-                    </select>
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <label for="dashboardSortSelect" class="form-label mb-0 text-muted small">Sort by:</label>
-                    <select id="dashboardSortSelect" class="form-select form-select-sm" style="width: auto;">
-                        <option value="newest">Newest</option>
-                        <option value="top">Top Votes</option>
-                    </select>
-                </div>
+            <div class="d-flex justify-content-end align-items-center mb-3 gap-3 flex-wrap">
+                <div class="input-group input-group-sm" style="width: auto;"><span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);"><i class="bi bi-tags"></i></span><input type="text" id="dashboardTagFilter" class="form-control border-start-0" placeholder="Filter by tags (e.g. tech, news)" style="min-width: 180px;"></div>
+                <div class="d-flex align-items-center gap-2"><label for="dashboardSortSelect" class="form-label mb-0 text-muted small">Sort by:</label><select id="dashboardSortSelect" class="form-select form-select-sm" style="width: auto;"><option value="newest">Newest</option><option value="top">Top Votes</option></select></div>
             </div>
             <div id="feedContainer" class="feed-timeline"></div>
           </div>
@@ -410,163 +151,82 @@
       </div>
     </div>
 
-    <div id="feed-loader" class="hidden">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-    </div>
+    <div id="feed-loader" class="hidden"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>
   </div>
 
   <div id="globalStatus"></div>
 
-  <div class="modal fade" id="createCircleModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Create New Circle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createCircleForm"><div class="mb-3"><input type="text" id="circleName" class="form-control" placeholder="Circle Name" required></div><div class="mb-3"><textarea id="circleDescription" class="form-control" placeholder="Description (Optional)"></textarea></div><div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" role="switch" id="isPublicSwitch" checked><label class="form-check-label" for="isPublicSwitch">Public Circle</label></div><div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" role="switch" id="protectWithPasswordSwitch"><label class="form-check-label" for="protectWithPasswordSwitch">Protect with Password</label></div><div class="mb-3 hidden" id="circlePasswordContainer"><input type="password" id="circlePassword" class="form-control" placeholder="Circle Password (min 8 chars)" minlength="8"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button id="submitCircleButton" type="button" class="btn btn-success"><i class="bi bi-check-lg"></i> Create Circle</button></div></div></div></div>
-  <div class="modal fade" id="createPostModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Create New Post</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createPostForm"><div class="mb-3"><label for="circleSelect" class="form-label">Share to Circle</label><select id="circleSelect" class="form-select"></select></div><div class="mb-3"><label for="postTypeSelect" class="form-label">Post Type</label><select id="postTypeSelect" class="form-select"><option value="text_update">Text Update</option><option value="wishlist_item">Wishlist Item</option><option value="youtube_video">YouTube Video</option></select></div><div id="postContentFields"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button id="submitPostButton" type="button" class="btn btn-primary"><i class="bi bi-send"></i> Submit Post</button></div></div></div></div>
+  <div class="modal fade" id="createCircleModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Create New Circle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createCircleForm"><div class="mb-3"><input type="text" id="circleName" class="form-control" placeholder="Circle Name" required></div><div class="mb-3"><textarea id="circleDescription" class="form-control" placeholder="Description (Optional)"></textarea></div><div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" role="switch" id="isPublicSwitch" checked><label class="form-check-label" for="isPublicSwitch">Publicly Discoverable</label></div><div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" role="switch" id="protectWithPasswordSwitch"><label class="form-check-label" for="protectWithPasswordSwitch">Protect with a "Whisper" (Password)</label></div><div class="mb-3 hidden" id="circlePasswordContainer"><input type="password" id="circlePassword" class="form-control" placeholder="Enter Whisper (min 8 chars)" minlength="8"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button id="submitCircleButton" type="button" class="btn btn-success"><i class="bi bi-check-lg"></i> Create Circle</button></div></div></div></div>
+  <div class="modal fade" id="createPostModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Create New Post</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createPostForm"><div class="mb-3"><label for="circleSelect" class="form-label">Share to Circle</label><select id="circleSelect" class="form-select"></select></div><div class="mb-3"><label for="postText" class="form-label">Text Content</label><textarea id="postText" name="text" class="form-control" placeholder="What's on your mind?" rows="4"></textarea></div><div class="mb-3"><label for="postLink" class="form-label">Link (Optional)</label><input type="url" id="postLink" name="link" class="form-control" placeholder="https://example.com"></div><div class="mb-3"><label for="postTags" class="form-label">Tags (comma-separated)</label><input type="text" id="postTags" name="tags" class="form-control" placeholder="e.g. tech, news, gaming"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button id="submitPostButton" type="button" class="btn btn-primary"><i class="bi bi-send"></i> Submit Post</button></div></div></div></div>
+  <div class="modal fade" id="followLinkModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-magic"></i> Your Magical Follow Link</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Share this link with a friend. It's a one-time use link and will expire in 10 minutes.</p><div class="input-group"><input type="text" class="form-control" id="followLinkInput" readonly><button class="btn btn-primary" id="copyFollowLinkBtn"><i class="bi bi-clipboard-check"></i> Copy</button></div></div></div></div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.12.0/tsparticles.bundle.min.js"></script>
 
   <script>
-    /**
-      * ===================================================================
-      * THEME SWITCHER & PARTICLE BACKGROUND LOGIC
-      * Manages the light/dark theme toggle and initializes the tsParticles library
-      * with different configurations for each theme.
-      * ===================================================================
-      */
-
-    // Configuration for the dark theme particle background.
     const particlesConfigDark = { particles: { number: { value: 80, density: { enable: true, value_area: 800 } }, color: { value: ["#00dcff", "#a27bff", "#ffffff"] }, shape: { type: "circle" }, opacity: { value: {min: 0.1, max: 0.4}, animation: { enable: true, speed: 0.8, minimumValue: 0.1, sync: false } }, size: { value: {min: 1, max: 2.5} }, line_linked: { enable: false }, move: { enable: true, speed: 0.6, direction: "none", random: true, straight: false, out_mode: "out", bounce: false, }, }, interactivity: { events: { onhover: { enable: true, mode: "repulse" }, onclick: { enable: false }, resize: true }, modes: { repulse: { distance: 100, duration: 0.4 }, }, }, retina_detect: true, background: { color: "transparent" }, };
-    // Configuration for the light theme particle background.
     const particlesConfigLight = { particles: { number: { value: 70, density: { enable: true, value_area: 800 } }, color: { value: ["#007bff", "#6f42c1", "#1a1334"] }, shape: { type: "circle" }, opacity: { value: {min: 0.2, max: 0.6}, animation: { enable: true, speed: 1, minimumValue: 0.2, sync: false } }, size: { value: {min: 1, max: 3} }, line_linked: { enable: false }, move: { enable: true, speed: 0.8, direction: "none", random: true, straight: false, out_mode: "out", bounce: false, }, }, interactivity: { events: { onhover: { enable: true, mode: "bubble" }, onclick: { enable: false }, resize: true }, modes: { bubble: { distance: 200, size: 4, duration: 2, opacity: 0.8 }, }, }, retina_detect: true, background: { color: "transparent" }, };
-
-    /**
-      * Updates the theme toggle button icons based on the current theme.
-      * @param {string} theme The current theme ('light' or 'dark').
-      */
-    const updateThemeIcons = (theme) => {
-        const themeToggleBtns = [document.getElementById('themeToggleBtn'), document.getElementById('themeToggleBtnLogin')];
-        const iconHtml = theme === 'light' ? '<i class="bi bi-moon-stars-fill"></i>' : '<i class="bi bi-sun-fill"></i>';
-        themeToggleBtns.forEach(btn => { if (btn) btn.innerHTML = iconHtml; });
+    const updateThemeIcons = (theme) => { const themeToggleBtns = [document.getElementById('themeToggleBtn'), document.getElementById('themeToggleBtnLogin')]; const iconHtml = theme === 'light' ? '<i class="bi bi-moon-stars-fill"></i>' : '<i class="bi bi-sun-fill"></i>'; themeToggleBtns.forEach(btn => { if (btn) btn.innerHTML = iconHtml; }); };
+    const initTheme = () => { const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.setAttribute('data-theme', savedTheme); updateThemeIcons(savedTheme); tsParticles.load('particles-js', savedTheme === 'light' ? particlesConfigLight : particlesConfigDark); };
+    const toggleTheme = () => { const currentTheme = document.documentElement.getAttribute('data-theme'); const newTheme = currentTheme === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', newTheme); localStorage.setItem('theme', newTheme); updateThemeIcons(newTheme); tsParticles.load('particles-js', newTheme === 'light' ? particlesConfigLight : particlesConfigDark); };
+    const BASE_URL = '';
+    const state = { accessToken: localStorage.getItem('accessToken') || null, refreshToken: localStorage.getItem('refreshToken') || null, currentUser: null, myCircles: [], dashboardFeed: { filter: { circle_id: null, tags: '' }, sortBy: 'newest', skip: 0, limit: 10, hasMore: true, isLoading: false }, circleView: { currentCircleId: null, sortBy: 'newest', tags: '', skip: 0, limit: 10, hasMore: true, isLoading: false } };
+    const dom = { 
+        authSection: document.getElementById('authSection'), appSection: document.getElementById('appSection'), dashboardView: document.getElementById('dashboardView'), 
+        circleView: document.getElementById('circleView'), welcomeMessage: document.getElementById('welcomeMessage'), userActions: document.getElementById('userActions'), 
+        profileContainer: document.getElementById('profileContainer'), usersContainer: document.getElementById('usersContainer'), 
+        userSuggestionsContainer: document.getElementById('userSuggestionsContainer'), followingContainer: document.getElementById('followingContainer'), 
+        myCirclesContainer: document.getElementById('myCirclesContainer'), feedContainer: document.getElementById('feedContainer'), 
+        circleHeader: document.getElementById('circleHeader'), circleFeedContainer: document.getElementById('circleFeedContainer'), 
+        feedLoader: document.getElementById('feed-loader'), followRequestsContainer: document.getElementById('followRequestsContainer') 
     };
-
-    /**
-      * Initializes the theme based on localStorage or user's system preference.
-      */
-    const initTheme = () => {
-        const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-        document.documentElement.setAttribute('data-theme', savedTheme);
-        updateThemeIcons(savedTheme);
-        tsParticles.load('particles-js', savedTheme === 'light' ? particlesConfigLight : particlesConfigDark);
-    };
-
-    /**
-      * Toggles the theme between light and dark, saves the preference, and reloads particles.
-      */
-    const toggleTheme = () => {
-        const currentTheme = document.documentElement.getAttribute('data-theme');
-        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', newTheme);
-        localStorage.setItem('theme', newTheme);
-        updateThemeIcons(newTheme);
-        tsParticles.load('particles-js', newTheme === 'light' ? particlesConfigLight : particlesConfigDark);
-    };
-
-    /**
-      * ===================================================================
-      * CORE APPLICATION LOGIC
-      * This section contains the main state management, API communication,
-      * UI rendering, and event handling for the single-page application.
-      * ===================================================================
-      */
-    const BASE_URL = ''; // Backend API URL prefix (empty for same-origin).
-
-    // Centralized application state.
-    const state = {
-        accessToken: localStorage.getItem('accessToken') || null,
-        refreshToken: localStorage.getItem('refreshToken') || null,
-        currentUser: null,  // Holds the logged-in user's data.
-        myCircles: [],      // A cache of the user's circles.
-        // ## --- CHANGE START --- ##
-        // State for the main dashboard feed, including filters, pagination, and sorting.
-        dashboardFeed: { filter: { circle_id: null, post_type: null }, sortBy: 'newest', skip: 0, limit: 10, hasMore: true, isLoading: false },
-        // State for the specific circle view feed.
-        circleView: { currentCircleId: null, sortBy: 'newest', postTypeFilter: null, skip: 0, limit: 10, hasMore: true, isLoading: false }
-        // ## --- CHANGE END --- ##
-    };
-
-    // A cache of frequently accessed DOM elements.
-    const dom = { authSection: document.getElementById('authSection'), appSection: document.getElementById('appSection'), dashboardView: document.getElementById('dashboardView'), circleView: document.getElementById('circleView'), welcomeMessage: document.getElementById('welcomeMessage'), userActions: document.getElementById('userActions'), profileContainer: document.getElementById('profileContainer'), usersContainer: document.getElementById('usersContainer'), userSuggestionsContainer: document.getElementById('userSuggestionsContainer'), followingContainer: document.getElementById('followingContainer'), myCirclesContainer: document.getElementById('myCirclesContainer'), feedContainer: document.getElementById('feedContainer'), circleHeader: document.getElementById('circleHeader'), circleFeedContainer: document.getElementById('circleFeedContainer'), feedLoader: document.getElementById('feed-loader'), postTypeSelect: document.getElementById('postTypeSelect'), postContentFields: document.getElementById('postContentFields'), };
-
-    // --- Utility Functions ---
-    const setButtonLoading = (btn, isLoading) => { if(btn) { btn.disabled = isLoading; if(isLoading) { btn.dataset.html = btn.innerHTML; btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span>`; } else { btn.innerHTML = btn.dataset.html; } } };
+    const setButtonLoading = (btn, isLoading) => { if(!btn) return; btn.disabled = isLoading; if(isLoading) { btn.dataset.html = btn.innerHTML; btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span>`; } else if (btn.dataset.html) { btn.innerHTML = btn.dataset.html; } };
     const showStatus = (msg, type = 'success') => { const id = `a${Date.now()}`; document.getElementById('globalStatus').innerHTML = `<div id="${id}" class="alert alert-${type} alert-dismissible fade show"> ${msg} <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`; setTimeout(() => bootstrap.Alert.getOrCreateInstance(`#${id}`)?.close(), 4000); };
     const getYouTubeID = url => { const arr = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/); return (arr && arr[1]) ? arr[1] : null; };
+    const debounce = (func, delay) => { let timeout; return (...args) => { clearTimeout(timeout); timeout = setTimeout(() => func.apply(this, args), delay); }; };
 
-    // --- API & Authentication ---
-    let isRefreshing = false;
-    let failedQueue = [];
+    let isRefreshing = false; let failedQueue = [];
     const processQueue = (error, token = null) => { failedQueue.forEach(prom => { if (error) { prom.reject(error); } else { prom.resolve(token); } }); failedQueue = []; };
-
-    /**
-      * A wrapper for the Fetch API that handles authorization headers, JSON parsing,
-      * and automatic access token refreshing using the refresh token.
-      * @param {string} endpoint - The API endpoint to call (e.g., '/users/me').
-      * @param {object} options - Standard Fetch API options object.
-      * @returns {Promise<any>} A promise that resolves with the JSON response.
-      */
     async function apiFetch(endpoint, options = {}) {
         const customOptions = { ...options, headers: { ...options.headers, 'Content-Type': 'application/json' } };
         if (state.accessToken) { customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`; }
         let response = await fetch(`${BASE_URL}${endpoint}`, customOptions);
-        // If the access token is expired (401) and we have a refresh token, try to refresh.
         if (response.status === 401 && state.refreshToken) {
-            if (isRefreshing) {
-                // If a refresh is already in progress, queue this request to be retried later.
-                return new Promise((resolve, reject) => { failedQueue.push({ resolve, reject }); }).then(() => { customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`; return fetch(`${BASE_URL}${endpoint}`, customOptions); });
-            }
+            if (isRefreshing) { return new Promise((resolve, reject) => { failedQueue.push({ resolve, reject }); }).then(() => { customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`; return fetch(`${BASE_URL}${endpoint}`, customOptions); }); }
             isRefreshing = true;
             try {
                 const refreshResponse = await fetch(`${BASE_URL}/auth/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: state.refreshToken }), });
                 if (!refreshResponse.ok) throw new Error("Refresh failed");
                 const tokenData = await refreshResponse.json();
                 storeTokens(tokenData.access_token, tokenData.refresh_token);
-                processQueue(null, tokenData.access_token); // Process the queue of failed requests.
+                processQueue(null, tokenData.access_token);
                 customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`;
-                response = await fetch(`${BASE_URL}${endpoint}`, customOptions); // Retry the original request.
+                response = await fetch(`${BASE_URL}${endpoint}`, customOptions);
             } catch (err) { processQueue(err, null); logout(); return Promise.reject(err); } finally { isRefreshing = false; }
         }
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({ detail: `Error: ${response.status}` }));
-            // Don't show a global status for 403/401 as we handle these specifically in the UI
-            if (response.status !== 403 && response.status !== 401) {
-                showStatus(err.detail || 'An unknown error occurred.', 'danger');
-            }
-            throw new Error(err.detail);
-        }
-        return response.status === 204 ? null : response.json(); // Handle 204 No Content responses.
+        if (!response.ok) { const err = await response.json().catch(() => ({ detail: `Error: ${response.status}` })); if (response.status !== 403 && response.status !== 401) { showStatus(err.detail || 'An unknown error occurred.', 'danger'); } throw new Error(err.detail); }
+        return response.status === 204 ? null : response.json();
     }
-
     const storeTokens = (access, refresh) => { state.accessToken = access; state.refreshToken = refresh; localStorage.setItem('accessToken', access); localStorage.setItem('refreshToken', refresh); };
     const logout = () => { state.accessToken = null; state.refreshToken = null; state.currentUser = null; localStorage.removeItem('accessToken'); localStorage.removeItem('refreshToken'); window.location.hash = ''; handleRoute(); };
-    const login = async (username, password) => { const data = await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); storeTokens(data.access_token, data.refresh_token); await fetchCurrentUser(); handleRoute(); showStatus('Login successful!', 'success'); return true; };
+    const login = async (username, password) => { const data = await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); storeTokens(data.access_token, data.refresh_token); await handleRoute(); showStatus('Login successful!', 'success'); return true; };
     const register = async (username, password) => { await apiFetch('/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) }); showStatus('Registration successful! Please log in.', 'success'); return true; };
+    
+    async function fetchAndRenderAll() {
+        await fetchCurrentUser();
+        renderAllSidebarComponents();
+    }
+    
     async function fetchCurrentUser() { if (!state.accessToken) return; try { state.currentUser = await apiFetch('/users/me'); } catch (error) { console.error("Token might be expired or invalid, logging out.", error); logout(); } }
-
-    // --- Routing & View Management ---
-    /**
-      * Main router function. Reads the URL hash and calls the appropriate
-      * function to render the correct view (Dashboard or Circle View).
-      */
+    
     async function handleRoute() {
         await fetchCurrentUser();
         const hash = window.location.hash;
         const circleRouteMatch = hash.match(/^#\/circle\/(.+)$/);
-        if (circleRouteMatch) {
-            state.dashboardFeed.filter.circle_id = null;
-            await showCircleView(circleRouteMatch[1]);
-        } else {
-            await showDashboardView();
-        }
+        const followRouteMatch = hash.match(/^#\/follow\/(.+)$/);
+        if (followRouteMatch) { await handleFollowByToken(followRouteMatch[1]); } 
+        else if (circleRouteMatch) { state.dashboardFeed.filter.circle_id = null; await showCircleView(circleRouteMatch[1]); } 
+        else { await showDashboardView(); }
     }
 
     async function showDashboardView() {
@@ -577,390 +237,180 @@
             dom.dashboardView.classList.remove('hidden');
             dom.welcomeMessage.textContent = `Welcome, ${state.currentUser.username}!`;
             dom.userActions.classList.remove('hidden');
-            renderDashboard();
+            await renderDashboard();
         } else {
             dom.appSection.classList.add('hidden');
             dom.authSection.classList.remove('hidden');
         }
     }
 
-    async function showCircleView(circleId) {
-        state.circleView.currentCircleId = circleId;
-        dom.authSection.classList.add('hidden');
-        dom.dashboardView.classList.add('hidden');
-        dom.appSection.classList.remove('hidden');
-        dom.circleView.classList.remove('hidden');
-        dom.welcomeMessage.textContent = `Viewing a Circle`;
-        dom.userActions.classList.toggle('hidden', !state.currentUser);
-        resetAndRenderCircleFeed();
-    }
-
-    // --- Rendering Functions ---
+    async function showCircleView(circleId) { state.circleView.currentCircleId = circleId; dom.authSection.classList.add('hidden'); dom.dashboardView.classList.add('hidden'); dom.appSection.classList.remove('hidden'); dom.circleView.classList.remove('hidden'); dom.welcomeMessage.textContent = `Viewing a Circle`; dom.userActions.classList.toggle('hidden', !state.currentUser); await resetAndRenderCircleFeed(); }
+    
     async function renderDashboard() {
-        renderProfile();
-        renderFollowingList();
-        renderUserSuggestions();
-        dom.usersContainer.innerHTML = '<p class="text-muted small text-center">Or search by exact username.</p>';
+        renderAllSidebarComponents();
+        dom.usersContainer.innerHTML = '<p class="text-muted small text-center">Search for users by their name.</p>';
         try {
             const myCircles = await apiFetch('/circles/mine');
             state.myCircles = myCircles;
             renderMyCircles(myCircles);
-            resetAndRenderDashboardFeed();
+            await resetAndRenderDashboardFeed();
         } catch (error) { console.error("Failed to load dashboard data", error); }
     }
 
-    function renderProfile() { if (!state.currentUser) return; dom.profileContainer.innerHTML = `<div class="d-flex align-items-center"><div class="avatar avatar-lg me-3 d-flex align-items-center justify-content-center fs-2"><i class="bi bi-person-circle"></i></div><div><h4 class="mb-0">${state.currentUser.username}</h4><p class="mb-1"><strong>Following:</strong> ${state.currentUser.following_count}</p><p class="mb-0"><strong>Followers:</strong> ${state.currentUser.followers_count}</p></div></div>`; }
-    function renderUserList(users, container, emptyMessage) { if (!users || users.length === 0) { container.innerHTML = `<p class="text-muted small text-center">${emptyMessage}</p>`; return; } const followingIds = state.currentUser ? state.currentUser.following.map(u => u._id) : []; container.innerHTML = users.map(user => { if (state.currentUser && user.username === state.currentUser.username) return ''; const isFollowing = followingIds.includes(user._id); return `<div class="list-group-item d-flex justify-content-between align-items-center"><div class="d-flex align-items-center"><div class="avatar avatar-sm me-2 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div><span>${user.username}</span></div><button class="btn btn-sm ${isFollowing ? 'btn-danger' : 'btn-primary'}" data-action="toggle-follow" data-username="${user.username}">${isFollowing ? 'Unfollow' : 'Follow'}</button></div>`; }).join(''); }
-    function renderFollowingList() { if (!state.currentUser) return; renderUserList(state.currentUser.following, dom.followingContainer, "You aren't following anyone yet."); }
-
-    async function renderUserSuggestions() {
+    function renderAllSidebarComponents() {
         if (!state.currentUser) return;
-        try {
-            const suggestions = await apiFetch('/users/suggestions');
-            renderUserList(suggestions, dom.userSuggestionsContainer, "No new suggestions from your circles.");
-        } catch (error) { console.error("Failed to load user suggestions", error); dom.userSuggestionsContainer.innerHTML = '<p class="text-danger small text-center">Could not load suggestions.</p>'; }
+        renderProfile();
+        renderFollowingList();
+        renderIncomingRequests();
+        renderUserSuggestions();
     }
-
-    function renderMyCircles(circles) {
-        const { circle_id } = state.dashboardFeed.filter;
-        let html = `<a href="#" class="list-group-item clickable list-group-item-action ${!circle_id ? 'active' : ''}" data-action="filter-feed" data-circle-id=""><i class="bi bi-collection-fill me-2"></i>All My Circles</a>`;
-        html += circles.map(c => `
-            <div class="list-group-item d-flex justify-content-between align-items-center p-0">
-                <a href="#/circle/${c._id}" class="flex-grow-1 list-group-item-action border-0 clickable px-3 py-2 ${circle_id === c._id ? 'active' : ''}"
-                   data-action="view-circle" data-circle-id="${c._id}">
-                    <i class="bi bi-hash"></i> ${c.name}
-                    ${c.is_password_protected ? '<i class="bi bi-lock-fill small ms-1 text-muted"></i>' : ''}
-                </a>
-                <button class="btn btn-secondary btn-sm py-0 px-2 me-2" title="Share Circle"
-                        data-action="share-circle" data-circle-id="${c._id}">
-                    <i class="bi bi-share"></i>
-                </button>
+    
+    function renderProfile() {
+        if (!state.currentUser) return;
+        dom.profileContainer.innerHTML = `
+            <div class="d-flex align-items-center mb-3">
+                <div class="avatar avatar-lg me-3 d-flex align-items-center justify-content-center fs-2"><i class="bi bi-person-circle"></i></div>
+                <div>
+                    <h4 class="mb-0">${state.currentUser.username}</h4>
+                    <p class="mb-1"><strong>Following:</strong> ${state.currentUser.following_count}</p>
+                    <p class="mb-0"><strong>Followers:</strong> ${state.currentUser.followers_count}</p>
+                </div>
             </div>
-        `).join('');
-        dom.myCirclesContainer.innerHTML = html || `<div class="empty-placeholder small">No circles yet.</div>`;
-        document.getElementById('circleSelect').innerHTML = circles.map(c => `<option value="${c._id}">${c.name}</option>`).join('');
+            <button class="btn btn-sm btn-success w-100" data-action="generate-follow-link"><i class="bi bi-magic"></i> Private Follow Link</button>
+        `;
     }
 
-    function resetAndRenderDashboardFeed() { state.dashboardFeed.skip = 0; state.dashboardFeed.hasMore = true; dom.feedContainer.innerHTML = ''; renderDashboardFeed(); }
-    async function renderDashboardFeed() {
-        if (!state.dashboardFeed.hasMore || state.dashboardFeed.isLoading) return;
-        state.dashboardFeed.isLoading = true;
-        dom.feedLoader.classList.remove('hidden');
-        const { filter, skip, limit, sortBy } = state.dashboardFeed;
-        // ## --- CHANGE START --- ##
-        let url = `/feed?skip=${skip}&limit=${limit}&sort_by=${sortBy}`;
-        if (filter.circle_id) { url += `&circle_id=${filter.circle_id}`; }
-        if (filter.post_type) { url += `&post_type_filter=${filter.post_type}`;}
-        // ## --- CHANGE END --- ##
-        try {
-            const feedData = await apiFetch(url);
-            appendPosts(feedData.posts, dom.feedContainer);
-            state.dashboardFeed.hasMore = feedData.has_more;
-            state.dashboardFeed.skip += feedData.posts.length;
-            if (dom.feedContainer.innerHTML === '' && !feedData.has_more) { dom.feedContainer.innerHTML = `<div class="empty-placeholder">Your feed is empty. Post something!</div>`; }
-        } catch (error) { dom.feedContainer.innerHTML = `<div class="empty-placeholder text-danger">Could not load feed.</div>`; }
-        finally { state.dashboardFeed.isLoading = false; dom.feedLoader.classList.add('hidden'); }
+    function renderUserList(users, container, emptyMessage) {
+        if (!users || users.length === 0) { container.innerHTML = `<p class="text-muted small text-center">${emptyMessage}</p>`; return; } 
+        if (!state.currentUser) return;
+
+        const followingIds = state.currentUser.following.map(u => u._id);
+        const outgoingRequestIds = state.currentUser.outgoing_requests;
+
+        container.innerHTML = users.map(user => {
+            if (user.username === state.currentUser.username) return '';
+            
+            let buttonHtml;
+            if (followingIds.includes(user._id)) {
+                buttonHtml = `<button class="btn btn-sm btn-danger" data-action="unfollow" data-username="${user.username}">Unfollow</button>`;
+            } else if (outgoingRequestIds.includes(user._id)) {
+                buttonHtml = `<button class="btn btn-sm btn-secondary" data-action="cancel-request" data-username="${user.username}">Request Sent</button>`;
+            } else {
+                buttonHtml = `<button class="btn btn-sm btn-primary" data-action="request-follow" data-username="${user.username}">Request Follow</button>`;
+            }
+
+            return `<div class="list-group-item d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center">
+                    <div class="avatar avatar-sm me-2 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div>
+                    <span>${user.username}</span>
+                </div>
+                ${buttonHtml}
+            </div>`;
+        }).join('');
     }
 
-    function resetAndRenderCircleFeed() { state.circleView.skip = 0; state.circleView.hasMore = true; dom.circleFeedContainer.innerHTML = ''; dom.circleHeader.innerHTML = ''; renderCircleFeed(); }
-
-    /**
-      * Renders a prompt for the user to join a password-protected circle.
-      * @param {string} circleId The ID of the circle to join.
-      * @param {string} circleName The name of the circle.
-      */
-    function renderJoinCirclePrompt(circleId, circleName) {
-        if (!state.currentUser) {
-            dom.circleHeader.innerHTML = `<h2><i class="bi bi-lock-fill"></i> ${circleName}</h2>`;
-            dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder">This circle is password protected. Please <a href="#" id="loginFromCircleView">log in</a> to join.</div>`;
-            document.getElementById('loginFromCircleView').addEventListener('click', (e) => {
-                e.preventDefault();
-                window.location.hash = '';
-                handleRoute();
-            });
+    function renderIncomingRequests() {
+        if (!state.currentUser) return;
+        const requests = state.currentUser.incoming_requests;
+        if (!requests || requests.length === 0) {
+            dom.followRequestsContainer.innerHTML = '<p class="text-muted small text-center">No new follow requests.</p>';
             return;
         }
-
-        dom.circleHeader.innerHTML = `
-            <div class="d-flex justify-content-between align-items-center">
-                <h2><i class="bi bi-lock-fill"></i> Join ${circleName}</h2>
-                <a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Feed</a>
-            </div>`;
-        dom.circleFeedContainer.innerHTML = `
-            <div class="glass-card text-center">
-                <p class="fs-5">This circle is protected. Enter the password to gain access.</p>
-                <div class="input-group mt-3 mx-auto" style="max-width: 300px;">
-                    <input type="password" id="joinCirclePasswordInput" class="form-control" placeholder="Circle Password">
-                    <button class="btn btn-primary" id="joinCircleSubmitBtn" data-circle-id="${circleId}">Join</button>
+        dom.followRequestsContainer.innerHTML = requests.map(req => `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center">
+                    <div class="avatar avatar-sm me-2 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div>
+                    <span>${req.requester.username}</span>
                 </div>
-            </div>`;
+                <div class="request-actions">
+                    <button class="btn btn-success btn-sm" data-action="accept-request" data-request-id="${req._id}"><i class="bi bi-check-lg"></i></button>
+                    <button class="btn btn-danger btn-sm" data-action="decline-request" data-request-id="${req._id}"><i class="bi bi-x-lg"></i></button>
+                </div>
+            </div>
+        `).join('');
     }
 
-    async function renderCircleFeed() {
-        const feedState = state.circleView;
-        if (!feedState.hasMore || feedState.isLoading) return;
-        feedState.isLoading = true;
-        dom.feedLoader.classList.remove('hidden');
-
-        try {
-            // On the first load, fetch circle details to build the header AND check for access.
-            if (feedState.skip === 0) {
-                const circleDetails = await apiFetch(`/circles/${feedState.currentCircleId}`);
-                // ## --- CHANGE START --- ##
-                dom.circleHeader.innerHTML = `
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-                    <div>
-                        <h2><i class="bi bi-hash"></i> ${circleDetails.name}</h2>
-                        <p class="text-muted mb-0">${circleDetails.description || 'A shared space for posts.'}</p>
-                    </div>
-                    <div class="d-flex align-items-center gap-3">
-                        <div class="d-flex align-items-center gap-2">
-                           <label for="circleTypeSelect" class="form-label mb-0 text-muted small">Filter by:</label>
-                           <select id="circleTypeSelect" class="form-select form-select-sm" style="width: auto;">
-                               <option value="" ${!feedState.postTypeFilter ? 'selected' : ''}>All Types</option>
-                               <option value="text_update" ${feedState.postTypeFilter === 'text_update' ? 'selected' : ''}>Text Update</option>
-                               <option value="wishlist_item" ${feedState.postTypeFilter === 'wishlist_item' ? 'selected' : ''}>Wishlist Item</option>
-                               <option value="youtube_video" ${feedState.postTypeFilter === 'youtube_video' ? 'selected' : ''}>YouTube Video</option>
-                           </select>
-                       </div>
-                       <div class="d-flex align-items-center gap-2">
-                            <label for="circleSortSelect" class="form-label mb-0 text-muted small">Sort by:</label>
-                            <select id="circleSortSelect" class="form-select form-select-sm" style="width: auto;">
-                                <option value="newest" ${feedState.sortBy === 'newest' ? 'selected' : ''}>Newest</option>
-                                <option value="top" ${feedState.sortBy === 'top' ? 'selected' : ''}>Top</option>
-                            </select>
-                        </div>
-                        <a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Feed</a>
-                    </div>
-                </div>`;
-                // ## --- CHANGE END --- ##
-            }
-
-            // ## --- CHANGE START --- ##
-            let url = `/circles/${feedState.currentCircleId}/feed?skip=${feedState.skip}&limit=${feedState.limit}&sort_by=${feedState.sortBy}`;
-            if (feedState.postTypeFilter) { url += `&post_type_filter=${feedState.postTypeFilter}`; }
-            // ## --- CHANGE END --- ##
-            const feedData = await apiFetch(url);
-            appendPosts(feedData.posts, dom.circleFeedContainer);
-            feedState.hasMore = feedData.has_more;
-            feedState.skip += feedData.posts.length;
-            if (dom.circleFeedContainer.innerHTML === '' && !feedData.has_more) {
-                dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder">This circle has no posts yet.</div>`;
-            }
-        } catch (error) {
-            // This catch block handles access errors (403, 401)
-            try {
-                // If we fail to get the feed, check the public status of the circle
-                const statusData = await apiFetch(`/circles/${feedState.currentCircleId}/status`);
-                if (statusData.is_password_protected) {
-                    renderJoinCirclePrompt(feedState.currentCircleId, statusData.name);
-                } else {
-                    dom.circleHeader.innerHTML = '';
-                    dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder text-danger">This circle is private and you are not a member.</div>`;
-                }
-            } catch (statusError) {
-                dom.circleHeader.innerHTML = '';
-                dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder text-danger">Could not find or access this circle.</div>`;
-            }
-        } finally {
-            feedState.isLoading = false;
-            dom.feedLoader.classList.add('hidden');
-        }
-    }
-
-    /**
-      * Renders a list of post objects into HTML and appends them to a container.
-      * @param {Array} posts - An array of post objects from the API.
-      * @param {HTMLElement} container - The DOM element to append the posts to.
-      */
-    function appendPosts(posts, container) {
-        const canDelete = (post) => state.currentUser && post.author_username === state.currentUser.username;
-        const postsHtml = posts.map(post => {
-            let contentHtml = '';
-            switch(post.post_type) {
-                case 'wishlist_item': contentHtml = `<h5 class="card-title"><a href="${post.content.url}" target="_blank" rel="noopener noreferrer">${post.content.item_name} <i class="bi bi-box-arrow-up-right"></i></a></h5><p class="card-text text-muted">${post.content.notes || ''}</p>`; break;
-                case 'youtube_video': const videoId = getYouTubeID(post.content.youtube_url); contentHtml = `<h5 class="card-title">${post.content.title}</h5>${videoId ? `<div class="video-container my-2"><iframe src="https://www.youtube.com/embed/${videoId}" title="${post.content.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>` : ''}<p class="card-text text-muted">${post.content.notes || ''}</p>`; break;
-                default: contentHtml = `<p class="card-text" style="white-space: pre-wrap;">${post.content.text}</p>`;
-            }
-            const voteControls = `<div class="vote-controls"><button class="vote-btn up ${post.user_vote === 1 ? 'voted' : ''}" data-action="vote" data-post-id="${post._id}" data-direction="1" title="Upvote"><i class="bi bi-arrow-up-circle"></i></button><span class="vote-score" title="Post score">${post.score}</span><button class="vote-btn down ${post.user_vote === -1 ? 'voted' : ''}" data-action="vote" data-post-id="${post._id}" data-direction="-1" title="Downvote"><i class="bi bi-arrow-down-circle"></i></button></div>`;
-            return `<div class="post-card-wrapper" data-post-wrapper-id="${post._id}"><div class="glass-card post-card d-flex">${voteControls}<div class="post-card-body"><div class="d-flex justify-content-between align-items-start"><div class="d-flex align-items-center"><div class="avatar me-3 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div><div><strong class="d-block">${post.author_username}</strong><small class="text-muted">in <a href="#/circle/${post.circle_id}" class="text-reset fw-bold">${post.circle_name}</a> &bull; ${new Date(post.created_at).toLocaleString()}</small></div></div><div><span class="badge bg-primary rounded-pill">${post.post_type.replace(/_/g, ' ')}</span> ${canDelete(post) ? `<button class="btn btn-danger btn-sm ms-2 py-0 px-2" data-action="delete-post" data-post-id="${post._id}" data-circle-id="${post.circle_id}"><i class="bi bi-trash"></i></button>` : ''}</div></div><div class="mt-3">${contentHtml}</div></div></div></div>`;
-        }).join('');
-        container.insertAdjacentHTML('beforeend', postsHtml);
-    }
-
-    // Set up the Intersection Observer for infinite scrolling.
-    const observer = new IntersectionObserver((entries) => { if (entries[0].isIntersecting) { if (!dom.circleView.classList.contains('hidden')) { renderCircleFeed(); } else if (!dom.dashboardView.classList.contains('hidden')) { renderDashboardFeed(); } } }, { rootMargin: '200px' });
-    observer.observe(dom.feedLoader);
-
-    function renderPostContentFields() { const type = dom.postTypeSelect.value; let html = ''; switch(type) { case 'wishlist_item': html = `<input type="text" name="item_name" class="form-control mb-2" placeholder="Item Name" required><input type="url" name="url" class="form-control mb-2" placeholder="Item URL" required><textarea name="notes" class="form-control" placeholder="Notes (optional)"></textarea>`; break; case 'youtube_video': html = `<input type="text" name="title" class="form-control mb-2" placeholder="Video Title" required><input type="url" name="youtube_url" class="form-control mb-2" placeholder="YouTube URL" required><textarea name="notes" class="form-control" placeholder="Notes (optional)"></textarea>`; break; default: html = `<textarea name="text" class="form-control" placeholder="What's on your mind?" required></textarea>`; } dom.postContentFields.innerHTML = html; }
-
-    // --- Event Handlers & Initialization ---
-    /**
-      * Switches between auth views (e.g., Welcome -> Login Form) with a smooth animation.
-      * @param {HTMLElement} hideEl - The element to fade out.
-      * @param {HTMLElement} showEl - The element to fade in.
-      */
+    function renderFollowingList() { if (!state.currentUser) return; renderUserList(state.currentUser.following, dom.followingContainer, "You aren't following anyone yet."); }
+    function renderUserSuggestions() { if (!state.currentUser) return; try { const suggestions = apiFetch('/users/suggestions'); suggestions.then(data => renderUserList(data, dom.userSuggestionsContainer, "No new suggestions from your circles.")); } catch (error) { console.error("Failed to load user suggestions", error); dom.userSuggestionsContainer.innerHTML = '<p class="text-danger small text-center">Could not load suggestions.</p>'; } }
+    
+    function renderMyCircles(circles) { const { circle_id } = state.dashboardFeed.filter; let html = `<a href="#" class="list-group-item clickable list-group-item-action ${!circle_id ? 'active' : ''}" data-action="filter-feed" data-circle-id=""><i class="bi bi-collection-fill me-2"></i>All My Circles</a>`; html += circles.map(c => `<div class="list-group-item d-flex justify-content-between align-items-center p-0"><a href="#/circle/${c._id}" class="flex-grow-1 list-group-item-action border-0 clickable px-3 py-2 ${circle_id === c._id ? 'active' : ''}" data-action="view-circle" data-circle-id="${c._id}"><i class="bi bi-hash"></i> ${c.name} ${c.is_password_protected ? '<i class="bi bi-lock-fill small ms-1 text-muted"></i>' : ''}</a><button class="btn btn-secondary btn-sm py-0 px-2 me-2" title="Share Circle" data-action="share-circle" data-circle-id="${c._id}"><i class="bi bi-share"></i></button></div>`).join(''); dom.myCirclesContainer.innerHTML = html || `<div class="empty-placeholder small">No circles yet.</div>`; document.getElementById('circleSelect').innerHTML = circles.map(c => `<option value="${c._id}">${c.name}</option>`).join(''); }
+    
+    async function resetAndRenderDashboardFeed() { state.dashboardFeed.skip = 0; state.dashboardFeed.hasMore = true; dom.feedContainer.innerHTML = ''; await renderDashboardFeed(); }
+    async function renderDashboardFeed() { if (!state.dashboardFeed.hasMore || state.dashboardFeed.isLoading) return; state.dashboardFeed.isLoading = true; dom.feedLoader.classList.remove('hidden'); const { filter, skip, limit, sortBy } = state.dashboardFeed; let url = `/feed?skip=${skip}&limit=${limit}&sort_by=${sortBy}`; if (filter.circle_id) url += `&circle_id=${filter.circle_id}`; if (filter.tags) url += `&tags=${encodeURIComponent(filter.tags)}`; try { const feedData = await apiFetch(url); appendPosts(feedData.posts, dom.feedContainer); state.dashboardFeed.hasMore = feedData.has_more; state.dashboardFeed.skip += feedData.posts.length; if (dom.feedContainer.innerHTML === '' && !feedData.has_more) { dom.feedContainer.innerHTML = `<div class="empty-placeholder">Your feed is empty. Post something or broaden your filters!</div>`; } } catch (error) { dom.feedContainer.innerHTML = `<div class="empty-placeholder text-danger">Could not load feed.</div>`; } finally { state.dashboardFeed.isLoading = false; dom.feedLoader.classList.add('hidden'); } }
+    
+    async function resetAndRenderCircleFeed() { state.circleView.skip = 0; state.circleView.hasMore = true; dom.circleFeedContainer.innerHTML = ''; dom.circleHeader.innerHTML = ''; await renderCircleFeed(); }
+    function renderJoinCirclePrompt(circleId, circleName) { if (!state.currentUser) { dom.circleHeader.innerHTML = `<h2><i class="bi bi-lock-fill"></i> ${circleName}</h2>`; dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder">This is a Whisper Circle. Please <a href="#" id="loginFromCircleView">log in</a> to join.</div>`; document.getElementById('loginFromCircleView').addEventListener('click', (e) => { e.preventDefault(); window.location.hash = ''; handleRoute(); }); return; } dom.circleHeader.innerHTML = `<div class="d-flex justify-content-between align-items-center"><h2><i class="bi bi-lock-fill"></i> Join ${circleName}</h2><a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Feed</a></div>`; dom.circleFeedContainer.innerHTML = `<div class="glass-card text-center"><p class="fs-5">This is a Whisper Circle. Enter the correct whisper to gain access.</p><div class="input-group mt-3 mx-auto" style="max-width: 300px;"><input type="password" id="joinCirclePasswordInput" class="form-control" placeholder="Enter Whisper..."><button class="btn btn-primary" id="joinCircleSubmitBtn" data-circle-id="${circleId}">Join</button></div></div>`; }
+    async function renderCircleFeed() { const feedState = state.circleView; if (!feedState.hasMore || feedState.isLoading) return; feedState.isLoading = true; dom.feedLoader.classList.remove('hidden'); try { if (feedState.skip === 0) { const circleDetails = await apiFetch(`/circles/${feedState.currentCircleId}`); feedState.circleName = circleDetails.name; dom.circleHeader.innerHTML = `<div class="d-flex justify-content-between align-items-center flex-wrap gap-3"><div><h2><i class="bi bi-hash"></i> ${circleDetails.name}</h2><p class="text-muted mb-0">${circleDetails.description || 'A shared space for posts.'}</p></div><div class="d-flex align-items-center gap-3 flex-wrap"><div class="input-group input-group-sm" style="width: auto;"><span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);"><i class="bi bi-tags"></i></span><input type="text" id="circleTagFilter" class="form-control border-start-0" placeholder="Filter by tags..." value="${feedState.tags}" style="min-width: 150px;"></div><div class="d-flex align-items-center gap-2"><label for="circleSortSelect" class="form-label mb-0 text-muted small">Sort by:</label><select id="circleSortSelect" class="form-select form-select-sm" style="width: auto;"><option value="newest" ${feedState.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="top" ${feedState.sortBy === 'top' ? 'selected' : ''}>Top</option></select></div><a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Feed</a></div></div>`; } let url = `/circles/${feedState.currentCircleId}/feed?skip=${feedState.skip}&limit=${feedState.limit}&sort_by=${feedState.sortBy}`; if (feedState.tags) { url += `&tags=${encodeURIComponent(feedState.tags)}`; } const feedData = await apiFetch(url); appendPosts(feedData.posts, dom.circleFeedContainer, feedState.circleName); feedState.hasMore = feedData.has_more; feedState.skip += feedData.posts.length; if (dom.circleFeedContainer.innerHTML === '' && !feedData.has_more) { dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder">This circle has no posts yet. Be the first!</div>`; } } catch (error) { try { const statusData = await apiFetch(`/circles/${feedState.currentCircleId}/status`); if (statusData.is_password_protected) { renderJoinCirclePrompt(feedState.currentCircleId, statusData.name); } else { dom.circleHeader.innerHTML = ''; dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder text-danger">This circle is private and you are not a member.</div>`; } } catch (statusError) { dom.circleHeader.innerHTML = ''; dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder text-danger">Could not find or access this circle.</div>`; } } finally { feedState.isLoading = false; dom.feedLoader.classList.add('hidden'); } }
+    
+    function appendPosts(posts, container, circleName = null) { const canDelete = (post) => state.currentUser && post.author_username === state.currentUser.username; const postsHtml = posts.map(post => { let contentHtml = ''; if (post.content.text) { contentHtml += `<p class="card-text" style="white-space: pre-wrap;">${post.content.text}</p>`; } if (post.content.link) { const videoId = getYouTubeID(post.content.link); if (videoId) { contentHtml += `<div class="video-container my-2"><iframe src="https://www.youtube.com/embed/${videoId}" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`; } else { try { const host = new URL(post.content.link).hostname; contentHtml += `<a href="${post.content.link}" target="_blank" rel="noopener noreferrer" class="link-preview d-block text-decoration-none"><strong class="link-preview-title d-block">${post.content.link}</strong><span class="link-preview-host">${host}</span></a>`; } catch (e) { contentHtml += `<p class="text-muted">Invalid link: ${post.content.link}</p>` } } } if (post.content.tags && post.content.tags.length > 0) { contentHtml += `<div class="mt-3 post-tags">${post.content.tags.map(tag => `<span class="badge rounded-pill bg-secondary me-1" data-action="filter-by-tag" data-tag="${tag}">${tag}</span>`).join(' ')}</div>`; } const voteControls = `<div class="vote-controls"><button class="vote-btn up ${post.user_vote === 1 ? 'voted' : ''}" data-action="vote" data-post-id="${post._id}" data-direction="1" title="Upvote"><i class="bi bi-arrow-up-circle"></i></button><span class="vote-score" title="Post score">${post.score}</span><button class="vote-btn down ${post.user_vote === -1 ? 'voted' : ''}" data-action="vote" data-post-id="${post._id}" data-direction="-1" title="Downvote"><i class="bi bi-arrow-down-circle"></i></button></div>`; const displayCircleName = circleName || post.circle_name; return `<div class="post-card-wrapper" data-post-wrapper-id="${post._id}"><div class="glass-card post-card d-flex">${voteControls}<div class="post-card-body"><div class="d-flex justify-content-between align-items-start"><div class="d-flex align-items-center"><div class="avatar me-3 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div><div><strong class="d-block">${post.author_username}</strong><small class="text-muted">in <a href="#/circle/${post.circle_id}" class="text-reset fw-bold">${displayCircleName}</a> &bull; ${new Date(post.created_at).toLocaleString()}</small></div></div>${canDelete(post) ? `<button class="btn btn-danger btn-sm py-0 px-2" data-action="delete-post" data-post-id="${post._id}" data-circle-id="${post.circle_id}"><i class="bi bi-trash"></i></button>` : ''}</div><div class="mt-3">${contentHtml}</div></div></div></div>`; }).join(''); container.insertAdjacentHTML('beforeend', postsHtml); }
+    const observer = new IntersectionObserver((entries) => { if (entries[0].isIntersecting) { if (!dom.circleView.classList.contains('hidden')) { renderCircleFeed(); } else if (!dom.dashboardView.classList.contains('hidden')) { renderDashboardFeed(); } } }, { rootMargin: '200px' }); observer.observe(dom.feedLoader);
     const switchAuthView = (hideEl, showEl) => { hideEl.classList.add('animate-out'); hideEl.addEventListener('animationend', () => { hideEl.classList.add('hidden'); hideEl.classList.remove('animate-out'); showEl.classList.remove('hidden'); showEl.classList.add('animate-in'); showEl.addEventListener('animationend', () => { showEl.classList.remove('animate-in'); }, { once: true }); }, { once: true }); };
     async function handleAuthAction(e, action) { const btn = e.currentTarget; const u = document.getElementById('usernameInput').value, p = document.getElementById('passwordInput').value; if (!u || !p) return showStatus('Username and password are required', 'warning'); setButtonLoading(btn, true); try { await action(u, p); } catch (error) {} finally { setButtonLoading(btn, false); } }
-
-    async function handleCreateCircle() {
-        const btn = document.getElementById('submitCircleButton');
-        const name = document.getElementById('circleName').value;
-        const description = document.getElementById('circleDescription').value;
-        const is_public = document.getElementById('isPublicSwitch').checked;
-        const passwordSwitch = document.getElementById('protectWithPasswordSwitch');
-        const password = document.getElementById('circlePassword').value;
-
-        const payload = { name, description, is_public };
-        if (passwordSwitch.checked && password) {
-            payload.password = password;
-        } else if (passwordSwitch.checked && !password) {
-            return showStatus('Password cannot be empty if protection is enabled.', 'warning');
-        }
-
-        setButtonLoading(btn, true);
-        try {
-            await apiFetch('/circles', { method: 'POST', body: JSON.stringify(payload) });
-            showStatus('Circle created!', 'success');
-            bootstrap.Modal.getInstance('#createCircleModal').hide();
-            document.getElementById('createCircleForm').reset();
-            document.getElementById('circlePasswordContainer').classList.add('hidden'); // Reset UI
-            const myCircles = await apiFetch('/circles/mine');
-            state.myCircles = myCircles;
-            renderMyCircles(myCircles);
-        } catch(error) {} finally {
-            setButtonLoading(btn, false);
-        }
-    }
-
-    async function handleCreatePost() { const btn = document.getElementById('submitPostButton'); const circle_id = document.getElementById('circleSelect').value; if (!circle_id) return showStatus('You must select a circle to post in.', 'warning'); const post_type = dom.postTypeSelect.value; const content = {}; dom.postContentFields.querySelectorAll('[name]').forEach(input => { if (input.value) content[input.name] = input.value; }); setButtonLoading(btn, true); try { await apiFetch(`/circles/${circle_id}/posts`, { method: 'POST', body: JSON.stringify({ post_type, content }) }); showStatus('Post created!', 'success'); bootstrap.Modal.getInstance('#createPostModal').hide(); document.getElementById('createPostForm').reset(); renderPostContentFields(); if (state.circleView.currentCircleId === circle_id) { resetAndRenderCircleFeed(); } else if (window.location.hash.startsWith('#/circle/')) {} else { resetAndRenderDashboardFeed(); } } catch(error) {} finally { setButtonLoading(btn, false); } }
-    async function handleToggleFollow(username) { if (!state.currentUser) return showStatus('Please log in to follow users.', 'warning'); const isFollowing = state.currentUser.following.some(u => u.username === username); try { await apiFetch(`/users/${username}/follow`, { method: isFollowing ? 'DELETE' : 'POST' }); showStatus(`Successfully ${isFollowing ? 'unfollowed' : 'followed'} ${username}!`, 'success'); await fetchCurrentUser(); renderProfile(); renderFollowingList(); renderUserSuggestions(); const currentSearch = document.getElementById('userSearchInput').value.trim(); if (currentSearch.toLowerCase() === username.toLowerCase()) { const users = await apiFetch(`/users/search?username=${encodeURIComponent(username)}`); renderUserList(users, dom.usersContainer, "No user found with that name."); } } catch(error) {} }
-    async function handleDeletePost(postId, circleId) { if (!confirm('Are you sure you want to delete this post?')) return; try { await apiFetch(`/circles/${circleId}/posts/${postId}`, { method: 'DELETE' }); showStatus('Post deleted.', 'success'); if (state.circleView.currentCircleId) resetAndRenderCircleFeed(); else resetAndRenderDashboardFeed(); } catch(error) {} }
-    async function handleUserSearch() { const btn = document.getElementById('userSearchBtn'); const query = document.getElementById('userSearchInput').value.trim(); if (!query) return; setButtonLoading(btn, true); dom.usersContainer.innerHTML = ''; try { const users = await apiFetch(`/users/search?username=${encodeURIComponent(query)}`); renderUserList(users, dom.usersContainer, "No user found with that name."); } catch (error) { console.error("User search failed", error); dom.usersContainer.innerHTML = '<p class="text-danger small text-center">Search failed.</p>'; } finally { setButtonLoading(btn, false); } }
+    
+    async function handleCreateCircle() { const btn = document.getElementById('submitCircleButton'); const name = document.getElementById('circleName').value; const description = document.getElementById('circleDescription').value; const is_public = document.getElementById('isPublicSwitch').checked; const passwordSwitch = document.getElementById('protectWithPasswordSwitch'); const password = document.getElementById('circlePassword').value; const payload = { name, description, is_public }; if (passwordSwitch.checked && password) { payload.password = password; } else if (passwordSwitch.checked && !password) { return showStatus('Password cannot be empty if protection is enabled.', 'warning'); } setButtonLoading(btn, true); try { await apiFetch('/circles', { method: 'POST', body: JSON.stringify(payload) }); showStatus('Circle created!', 'success'); bootstrap.Modal.getInstance('#createCircleModal').hide(); document.getElementById('createCircleForm').reset(); document.getElementById('circlePasswordContainer').classList.add('hidden'); const myCircles = await apiFetch('/circles/mine'); state.myCircles = myCircles; renderMyCircles(myCircles); } catch(error) {} finally { setButtonLoading(btn, false); } }
+    async function handleCreatePost() { const btn = document.getElementById('submitPostButton'); const circle_id = document.getElementById('circleSelect').value; if (!circle_id) return showStatus('You must select a circle to post in.', 'warning'); const text = document.getElementById('postText').value.trim(); const link = document.getElementById('postLink').value.trim(); const tags = document.getElementById('postTags').value.split(',').map(tag => tag.trim()).filter(Boolean); if (!text && !link) return showStatus('A post must have either text or a link.', 'warning'); setButtonLoading(btn, true); try { await apiFetch(`/circles/${circle_id}/posts`, { method: 'POST', body: JSON.stringify({ text, link, tags }) }); showStatus('Post created!', 'success'); bootstrap.Modal.getInstance('#createPostModal').hide(); document.getElementById('createPostForm').reset(); if (state.circleView.currentCircleId === circle_id) { await resetAndRenderCircleFeed(); } else if (!window.location.hash || window.location.hash === '#/') { await resetAndRenderDashboardFeed(); } } catch(error) {} finally { setButtonLoading(btn, false); } }
+    async function handleDeletePost(postId, circleId) { if (!confirm('Are you sure you want to delete this post?')) return; try { await apiFetch(`/circles/${circleId}/posts/${postId}`, { method: 'DELETE' }); showStatus('Post deleted.', 'success'); if (state.circleView.currentCircleId) await resetAndRenderCircleFeed(); else await resetAndRenderDashboardFeed(); } catch(error) {} }
+    
+    async function handleUserSearch() { const btn = document.getElementById('userSearchBtn'); const query = document.getElementById('userSearchInput').value.trim(); if (!query) return; setButtonLoading(btn, true); dom.usersContainer.innerHTML = ''; try { const users = await apiFetch(`/users/discover?q=${encodeURIComponent(query)}`); renderUserList(users, dom.usersContainer, "No users found matching that name."); } catch (error) { console.error("User search failed", error); dom.usersContainer.innerHTML = '<p class="text-danger small text-center">Search failed.</p>'; } finally { setButtonLoading(btn, false); } }
     async function handleVote(postId, direction) { if (!state.currentUser) return showStatus('Please log in to vote.', 'warning'); const postWrapper = document.querySelector(`[data-post-wrapper-id="${postId}"]`); if (!postWrapper) return; const upBtn = postWrapper.querySelector('.vote-btn.up'); const downBtn = postWrapper.querySelector('.vote-btn.down'); const scoreEl = postWrapper.querySelector('.vote-score'); const currentVote = upBtn.classList.contains('voted') ? 1 : (downBtn.classList.contains('voted') ? -1 : 0); const finalDirection = currentVote === direction ? 0 : direction; try { const result = await apiFetch(`/posts/${postId}/vote`, { method: 'POST', body: JSON.stringify({ direction: finalDirection }), }); upBtn.classList.toggle('voted', finalDirection === 1); downBtn.classList.toggle('voted', finalDirection === -1); scoreEl.textContent = result.new_score; } catch (error) { console.error("Voting failed", error); } }
+    async function handleJoinCircle(circleId) { const btn = document.getElementById('joinCircleSubmitBtn'); const passwordInput = document.getElementById('joinCirclePasswordInput'); const password = passwordInput.value; if (!password) return showStatus('A "whisper" is required to join.', 'warning'); setButtonLoading(btn, true); try { await apiFetch(`/circles/${circleId}/join`, { method: 'POST', body: JSON.stringify({ password }) }); showStatus('Whisper accepted! You have joined the circle.', 'success'); await fetchCurrentUser(); const myCircles = await apiFetch('/circles/mine'); state.myCircles = myCircles; renderMyCircles(myCircles); await resetAndRenderCircleFeed(); } catch (error) { showStatus('Incorrect whisper or unable to join.', 'danger'); passwordInput.value = ''; } finally { setButtonLoading(btn, false); } }
+    
+    async function handleGenerateFollowLink() { const btn = document.querySelector('[data-action="generate-follow-link"]'); setButtonLoading(btn, true); try { const { token } = await apiFetch('/users/me/generate-follow-token', { method: 'POST' }); const url = `${window.location.origin}${window.location.pathname}#/follow/${token}`; document.getElementById('followLinkInput').value = url; bootstrap.Modal.getInstance('#followLinkModal').show(); } catch(e) { showStatus('Could not generate follow link. Please try again.', 'danger'); } finally { setButtonLoading(btn, false); } }
+    async function handleFollowByToken(token) { if (!state.currentUser) { showStatus('Please log in to use this follow link.', 'info'); window.location.hash = ''; return; } try { const { followed_username } = await apiFetch('/users/follow-by-token', { method: 'POST', body: JSON.stringify({ token }) }); showStatus(`Success! You are now following ${followed_username}.`, 'success'); await fetchAndRenderAll(); } catch (error) { showStatus(error.message || 'This follow link is invalid or has expired.', 'danger'); } finally { window.location.hash = ''; } }
+    
+    async function handleRequestFollow(username) { try { await apiFetch(`/users/${username}/request-follow`, { method: 'POST' }); showStatus('Follow request sent!', 'success'); await fetchAndRenderAll(); } catch(e) { showStatus(e.message, 'danger'); } }
+    async function handleUnfollow(username) { if (!confirm(`Are you sure you want to unfollow ${username}?`)) return; try { await apiFetch(`/users/${username}/follow`, { method: 'DELETE' }); showStatus(`You have unfollowed ${username}.`, 'info'); await fetchAndRenderAll(); } catch(e) { showStatus(e.message, 'danger'); } }
+    async function handleCancelRequest(username) { try { await apiFetch(`/users/${username}/cancel-request`, { method: 'DELETE' }); showStatus('Follow request cancelled.', 'info'); await fetchAndRenderAll(); } catch(e) { showStatus(e.message, 'danger'); } }
+    async function handleRespondToRequest(requestId, action) { try { await apiFetch(`/users/me/follow-requests/${requestId}/respond`, { method: 'POST', body: JSON.stringify({action}) }); showStatus(`Request ${action}ed.`, 'success'); await fetchAndRenderAll(); } catch(e) { showStatus(e.message, 'danger'); } }
 
-    async function handleJoinCircle(circleId) {
-        const btn = document.getElementById('joinCircleSubmitBtn');
-        const passwordInput = document.getElementById('joinCirclePasswordInput');
-        const password = passwordInput.value;
-        if (!password) return showStatus('Password is required to join.', 'warning');
-
-        setButtonLoading(btn, true);
-        try {
-            await apiFetch(`/circles/${circleId}/join`, {
-                method: 'POST',
-                body: JSON.stringify({ password })
-            });
-            showStatus('Successfully joined circle!', 'success');
-            await fetchCurrentUser(); // Refresh user data to update memberships
-            resetAndRenderCircleFeed(); // Reload the view
-        } catch (error) {
-            showStatus('Incorrect password or unable to join.', 'danger');
-            passwordInput.value = '';
-        } finally {
-            setButtonLoading(btn, false);
-        }
-    }
-
-    /**
-      * Main entry point: runs when the DOM is fully loaded.
-      */
     document.addEventListener('DOMContentLoaded', () => {
-        // Initialize Bootstrap components
-        const postModal = new bootstrap.Modal('#createPostModal');
-        const circleModal = new bootstrap.Modal('#createCircleModal');
-
-        // --- Auth View Listeners ---
-        const authWelcome = document.getElementById('authWelcome');
-        const authFormContainer = document.getElementById('authFormContainer');
+        new bootstrap.Modal('#createPostModal'); new bootstrap.Modal('#createCircleModal'); new bootstrap.Modal('#followLinkModal');
+        const authWelcome = document.getElementById('authWelcome'); const authFormContainer = document.getElementById('authFormContainer');
         document.getElementById('loginButton').addEventListener('click', () => switchAuthView(authWelcome, authFormContainer));
         document.getElementById('backToWelcomeBtn').addEventListener('click', () => switchAuthView(authFormContainer, authWelcome));
         document.getElementById('loginSubmitButton').addEventListener('click', e => handleAuthAction(e, login));
         document.getElementById('registerSubmitButton').addEventListener('click', e => handleAuthAction(e, register));
-
-        // --- Core App Listeners ---
         document.getElementById('logoutButton').addEventListener('click', logout);
-        document.getElementById('createCircleBtn').addEventListener('click', () => circleModal.show());
+        document.getElementById('createCircleBtn').addEventListener('click', () => bootstrap.Modal.getInstance('#createCircleModal').show());
         document.getElementById('submitCircleButton').addEventListener('click', handleCreateCircle);
-        document.getElementById('createPostBtn').addEventListener('click', () => postModal.show());
+        document.getElementById('createPostBtn').addEventListener('click', () => bootstrap.Modal.getInstance('#createPostModal').show());
         document.getElementById('submitPostButton').addEventListener('click', handleCreatePost);
-        dom.postTypeSelect.addEventListener('change', renderPostContentFields);
         document.getElementById('userSearchBtn').addEventListener('click', handleUserSearch);
         document.getElementById('userSearchInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleUserSearch(); });
         document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
         document.getElementById('themeToggleBtnLogin').addEventListener('click', toggleTheme);
-
-        // Listener for the "Protect with Password" switch in create circle modal
-        document.getElementById('protectWithPasswordSwitch').addEventListener('change', e => {
-            document.getElementById('circlePasswordContainer').classList.toggle('hidden', !e.target.checked);
-        });
-
-        // ## --- CHANGE START --- ##
-        // --- Sort & Filter Dropdown Listeners ---
-        document.getElementById('dashboardSortSelect').addEventListener('change', (e) => {
-            state.dashboardFeed.sortBy = e.target.value;
-            resetAndRenderDashboardFeed();
-        });
-        document.getElementById('dashboardTypeSelect').addEventListener('change', (e) => {
-            state.dashboardFeed.filter.post_type = e.target.value || null;
-            resetAndRenderDashboardFeed();
-        });
+        document.getElementById('protectWithPasswordSwitch').addEventListener('change', e => { document.getElementById('circlePasswordContainer').classList.toggle('hidden', !e.target.checked); });
+        document.getElementById('copyFollowLinkBtn').addEventListener('click', (e) => { const linkInput = document.getElementById('followLinkInput'); linkInput.select(); document.execCommand('copy'); showStatus('Link copied to clipboard!', 'success'); });
+        document.getElementById('dashboardSortSelect').addEventListener('change', (e) => { state.dashboardFeed.sortBy = e.target.value; resetAndRenderDashboardFeed(); });
+        document.getElementById('dashboardTagFilter').addEventListener('input', debounce(e => { state.dashboardFeed.filter.tags = e.target.value; resetAndRenderDashboardFeed(); }, 500));
+        document.body.addEventListener('change', e => { if (e.target.id === 'circleSortSelect') { state.circleView.sortBy = e.target.value; resetAndRenderCircleFeed(); } });
+        document.body.addEventListener('input', debounce(e => { if (e.target.id === 'circleTagFilter') { state.circleView.tags = e.target.value; resetAndRenderCircleFeed(); } }, 500));
         
-        // Use event delegation for dynamic dropdowns in circle view
-        document.body.addEventListener('change', e => {
-            if (e.target.id === 'circleSortSelect') {
-                state.circleView.sortBy = e.target.value;
-                resetAndRenderCircleFeed();
-            }
-            if (e.target.id === 'circleTypeSelect') {
-                state.circleView.postTypeFilter = e.target.value || null;
-                resetAndRenderCircleFeed();
-            }
-        });
-        // ## --- CHANGE END --- ##
-
-        // --- Routing Listener ---
         window.addEventListener('hashchange', handleRoute);
-
-        // --- Global Event Delegation for Dynamic Content ---
-        // A single click listener on the body handles actions for dynamically added elements like posts and users.
         document.body.addEventListener('click', e => {
-            const link = e.target.closest('a');
-            if (link && link.getAttribute('href') === '#') {
-                e.preventDefault();
-                // Special handling for the "Back to Feed" link.
-                if (link.classList.contains('btn')) { // Heuristic to identify back button
-                     window.location.hash = ''; handleRoute();
-                }
+            const link = e.target.closest('a'); if (link && link.getAttribute('href') === '#') { e.preventDefault(); if (link.classList.contains('btn')) { window.location.hash = ''; } }
+            const joinBtn = e.target.closest('#joinCircleSubmitBtn'); if (joinBtn) { handleJoinCircle(joinBtn.dataset.circleId); return; }
+            const target = e.target.closest('[data-action]'); if (!target) return;
+            const { action, ...data } = target.dataset;
+            switch(action) {
+                case 'generate-follow-link': handleGenerateFollowLink(); break;
+                case 'request-follow': handleRequestFollow(data.username); break;
+                case 'unfollow': handleUnfollow(data.username); break;
+                case 'cancel-request': handleCancelRequest(data.username); break;
+                case 'accept-request': handleRespondToRequest(data.requestId, 'accept'); break;
+                case 'decline-request': handleRespondToRequest(data.requestId, 'decline'); break;
+                case 'vote': handleVote(data.postId, parseInt(data.direction)); break;
+                case 'delete-post': handleDeletePost(data.postId, data.circleId); break;
+                case 'filter-feed': if(window.location.hash !== '') window.location.hash = ''; state.dashboardFeed.filter.circle_id = data.circleId || null; renderMyCircles(state.myCircles); resetAndRenderDashboardFeed(); break;
+                case 'share-circle': const url = `${window.location.origin}${window.location.pathname}#/circle/${data.circleId}`; navigator.clipboard.writeText(url).then(() => showStatus('Share link copied to clipboard!', 'success')); break;
+                case 'filter-by-tag':
+                    if (!dom.circleView.classList.contains('hidden')) { const filterInput = document.getElementById('circleTagFilter'); if (filterInput) { filterInput.value = data.tag; state.circleView.tags = data.tag; resetAndRenderCircleFeed(); }
+                    } else { const filterInput = document.getElementById('dashboardTagFilter'); if (filterInput) { filterInput.value = data.tag; state.dashboardFeed.filter.tags = data.tag; resetAndRenderDashboardFeed(); } }
+                    break;
             }
-
-            const joinBtn = e.target.closest('#joinCircleSubmitBtn');
-            if (joinBtn) {
-                handleJoinCircle(joinBtn.dataset.circleId);
-                return; // Stop further processing
-            }
-
-            const target = e.target.closest('[data-action]');
-            if (!target) return;
-            const { action } = target.dataset;
-
-            if (action === 'view-circle') { return; } // Let the default hashchange handle it
-            if (action === 'vote') { handleVote(target.dataset.postId, parseInt(target.dataset.direction)); }
-            if (action === 'toggle-follow') { handleToggleFollow(target.dataset.username); }
-            if (action === 'delete-post') { handleDeletePost(target.dataset.postId, target.dataset.circleId); }
-            if (action === 'filter-feed') {
-                if(window.location.hash !== '') window.location.hash = '';
-                state.dashboardFeed.filter.circle_id = target.dataset.circleId || null;
-                renderMyCircles(state.myCircles);
-                resetAndRenderDashboardFeed();
-            }
-            if (action === 'share-circle') { const { circleId } = target.dataset; const url = `${window.location.origin}${window.location.pathname}#/circle/${circleId}`; navigator.clipboard.writeText(url).then(() => showStatus('Share link copied to clipboard!', 'success')); }
         });
-
-        // Initial setup
-        renderPostContentFields();
         initTheme();
-        handleRoute(); // Kick off the application by handling the initial route.
+        handleRoute();
     });
   </script>
 </body>
