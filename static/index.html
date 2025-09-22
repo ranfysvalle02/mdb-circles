@@ -1,417 +1,684 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>myCircles</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Exo+2:wght@300;400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-  <style>
-    :root {
-      --primary-color: #00dcff; --secondary-color: #a27bff; --background-color: #0a041f;
-      --card-background: rgba(26, 19, 52, 0.25); --border-color: rgba(162, 123, 255, 0.3);
-      --timeline-color: rgba(162, 123, 255, 0.4); --list-item-hover-bg: rgba(255, 255, 255, 0.1);
-      --list-item-active-bg: rgba(0, 220, 255, 0.15); --list-item-active-color: #ffffff;
-      --list-item-active-border-color: var(--primary-color); --text-color: #e0e0e0;
-      --heading-color: #ffffff; --text-muted-color: #a0a0b0; --link-color: var(--primary-color);
-      --link-hover-color: #ffffff; --primary-glow: rgba(0, 220, 255, 0.5);
-      --secondary-glow: rgba(162, 123, 255, 0.5); --form-input-bg: rgba(10, 4, 31, 0.5);
-    }
-    :root[data-theme="light"] {
-      --primary-color: #007bff; --secondary-color: #6f42c1; --background-color: #f4f7fc;
-      --card-background: rgba(255, 255, 255, 0.5); --border-color: rgba(0, 0, 0, 0.15);
-      --timeline-color: rgba(0, 123, 255, 0.4); --list-item-hover-bg: rgba(0, 0, 0, 0.075);
-      --list-item-active-bg: var(--primary-color); --list-item-active-color: #ffffff;
-      --list-item-active-border-color: var(--primary-color); --text-color: #212529;
-      --heading-color: #1a1334; --text-muted-color: #6c757d; --link-color: var(--primary-color);
-      --link-hover-color: var(--secondary-color); --primary-glow: rgba(0, 123, 255, 0.4);
-      --secondary-glow: rgba(111, 66, 193, 0.4); --form-input-bg: rgba(255, 255, 255, 0.6);
-    }
-    #particles-js { position: fixed; width: 100%; height: 100%; top: 0; left: 0; z-index: -2; background-color: var(--background-color); }
-    body { font-family: 'Exo 2', sans-serif; color: var(--text-color); background-color: transparent; min-height: 100vh; margin: 0; padding-top: 1rem; padding-bottom: 1rem; overflow-x: hidden; transition: color 0.3s, background-color 0.3s; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
-    .container { max-width: 1100px; }
-    h1, h2, h3, h4, h5 { font-family: 'Orbitron', sans-serif; color: var(--heading-color); }
-    h1 { text-shadow: 0 0 15px var(--primary-glow); }
-    h3, h4 { border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1rem; }
-    a { color: var(--link-color); text-decoration: none; transition: color 0.2s ease; }
-    a:hover { color: var(--link-hover-color); text-decoration: underline; }
-    .card-title a { color: var(--heading-color); } .card-title a:hover { color: var(--primary-color); }
-    #authSection { min-height: 350px; display: flex; align-items: center; justify-content: center; position: relative; }
-    #authSection .auth-view { width: 100%; max-width: 420px; }
-    #authFormContainer { display: flex; flex-direction: column; gap: 1rem; }
-    .auth-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-top: 0.5rem; }
-    .auth-actions #backToWelcomeBtn { grid-column: 1 / 2; }
-    .auth-actions #loginSubmitButton { grid-column: 2 / 3; }
-    .auth-actions #registerSubmitButton { grid-column: 3 / 4; }
-    @keyframes gentleFadeInUp { from { opacity: 0; transform: translateY(15px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-    @keyframes gentleFadeOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.98); } }
-    .animate-in { animation: gentleFadeInUp 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
-    .animate-out { animation: gentleFadeOut 0.4s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards; }
-    #themeToggleBtnLogin { position: absolute; top: 15px; right: 15px; z-index: 10; }
-    #authFormContainer .form-label { text-align: left; display: block; margin-bottom: 0.25rem; font-weight: 500; color: var(--text-muted-color); }
-    #authFormContainer .form-control { background-color: var(--form-input-bg); }
-    .glass-card { background: var(--card-background); border-radius: 15px; padding: 25px; border: 1px solid var(--border-color); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 8px 32px 0 rgba(10, 4, 31, 0.37); margin-bottom: 25px; animation: fadeIn 0.6s ease-out forwards; transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s; }
-    .glass-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px 0 rgba(10, 4, 31, 0.5); }
-    .btn { font-family: 'Orbitron', sans-serif; font-weight: 600; border-radius: 8px; border: none; padding: 10px 15px; transition: all 0.3s ease; background-size: 200% 100%; color: white; letter-spacing: 1px; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
-    .btn-primary { background-image: linear-gradient(to right, #6a11cb 0%, #2575fc 51%, #6a11cb 100%); }
-    .btn-success { background-image: linear-gradient(to right, #11cb6a 0%, #259cfc 51%, #11cb6a 100%); }
-    .btn-secondary { background-image: linear-gradient(to right, #434343 0%, #000000 51%, #434343 100%); }
-    .btn-danger { background-image: linear-gradient(to right, #cb1111 0%, #fc2575 51%, #cb1111 100%); }
-    .btn:hover { background-position: right center; transform: translateY(-2px) scale(1.05); box-shadow: 0 0 15px var(--secondary-glow); color: #fff; text-decoration: none; }
-    .form-control, .form-select { background-color: var(--form-input-bg); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 8px; transition: border-color 0.2s, box-shadow 0.2s; }
-    .form-control::placeholder { color: #aaa; }
-    .form-control:focus, .form-select:focus { background-color: rgba(0, 0, 0, 0.4); color: var(--text-color); box-shadow: 0 0 12px var(--primary-glow); border-color: var(--primary-color); }
-    .list-group-item { background-color: transparent; border-color: var(--border-color); color: var(--text-color); }
-    .list-group-item.clickable { cursor: pointer; transition: background-color 0.2s ease, transform 0.2s ease, color 0.2s ease; }
-    .list-group-item.clickable:hover { background-color: var(--list-item-hover-bg); transform: translateX(5px); }
-    [data-theme="light"] a.list-group-item-action{ color: black !important; font-weight: bold; }
-    [data-theme="light"] .list-group-item-action.active { color: var(--list-item-active-color) !important; background-color: var(--list-item-active-bg); border-color: var(--list-item-active-border-color) !important; font-weight: bold; box-shadow: inset 0 0 10px rgba(0,0,0,0.2), 0 0 8px var(--primary-glow); }
-    [data-theme="dark"] a.list-group-item-action{ color: white !important; font-weight: bold; }
-    [data-theme="dark"] .list-group-item-action.active { color: var(--list-item-active-color) !important; background-color: var(--list-item-active-bg); border-color: var(--list-item-active-border-color) !important; font-weight: bold; box-shadow: inset 0 0 10px rgba(0,0,0,0.2), 0 0 8px var(--primary-glow); }
-    .modal-content { background: var(--card-background); border-radius: 15px; border: 1px solid var(--border-color); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); }
-    .modal-header, .modal-footer { border-color: var(--border-color); }
-    .btn-close { filter: invert(1) grayscale(100%) brightness(200%); }
-    :root[data-theme="light"] .btn-close { filter: none; }
-    @media (min-width: 992px) { #sidebar { position: sticky; top: 1.5rem; height: calc(100vh - 3rem); overflow-y: auto; } #sidebar::-webkit-scrollbar { width: 5px; } #sidebar::-webkit-scrollbar-track { background: transparent; } #sidebar::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; } }
-    .feed-timeline { border-left: 2px solid var(--timeline-color); padding-left: 25px; }
-    .post-card-wrapper { position: relative; }
-    .post-card-wrapper::before { content: ''; position: absolute; left: -35px; top: 25px; height: 18px; width: 18px; background-color: var(--secondary-glow); border: 3px solid var(--text-color); border-radius: 50%; z-index: 1; }
-    .avatar { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--border-color); background-color: rgba(255,255,255,0.1); }
-    .avatar-lg { width: 60px; height: 60px; } .avatar-sm { width: 30px; height: 30px; }
-    .hidden { display: none !important; }
-    #globalStatus { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1056; }
-    .empty-placeholder { color: var(--text-muted-color); text-align: center; padding: 2rem; }
-    .post-card .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background: #000; border-radius: 8px; }
-    .post-card .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-    #feed-loader { text-align: center; padding: 1.5rem; }
-    .vote-controls { display: flex; flex-direction: column; align-items: center; justify-content: start; gap: 0.2rem; margin-right: 15px; }
-    .vote-btn { background: none; border: none; color: var(--text-muted-color); cursor: pointer; padding: 0.2rem 0.5rem; font-size: 1.5rem; transition: color 0.2s, transform 0.2s; }
-    .vote-btn:hover { color: var(--heading-color); transform: scale(1.1); }
-    .vote-btn.up.voted { color: var(--primary-color); text-shadow: 0 0 8px var(--primary-glow); }
-    .vote-btn.down.voted { color: var(--secondary-color); text-shadow: 0 0 8px var(--secondary-glow); }
-    .vote-score { font-family: 'Orbitron', sans-serif; font-size: 1.1rem; font-weight: bold; color: var(--heading-color); }
-    .post-card-body { flex: 1; }
-    .link-preview { border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-top: 1rem; background: rgba(0,0,0,0.2); transition: background-color 0.2s; }
-    .link-preview:hover { background: rgba(0,0,0,0.3); }
-    .link-preview-title { font-size: 1.1rem; font-weight: bold; }
-    .link-preview-host { font-size: 0.9rem; color: var(--text-muted-color); }
-    .post-tags .badge { cursor: pointer; }
-    .request-actions .btn { padding: 0.2rem 0.5rem; font-size: 0.8rem; }
-  </style>
+ <meta charset="UTF-8">
+ <title>myCircles</title>
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+ <link rel="preconnect" href="https://fonts.googleapis.com">
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+ <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Exo+2:wght@300;400;500&display=swap" rel="stylesheet">
+ <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+ <style>
+  :root {
+   --primary-color: #00dcff; --secondary-color: #a27bff; --background-color: #0a041f;
+   --card-background: rgba(26, 19, 52, 0.25); --border-color: rgba(162, 123, 255, 0.3);
+   --timeline-color: rgba(162, 123, 255, 0.4); --list-item-hover-bg: rgba(255, 255, 255, 0.1);
+   --list-item-active-bg: rgba(0, 220, 255, 0.15); --list-item-active-color: #ffffff;
+   --list-item-active-border-color: var(--primary-color); --text-color: #e0e0e0;
+   --heading-color: #ffffff; --text-muted-color: #a0a0b0; --link-color: var(--primary-color);
+   --link-hover-color: #ffffff; --primary-glow: rgba(0, 220, 255, 0.5);
+   --secondary-glow: rgba(162, 123, 255, 0.5); --form-input-bg: rgba(10, 4, 31, 0.5);
+   --my-message-bg: rgba(0, 220, 255, 0.1);
+  }
+  :root[data-theme="light"] {
+   --primary-color: #007bff; --secondary-color: #6f42c1; --background-color: #f4f7fc;
+   --card-background: rgba(255, 255, 255, 0.8); --border-color: rgba(0, 0, 0, 0.15);
+   --timeline-color: rgba(0, 123, 255, 0.4); --list-item-hover-bg: rgba(0, 0, 0, 0.075);
+   --list-item-active-bg: var(--primary-color); --list-item-active-color: #ffffff;
+   --list-item-active-border-color: var(--primary-color); --text-color: #212529;
+   --heading-color: #1a1334; --text-muted-color: #6c757d; --link-color: var(--primary-color);
+   --link-hover-color: var(--secondary-color); --primary-glow: rgba(0, 123, 255, 0.4);
+   --secondary-glow: rgba(111, 66, 193, 0.4); --form-input-bg: rgba(255, 255, 255, 0.6);
+   --my-message-bg: rgba(0, 123, 255, 0.1);
+  }
+  #particles-js { position: fixed; width: 100%; height: 100%; top: 0; left: 0; z-index: -2; background-color: var(--background-color); }
+  body { font-family: 'Exo 2', sans-serif; color: var(--text-color); background-color: transparent; min-height: 100vh; margin: 0; padding-top: 1rem; padding-bottom: 1rem; overflow-x: hidden; transition: color 0.3s, background-color 0.3s; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+  .container { max-width: 1100px; }
+  h1, h2, h3, h4, h5 { font-family: 'Orbitron', sans-serif; color: var(--heading-color); }
+  h1 { text-shadow: 0 0 15px var(--primary-glow); }
+  h3, h4 { border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1rem; }
+  a { color: var(--link-color); text-decoration: none; transition: color 0.2s ease; }
+  a:hover { color: var(--link-hover-color); text-decoration: underline; }
+  .card-title a { color: var(--heading-color); } .card-title a:hover { color: var(--primary-color); }
+  #authSection { min-height: 350px; display: flex; align-items: center; justify-content: center; position: relative; }
+  #authSection .auth-view { width: 100%; max-width: 420px; }
+  #authFormContainer { display: flex; flex-direction: column; gap: 1rem; }
+  .auth-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-top: 0.5rem; }
+  .auth-actions #backToWelcomeBtn { grid-column: 1 / 2; }
+  .auth-actions #loginSubmitButton { grid-column: 2 / 3; }
+  .auth-actions #registerSubmitButton { grid-column: 3 / 4; }
+  @keyframes gentleFadeInUp { from { opacity: 0; transform: translateY(15px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  @keyframes gentleFadeOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.98); } }
+  .animate-in { animation: gentleFadeInUp 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
+  .animate-out { animation: gentleFadeOut 0.4s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards; }
+  #themeToggleBtnLogin { position: absolute; top: 15px; right: 15px; z-index: 10; }
+  #authFormContainer .form-label { text-align: left; display: block; margin-bottom: 0.25rem; font-weight: 500; color: var(--text-muted-color); }
+  #authFormContainer .form-control { background-color: var(--form-input-bg); }
+  .glass-card { background: var(--card-background); border-radius: 15px; padding: 25px; border: 1px solid var(--border-color); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 8px 32px 0 rgba(10, 4, 31, 0.37); margin-bottom: 25px; animation: fadeIn 0.6s ease-out forwards; transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s; }
+  .glass-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px 0 rgba(10, 4, 31, 0.5); }
+  .btn { font-family: 'Orbitron', sans-serif; font-weight: 600; border-radius: 8px; border: none; padding: 10px 15px; transition: all 0.3s ease; background-size: 200% 100%; color: white; letter-spacing: 1px; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
+  .btn-primary { background-image: linear-gradient(to right, #6a11cb 0%, #2575fc 51%, #6a11cb 100%); }
+  .btn-success { background-image: linear-gradient(to right, #11cb6a 0%, #259cfc 51%, #11cb6a 100%); }
+  .btn-secondary { background-image: linear-gradient(to right, #434343 0%, #000000 51%, #434343 100%); }
+  .btn-danger { background-image: linear-gradient(to right, #cb1111 0%, #fc2575 51%, #cb1111 100%); }
+  .btn:hover { background-position: right center; transform: translateY(-2px) scale(1.05); box-shadow: 0 0 15px var(--secondary-glow); color: #fff; text-decoration: none; }
+  .form-control, .form-select { background-color: var(--form-input-bg); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 8px; transition: border-color 0.2s, box-shadow 0.2s; }
+  .form-control::placeholder { color: #aaa; }
+  .form-control:focus, .form-select:focus { background-color: rgba(0, 0, 0, 0.4); color: var(--text-color); box-shadow: 0 0 12px var(--primary-glow); border-color: var(--primary-color); }
+  .list-group-item { background-color: transparent; border-color: var(--border-color); color: var(--text-color); }
+  .list-group-item.clickable { cursor: pointer; transition: background-color 0.2s ease, transform 0.2s ease, color 0.2s ease; }
+  .list-group-item.clickable:hover { background-color: var(--list-item-hover-bg); transform: translateX(5px); }
+  [data-theme="light"] a.list-group-item-action{ color: black !important; font-weight: bold; }
+  [data-theme="light"] .list-group-item-action.active { color: var(--list-item-active-color) !important; background-color: var(--list-item-active-bg); border-color: var(--list-item-active-border-color) !important; font-weight: bold; box-shadow: inset 0 0 10px rgba(0,0,0,0.2), 0 0 8px var(--primary-glow); }
+  [data-theme="dark"] a.list-group-item-action{ color: white !important; font-weight: bold; }
+  [data-theme="dark"] .list-group-item-action.active { color: var(--list-item-active-color) !important; background-color: var(--list-item-active-bg); border-color: var(--list-item-active-border-color) !important; font-weight: bold; box-shadow: inset 0 0 10px rgba(0,0,0,0.2), 0 0 8px var(--primary-glow); }
+  .modal-content { background: var(--card-background); border-radius: 15px; border: 1px solid var(--border-color); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); }
+  .modal-header, .modal-footer { border-color: var(--border-color); }
+  .btn-close { filter: invert(1) grayscale(100%) brightness(200%); }
+  :root[data-theme="light"] .btn-close { filter: none; }
+  @media (min-width: 992px) { #sidebar { position: sticky; top: 1.5rem; height: calc(100vh - 3rem); overflow-y: auto; } #sidebar::-webkit-scrollbar { width: 5px; } #sidebar::-webkit-scrollbar-track { background: transparent; } #sidebar::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; } }
+  .feed-timeline { border-left: 2px solid var(--timeline-color); padding-left: 25px; }
+  .post-card-wrapper { position: relative; }
+  .post-card-wrapper::before { content: ''; position: absolute; left: -35px; top: 25px; height: 18px; width: 18px; background-color: var(--secondary-glow); border: 3px solid var(--text-color); border-radius: 50%; z-index: 1; }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--border-color); background-color: rgba(255,255,255,0.1); }
+  .avatar-lg { width: 60px; height: 60px; } .avatar-sm { width: 30px; height: 30px; }
+  .hidden { display: none !important; }
+  #globalStatus { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1056; }
+  .empty-placeholder { color: var(--text-muted-color); text-align: center; padding: 2rem; }
+  .post-card .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background: #000; border-radius: 8px; }
+  .post-card .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  #feed-loader { text-align: center; padding: 1.5rem; }
+  .vote-controls { display: flex; flex-direction: column; align-items: center; justify-content: start; gap: 0.2rem; margin-right: 15px; }
+  .vote-btn { background: none; border: none; color: var(--text-muted-color); cursor: pointer; padding: 0.2rem 0.5rem; font-size: 1.5rem; transition: color 0.2s, transform 0.2s; }
+  .vote-btn:hover { color: var(--heading-color); transform: scale(1.1); }
+  .vote-btn.up.voted { color: var(--primary-color); text-shadow: 0 0 8px var(--primary-glow); }
+  .vote-btn.down.voted { color: var(--secondary-color); text-shadow: 0 0 8px var(--secondary-glow); }
+  .vote-score { font-family: 'Orbitron', sans-serif; font-size: 1.1rem; font-weight: bold; color: var(--heading-color); }
+  .post-card-body { flex: 1; }
+  .link-preview { border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-top: 1rem; background: rgba(0,0,0,0.2); transition: background-color 0.2s; }
+  .link-preview:hover { background: rgba(0,0,0,0.3); }
+  .link-preview-title { font-size: 1.1rem; font-weight: bold; }
+  .link-preview-host { font-size: 0.9rem; color: var(--text-muted-color); }
+  .post-tags .badge { cursor: pointer; }
+  .request-actions .btn { padding: 0.2rem 0.5rem; font-size: 0.8rem; }
+  #youtubeSearchResultsContainer, #selectedPlaylistVideosContainer { min-height:150px; max-height: 250px; overflow-y: auto; background: var(--form-input-bg); border-radius: 8px; padding: 0.5rem; border: 1px solid var(--border-color); }
+  .yt-search-result, .yt-selected-video { padding: 0.5rem; border-bottom: 1px solid var(--border-color); transition: background-color 0.2s; }
+  .yt-search-result:last-child, .yt-selected-video:last-child { border-bottom: none; }
+  .yt-selected-video[draggable="true"] { cursor: grab; }
+  .yt-selected-video.dragging { opacity: 0.4; background: var(--primary-glow); }
+  .yt-search-result-skeleton { background-color: var(--form-input-bg); border-radius: 4px; height: 50px; margin-bottom: 0.5rem; opacity: 0.5; }
+  .playlist-queue-wrapper { background-color: var(--form-input-bg); }
+  .playlist-queue-item { cursor: pointer; background-color: transparent; border-color: var(--border-color); transition: background-color 0.2s; }
+  .playlist-queue-item:hover { background-color: var(--list-item-hover-bg); }
+  .playlist-queue-item.active { background-color: var(--list-item-active-bg); color: var(--list-item-active-color) !important; border-left: 3px solid var(--list-item-active-border-color); }
+  .playlist-queue-item.active .text-muted { color: inherit !important; opacity: 0.8; }
+  #playlist-player-embed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  @media (max-width: 991.98px) { .border-start-lg { border-left: none !important; border-top: 1px solid var(--border-color); } .playlist-queue-wrapper { max-width: 100%; } #playlist-queue-list { max-height: 25vh; } }
+  .playlist-play-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; cursor: pointer; border-radius: 15px; }
+  .card.playlist-card:hover .playlist-play-overlay { opacity: 1; }
+  .playlist-play-overlay .bi-play-circle-fill { font-size: 3rem; text-shadow: 0 0 10px rgba(0,0,0,0.5); }
+  #qrCodeContainer img { max-width: 100%; height: auto; border-radius: 8px; border: 2px solid var(--border-color); }
+  
+  /* --- Smarter Chat Styles --- */
+  #chatModal .modal-body { display: flex; height: 80vh; padding: 0.5rem; gap: 0.5rem; }
+  #chat-sidebar { flex: 0 0 220px; background-color: var(--form-input-bg); border-radius: 8px; display: flex; flex-direction: column; padding: 0.5rem; border: 1px solid var(--border-color); }
+  #chat-main { flex-grow: 1; display: flex; flex-direction: column; gap: 0.5rem; }
+  #chat-participants-list { flex-grow: 1; overflow-y: auto; }
+  #chat-participants-list .list-group-item { padding: 0.5rem 0.75rem; border-radius: 6px !important; }
+  #chat-main-top { flex-grow: 1; display: flex; flex-direction: column; background-color: var(--form-input-bg); border: 1px solid var(--border-color); border-radius: 8px; }
+  #videoGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; padding: 0.5rem; }
+  .video-container { position: relative; aspect-ratio: 16 / 9; background-color: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 2px solid transparent; transition: border-color 0.3s; }
+  .video-container.speaking { border-color: var(--primary-color); box-shadow: 0 0 10px var(--primary-glow); }
+  .video-container video { width: 100%; height: 100%; object-fit: cover; }
+  .video-placeholder { color: var(--text-muted-color); font-size: 3rem; }
+  .video-overlay { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, rgba(0,0,0,0.7), transparent); padding: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+  .video-overlay-name { color: white; font-weight: bold; text-shadow: 1px 1px 2px black; }
+  .video-overlay-icons .bi { color: white; margin-left: 0.5rem; }
+  .local-video-controls { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); z-index: 10; display: none; gap: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem 1rem; border-radius: 20px; }
+  .video-container.is-local .local-video-controls { display: flex; }
+  #chatMessages { flex-grow: 1; overflow-y: auto; padding: 1rem; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 0.5rem; }
+  .chat-message { max-width: 80%; width: fit-content; padding: 0.5rem 1rem; border-radius: 12px; word-wrap: break-word; }
+  .chat-message .sender { font-weight: bold; display: block; font-size: 0.8em; margin-bottom: 0.25rem; opacity: 0.8; }
+  .chat-message.my-message { align-self: flex-end; background-color: var(--my-message-bg); border-bottom-right-radius: 2px; }
+  .chat-message.other-message { align-self: flex-start; background-color: var(--card-background); border-bottom-left-radius: 2px; }
+  .chat-message.system { align-self: center; background: none; color: var(--text-muted-color); font-style: italic; font-size: 0.9em; }
+  #chat-main-bottom { flex-shrink: 0; }
+ </style>
 </head>
 <body>
-  <div id="particles-js"></div>
+ <div id="particles-js"></div>
 
-  <div class="container">
-    <h1 class="text-center my-4 d-flex align-items-center justify-content-center gap-3">
-        <span>myCircles</span>
-        <svg id="animated-logo-final" width="65" height="65" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="transform: translateY(-4px);"><defs><filter id="glow-filter-final"><feGaussianBlur stdDeviation="2" result="coloredBlur"></feGaussianBlur><feMerge><feMergeNode in="coloredBlur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter></defs><circle cx="50" cy="50" r="48" fill="none" stroke="var(--border-color)" stroke-width="0.5" stroke-dasharray="1 8" opacity="0.5"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="60s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="42" fill="none" stroke="var(--secondary-color)" stroke-width="2" stroke-dasharray="80 200" stroke-linecap="round" opacity="0.8"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="-360 50 50" dur="10s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="34" fill="none" stroke="var(--primary-color)" stroke-width="2.5" stroke-dasharray="107 107" stroke-linecap="round" filter="url(#glow-filter-final)"> <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="4s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="26" fill="none" stroke="var(--primary-color)" stroke-width="2" stroke-dasharray="50 150" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="360 50 50" to="0 50 50" dur="7s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="18" fill="none" stroke="var(--secondary-color)" stroke-width="1" stroke-dasharray="20 15" opacity="0.7"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="-360 50 50" dur="3s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="5" fill="var(--primary-glow)"><animate attributeName="r" values="5;8;5" dur="2.2s" repeatCount="indefinite" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.45 0 0.55 1; 0.45 0 0.55 1"></animate><animate attributeName="opacity" values="1;0.5;1" dur="2.2s" repeatCount="indefinite"></animate></circle></svg>
-    </h1>
+ <div class="container">
+  <h1 class="text-center my-4 d-flex align-items:center justify-content-center gap-3">
+    <span>myCircles</span>
+    <svg id="animated-logo-final" width="65" height="65" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="transform: translateY(-4px);"><defs><filter id="glow-filter-final"><feGaussianBlur stdDeviation="2" result="coloredBlur"></feGaussianBlur><feMerge><feMergeNode in="coloredBlur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter></defs><circle cx="50" cy="50" r="48" fill="none" stroke="var(--border-color)" stroke-width="0.5" stroke-dasharray="1 8" opacity="0.5"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="60s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="42" fill="none" stroke="var(--secondary-color)" stroke-width="2" stroke-dasharray="80 200" stroke-linecap="round" opacity="0.8"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="-360 50 50" dur="10s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="34" fill="none" stroke="var(--primary-color)" stroke-width="2.5" stroke-dasharray="107 107" stroke-linecap="round" filter="url(#glow-filter-final)"> <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="4s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="26" fill="none" stroke="var(--primary-color)" stroke-width="2" stroke-dasharray="50 150" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="360 50 50" to="0 50 50" dur="7s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="18" fill="none" stroke="var(--secondary-color)" stroke-width="1" stroke-dasharray="20 15" opacity="0.7"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="-360 50 50" dur="3s" repeatCount="indefinite" /></circle><circle cx="50" cy="50" r="5" fill="var(--primary-glow)"><animate attributeName="r" values="5;8;5" dur="2.2s" repeatCount="indefinite" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.45 0 0.55 1; 0.45 0 0.55 1"></animate><animate attributeName="opacity" values="1;0.5;1" dur="2.2s" repeatCount="indefinite"></animate></circle></svg>
+  </h1>
 
-    <div id="authSection" class="glass-card text-center hidden">
-        <button id="themeToggleBtnLogin" class="btn btn-secondary btn-sm" title="Toggle Theme"></button>
-        <div id="authWelcome" class="auth-view"><h2 class="h1">Welcome Back</h2><p class="text-muted fs-5">Join your circle of friends and share what's new.</p><button id="loginButton" class="btn btn-primary mt-3 px-4 py-2"><i class="bi bi-box-arrow-in-right"></i> Login / Register</button></div>
-        <div id="authFormContainer" class="auth-view hidden"><h2 class="mb-3">Join the Circle</h2><div><label for="usernameInput" class="form-label">Username</label><input type="text" class="form-control" id="usernameInput" placeholder="e.g., alice" autocomplete="username"></div><div><label for="passwordInput" class="form-label">Password</label><input type="password" class="form-control" id="passwordInput" placeholder="e.g., password123" autocomplete="current-password"></div><div class="auth-actions"><button id="backToWelcomeBtn" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back</button><button id="loginSubmitButton" class="btn btn-primary">Login</button><button id="registerSubmitButton" class="btn btn-success">Register</button></div></div>
-    </div>
-
-    <div id="appSection" class="hidden">
-      <div id="appHeader" class="glass-card d-flex justify-content-between align-items-center mb-4">
-        <h2 id="welcomeMessage" class="mb-0 fs-4"></h2>
-        <div id="userActions"><button id="createPostBtn" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> New Post</button><button id="createCircleBtn" class="btn btn-success btn-sm"><i class="bi bi-plus-circle"></i> New Circle</button><button id="themeToggleBtn" class="btn btn-secondary btn-sm" title="Toggle Theme"></button><button id="logoutButton" class="btn btn-secondary btn-sm"><i class="bi bi-box-arrow-left"></i> Logout</button></div>
-      </div>
-
-      <div id="dashboardView" class="hidden">
-        <div class="row">
-          <div class="col-12 col-lg-4">
-            <div id="sidebar">
-              <div class="glass-card"><h3><i class="bi bi-person-circle"></i> My Profile</h3><div id="profileContainer"></div></div>
-              <div class="glass-card"><h3><i class="bi bi-person-plus"></i> Follow Requests</h3><div id="followRequestsContainer" class="list-group list-group-flush"></div></div>
-              <div class="glass-card"><h3><i class="bi bi-grid-3x3-gap"></i> My Circles</h3><p class="text-muted small">Click a circle to filter your feed.</p><div id="myCirclesContainer" class="list-group"></div></div>
-              <div class="glass-card"><h3><i class="bi bi-person-check"></i> Following</h3><div id="followingContainer" class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;"></div></div>
-              <div class="glass-card"><h3><i class="bi bi-people"></i> Discover Users</h3><h5 class="text-primary fs-6">Suggestions for You</h5><div id="userSuggestionsContainer" class="list-group list-group-flush mb-3"></div><h5 class="text-primary fs-6 pt-3" style="border-top: 1px solid var(--border-color);">Search Publicly</h5><div class="input-group"><input type="text" id="userSearchInput" class="form-control" placeholder="Search for anyone..."><button id="userSearchBtn" class="btn btn-primary"><i class="bi bi-search"></i></button></div><div id="usersContainer" class="list-group list-group-flush mt-3"></div></div>
-            </div>
-          </div>
-          <div class="col-12 col-lg-8">
-            <div class="d-flex justify-content-end align-items-center mb-3 gap-3 flex-wrap">
-                <div class="input-group input-group-sm" style="width: auto;"><span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);"><i class="bi bi-tags"></i></span><input type="text" id="dashboardTagFilter" class="form-control border-start-0" placeholder="Filter by tags (e.g. tech, news)" style="min-width: 180px;"></div>
-                <div class="d-flex align-items-center gap-2"><label for="dashboardSortSelect" class="form-label mb-0 text-muted small">Sort by:</label><select id="dashboardSortSelect" class="form-select form-select-sm" style="width: auto;"><option value="newest">Newest</option><option value="top">Top Votes</option></select></div>
-            </div>
-            <div id="feedContainer" class="feed-timeline"></div>
-          </div>
-        </div>
-      </div>
-
-      <div id="circleView" class="hidden">
-        <div id="circleHeader" class="glass-card"></div>
-        <div id="circleFeedContainer" class="feed-timeline"></div>
-      </div>
-    </div>
-
-    <div id="feed-loader" class="hidden"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>
+  <div id="authSection" class="glass-card text-center hidden">
+   <button id="themeToggleBtnLogin" class="btn btn-secondary btn-sm" title="Toggle Theme"></button>
+   <div id="authWelcome" class="auth-view"><h2 class="h1">Welcome Back</h2><p class="text-muted fs-5">Join your circle of friends and share what's new.</p><button id="loginButton" class="btn btn-primary mt-3 px-4 py-2"><i class="bi bi-box-arrow-in-right"></i> Login / Register</button></div>
+   <div id="authFormContainer" class="auth-view hidden"><h2 class="mb-3">Join the Circle</h2><div><label for="usernameInput" class="form-label">Username</label><input type="text" class="form-control" id="usernameInput" placeholder="e.g., alice" autocomplete="username"></div><div><label for="passwordInput" class="form-label">Password</label><input type="password" class="form-control" id="passwordInput" placeholder="e.g., password123" autocomplete="current-password"></div><div class="auth-actions"><button id="backToWelcomeBtn" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back</button><button id="loginSubmitButton" class="btn btn-primary">Login</button><button id="registerSubmitButton" class="btn btn-success">Register</button></div></div>
   </div>
 
-  <div id="globalStatus"></div>
+  <div id="appSection" class="hidden">
+   <div id="appHeader" class="glass-card d-flex justify-content-between align-items-center mb-4">
+    <h2 id="welcomeMessage" class="mb-0 fs-4"></h2>
+    <div id="userActions"><button id="createPostBtn" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> New Post</button><button id="createCircleBtn" class="btn btn-success btn-sm"><i class="bi bi-plus-circle"></i> New Circle</button><button id="themeToggleBtn" class="btn btn-secondary btn-sm" title="Toggle Theme"></button><button id="logoutButton" class="btn btn-secondary btn-sm"><i class="bi bi-box-arrow-left"></i> Logout</button></div>
+   </div>
 
-  <div class="modal fade" id="createCircleModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Create New Circle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createCircleForm"><div class="mb-3"><input type="text" id="circleName" class="form-control" placeholder="Circle Name" required></div><div class="mb-3"><textarea id="circleDescription" class="form-control" placeholder="Description (Optional)"></textarea></div><div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" role="switch" id="isPublicSwitch" checked><label class="form-check-label" for="isPublicSwitch">Publicly Discoverable</label></div><div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" role="switch" id="protectWithPasswordSwitch"><label class="form-check-label" for="protectWithPasswordSwitch">Protect with a "Whisper" (Password)</label></div><div class="mb-3 hidden" id="circlePasswordContainer"><input type="password" id="circlePassword" class="form-control" placeholder="Enter Whisper (min 8 chars)" minlength="8"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button id="submitCircleButton" type="button" class="btn btn-success"><i class="bi bi-check-lg"></i> Create Circle</button></div></div></div></div>
-  <div class="modal fade" id="createPostModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Create New Post</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createPostForm"><div class="mb-3"><label for="circleSelect" class="form-label">Share to Circle</label><select id="circleSelect" class="form-select"></select></div><div class="mb-3"><label for="postText" class="form-label">Text Content</label><textarea id="postText" name="text" class="form-control" placeholder="What's on your mind?" rows="4"></textarea></div><div class="mb-3"><label for="postLink" class="form-label">Link (Optional)</label><input type="url" id="postLink" name="link" class="form-control" placeholder="https://example.com"></div><div class="mb-3"><label for="postTags" class="form-label">Tags (comma-separated)</label><input type="text" id="postTags" name="tags" class="form-control" placeholder="e.g. tech, news, gaming"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button id="submitPostButton" type="button" class="btn btn-primary"><i class="bi bi-send"></i> Submit Post</button></div></div></div></div>
-  <div class="modal fade" id="followLinkModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-magic"></i> Your Magical Follow Link</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Share this link with a friend. It's a one-time use link and will expire in 10 minutes.</p><div class="input-group"><input type="text" class="form-control" id="followLinkInput" readonly><button class="btn btn-primary" id="copyFollowLinkBtn"><i class="bi bi-clipboard-check"></i> Copy</button></div></div></div></div></div>
+   <div id="dashboardView" class="hidden">
+    <div class="row">
+     <div class="col-12 col-lg-4">
+      <div id="sidebar">
+       <div class="glass-card"><h3><i class="bi bi-person-circle"></i> My Profile</h3><div id="profileContainer"></div></div>
+       <div class="glass-card"><h3><i class="bi bi-person-plus"></i> Follow Requests</h3><div id="followRequestsContainer" class="list-group list-group-flush"></div></div>
+       <div class="glass-card"><h3><i class="bi bi-grid-3x3-gap"></i> My Circles</h3><p class="text-muted small">Click a circle to view its feed.</p><div id="myCirclesContainer" class="list-group"></div></div>
+       <div class="glass-card"><h3><i class="bi bi-person-check"></i> Following</h3><div id="followingContainer" class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;"></div></div>
+       <div class="glass-card"><h3><i class="bi bi-people"></i> Discover Users</h3><h5 class="text-primary fs-6">Suggestions for You</h5><div id="userSuggestionsContainer" class="list-group list-group-flush mb-3"></div><h5 class="text-primary fs-6 pt-3" style="border-top: 1px solid var(--border-color);">Search Publicly</h5><div class="input-group"><input type="text" id="userSearchInput" class="form-control" placeholder="Search for anyone..."><button id="userSearchBtn" class="btn btn-primary"><i class="bi bi-search"></i></button></div><div id="usersContainer" class="list-group list-group-flush mt-3"></div></div>
+      </div>
+     </div>
+     <div class="col-12 col-lg-8">
+      <div class="d-flex justify-content-end align-items-center mb-3 gap-3 flex-wrap">
+        <div class="input-group input-group-sm" style="width: auto;"><span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);"><i class="bi bi-tags"></i></span><input type="text" id="dashboardTagFilter" class="form-control border-start-0" placeholder="Filter by tags (e.g. tech, news)" style="min-width: 180px;"></div>
+        <div class="d-flex align-items-center gap-2"><label for="dashboardSortSelect" class="form-label mb-0 text-muted small">Sort by:</label><select id="dashboardSortSelect" class="form-select form-select-sm" style="width: auto;"><option value="newest">Newest</option><option value="top">Top Votes</option></select></div>
+      </div>
+      <div id="feedContainer" class="feed-timeline"></div>
+     </div>
+    </div>
+   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.12.0/tsparticles.bundle.min.js"></script>
+   <div id="circleView" class="hidden">
+    <div id="circleHeader" class="glass-card"></div>
+    <div id="circleFeedContainer" class="feed-timeline"></div>
+   </div>
+  </div>
 
-  <script>
-    const particlesConfigDark = { particles: { number: { value: 80, density: { enable: true, value_area: 800 } }, color: { value: ["#00dcff", "#a27bff", "#ffffff"] }, shape: { type: "circle" }, opacity: { value: {min: 0.1, max: 0.4}, animation: { enable: true, speed: 0.8, minimumValue: 0.1, sync: false } }, size: { value: {min: 1, max: 2.5} }, line_linked: { enable: false }, move: { enable: true, speed: 0.6, direction: "none", random: true, straight: false, out_mode: "out", bounce: false, }, }, interactivity: { events: { onhover: { enable: true, mode: "repulse" }, onclick: { enable: false }, resize: true }, modes: { repulse: { distance: 100, duration: 0.4 }, }, }, retina_detect: true, background: { color: "transparent" }, };
-    const particlesConfigLight = { particles: { number: { value: 70, density: { enable: true, value_area: 800 } }, color: { value: ["#007bff", "#6f42c1", "#1a1334"] }, shape: { type: "circle" }, opacity: { value: {min: 0.2, max: 0.6}, animation: { enable: true, speed: 1, minimumValue: 0.2, sync: false } }, size: { value: {min: 1, max: 3} }, line_linked: { enable: false }, move: { enable: true, speed: 0.8, direction: "none", random: true, straight: false, out_mode: "out", bounce: false, }, }, interactivity: { events: { onhover: { enable: true, mode: "bubble" }, onclick: { enable: false }, resize: true }, modes: { bubble: { distance: 200, size: 4, duration: 2, opacity: 0.8 }, }, }, retina_detect: true, background: { color: "transparent" }, };
-    const updateThemeIcons = (theme) => { const themeToggleBtns = [document.getElementById('themeToggleBtn'), document.getElementById('themeToggleBtnLogin')]; const iconHtml = theme === 'light' ? '<i class="bi bi-moon-stars-fill"></i>' : '<i class="bi bi-sun-fill"></i>'; themeToggleBtns.forEach(btn => { if (btn) btn.innerHTML = iconHtml; }); };
-    const initTheme = () => { const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.setAttribute('data-theme', savedTheme); updateThemeIcons(savedTheme); tsParticles.load('particles-js', savedTheme === 'light' ? particlesConfigLight : particlesConfigDark); };
-    const toggleTheme = () => { const currentTheme = document.documentElement.getAttribute('data-theme'); const newTheme = currentTheme === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', newTheme); localStorage.setItem('theme', newTheme); updateThemeIcons(newTheme); tsParticles.load('particles-js', newTheme === 'light' ? particlesConfigLight : particlesConfigDark); };
-    const BASE_URL = '';
-    const state = { accessToken: localStorage.getItem('accessToken') || null, refreshToken: localStorage.getItem('refreshToken') || null, currentUser: null, myCircles: [], dashboardFeed: { filter: { circle_id: null, tags: '' }, sortBy: 'newest', skip: 0, limit: 10, hasMore: true, isLoading: false }, circleView: { currentCircleId: null, sortBy: 'newest', tags: '', skip: 0, limit: 10, hasMore: true, isLoading: false } };
-    const dom = { 
-        authSection: document.getElementById('authSection'), appSection: document.getElementById('appSection'), dashboardView: document.getElementById('dashboardView'), 
-        circleView: document.getElementById('circleView'), welcomeMessage: document.getElementById('welcomeMessage'), userActions: document.getElementById('userActions'), 
-        profileContainer: document.getElementById('profileContainer'), usersContainer: document.getElementById('usersContainer'), 
-        userSuggestionsContainer: document.getElementById('userSuggestionsContainer'), followingContainer: document.getElementById('followingContainer'), 
-        myCirclesContainer: document.getElementById('myCirclesContainer'), feedContainer: document.getElementById('feedContainer'), 
-        circleHeader: document.getElementById('circleHeader'), circleFeedContainer: document.getElementById('circleFeedContainer'), 
-        feedLoader: document.getElementById('feed-loader'), followRequestsContainer: document.getElementById('followRequestsContainer') 
+  <div id="feed-loader" class="hidden"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>
+ </div>
+
+ <div id="globalStatus"></div>
+
+ <div class="modal fade" id="createCircleModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Create New Circle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createCircleForm"><div class="mb-3"><input type="text" id="circleName" class="form-control" placeholder="Circle Name" required></div><div class="mb-3"><textarea id="circleDescription" class="form-control" placeholder="Description (Optional)"></textarea></div><div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" role="switch" id="isPublicSwitch" checked><label class="form-check-label" for="isPublicSwitch">Publicly Discoverable</label></div><div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" role="switch" id="protectWithPasswordSwitch"><label class="form-check-label" for="protectWithPasswordSwitch">Protect with a Password</label></div><div class="mb-3 hidden" id="circlePasswordContainer"><input type="password" id="circlePassword" class="form-control" placeholder="Enter Password (min 8 chars)" minlength="8"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button id="submitCircleButton" type="button" class="btn btn-success"><i class="bi bi-check-lg"></i> Create Circle</button></div></div></div></div>
+ <div class="modal fade" id="createPostModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Create New Post</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createPostForm"><div class="row"><div class="col-md-6 mb-3"><label for="circleSelect" class="form-label">Share to Circle</label><select id="circleSelect" class="form-select"></select></div><div class="col-md-6 mb-3"><label for="postTypeSelect" class="form-label">Post Type</label><select id="postTypeSelect" class="form-select"><option value="standard" selected>Standard Post</option><option value="yt-playlist">YouTube Playlist</option></select></div></div><hr><div id="standardPostFields"><div class="mb-3"><label for="postText" class="form-label">Text Content</label><textarea id="postText" name="text" class="form-control" placeholder="What's on your mind?" rows="4"></textarea></div><div class="mb-3"><label for="postLink" class="form-label">Link (Optional)</label><input type="url" id="postLink" name="link" class="form-control" placeholder="https://example.com"></div></div><div id="playlistPostFields" class="hidden"><div class="mb-3"><label for="playlistNameInput" class="form-label">Playlist Name</label><input type="text" id="playlistNameInput" class="form-control" placeholder="e.g., My Favorite Tech Videos"></div><div class="row"><div class="col-md-6"><div class="mb-3"><label for="youtubeSearchInput" class="form-label">Search YouTube</label><div class="input-group"><input type="text" id="youtubeSearchInput" class="form-control" placeholder="Search for videos..."><button class="btn btn-primary" type="button" id="youtubeSearchBtn"><i class="bi bi-search"></i></button></div></div><div id="youtubeSearchResultsContainer"><p class="text-muted small text-center">Search results will appear here.</p></div></div><div class="col-md-6"><div class="mb-3"><label class="form-label">Selected Videos (Drag to Reorder)</label></div><div id="selectedPlaylistVideosContainer"><p class="text-muted small text-center">Added videos will appear here.</p></div></div></div></div><div class="mb-3"><label for="postTags" class="form-label">Tags (comma-separated)</label><input type="text" id="postTags" name="tags" class="form-control" placeholder="e.g. tech, news, gaming"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button id="submitPostButton" type="button" class="btn btn-primary"><i class="bi bi-send"></i> Submit Post</button></div></div></div></div>
+ <div class="modal fade" id="followLinkModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-magic"></i> Your Magical Follow Link</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Share this link with a friend. It's a one-time use link and will expire in 10 minutes.</p><div class="input-group"><input type="text" class="form-control" id="followLinkInput" readonly><button class="btn btn-primary" id="copyFollowLinkBtn"><i class="bi bi-clipboard-check"></i> Copy</button></div></div></div></div></div>
+ <div class="modal fade" id="inviteCircleModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-send"></i> Invite to Circle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body text-center"><p>Share this link with friends to invite them. It will expire in 24 hours.</p><div id="qrCodeContainer" class="mb-3"><div class="spinner-border text-primary" role="status"></div></div><div class="input-group"><input type="text" class="form-control" id="inviteLinkInput" readonly><button class="btn btn-primary" id="copyInviteLinkBtn"><i class="bi bi-clipboard-check"></i> Copy</button></div></div></div></div></div>
+ <div class="modal fade" id="playlistPlayerModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-xl"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="playlistPlayerModalLabel">Playing Playlist</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body p-0 d-lg-flex"><div class="flex-grow-1 p-3"><div class="video-container-modal mb-3" style="position: relative; padding-bottom: 56.25%; height: 0; background-color: #000; border-radius: 12px; overflow:hidden;"><div id="playlist-player-embed"></div></div><div class="d-flex justify-content-center align-items-center gap-3"><button id="playlist-prev-btn" class="btn btn-primary btn-sm"><i class="bi bi-skip-start-fill"></i></button><span id="playlist-info-span" class="text-muted small" style="min-width: 100px; text-align: center;">Video 1 of X</span><button id="playlist-next-btn" class="btn btn-primary btn-sm"><i class="bi bi-skip-end-fill"></i></button></div></div><div class="playlist-queue-wrapper border-start-lg" style="width: 100%; max-width: 350px; flex-shrink: 0;"><h5 class="p-3 mb-0 border-bottom">Up Next</h5><div id="playlist-queue-list" class="list-group list-group-flush" style="max-height: 70vh; overflow-y: auto;"></div></div></div></div></div></div>
+
+ <div class="modal fade" id="chatModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-xl"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="chatModalTitle">Circle Chat</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">
+    <div id="chat-sidebar">
+        <h5 class="fs-6">Participants (<span id="participant-count">0</span>)</h5>
+        <div id="chat-participants-list" class="list-group list-group-flush"></div>
+        <div id="chat-controls" class="mt-auto pt-2 border-top border-secondary">
+            <button id="startCallBtn" class="btn btn-success btn-sm w-100"><i class="bi bi-telephone-fill"></i> Start Call</button>
+        </div>
+    </div>
+    <div id="chat-main">
+        <div id="chat-main-top">
+            <div id="videoGrid"></div>
+            <div id="chatMessages"></div>
+        </div>
+        <div id="chat-main-bottom" class="d-flex gap-2">
+            <input type="text" id="chatInput" class="form-control" placeholder="Type a message...">
+            <button id="chatSendBtn" class="btn btn-primary"><i class="bi bi-send"></i></button>
+        </div>
+    </div>
+ </div></div></div></div>
+
+ <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+ <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.12.0/tsparticles.bundle.min.js"></script>
+ <script src="https://www.youtube.com/iframe_api"></script>
+
+ <script>
+  class YouTubeMiniApp {
+    constructor() { this.searchEndpoint = 'https://ranfysvalle02--yt-rag-run-ollama-demo.modal.run'; }
+    async search(query = '', channelId = '') {
+      if (!query && !channelId) { throw new Error('Please provide either a query or a channel ID.'); }
+      const url = `${this.searchEndpoint}?q=${encodeURIComponent(query)}&channel_id=${encodeURIComponent(channelId)}`;
+      const response = await fetch(url);
+      if (!response.ok) { throw new Error(`Search request failed with status ${response.status}.`); }
+      return response.json();
+    }
+  }
+  const ytApp = new YouTubeMiniApp();
+
+  const particlesConfigDark = { particles: { number: { value: 80, density: { enable: true, value_area: 800 } }, color: { value: ["#00dcff", "#a27bff", "#ffffff"] }, shape: { type: "circle" }, opacity: { value: {min: 0.1, max: 0.4}, animation: { enable: true, speed: 0.8, minimumValue: 0.1, sync: false } }, size: { value: {min: 1, max: 2.5} }, line_linked: { enable: false }, move: { enable: true, speed: 0.6, direction: "none", random: true, straight: false, out_mode: "out", bounce: false, }, }, interactivity: { events: { onhover: { enable: true, mode: "repulse" }, onclick: { enable: false }, resize: true }, modes: { repulse: { distance: 100, duration: 0.4 }, }, }, retina_detect: true, background: { color: "transparent" }, };
+  const particlesConfigLight = { particles: { number: { value: 70, density: { enable: true, value_area: 800 } }, color: { value: ["#007bff", "#6f42c1", "#1a1334"] }, shape: { type: "circle" }, opacity: { value: {min: 0.2, max: 0.6}, animation: { enable: true, speed: 1, minimumValue: 0.2, sync: false } }, size: { value: {min: 1, max: 3} }, line_linked: { enable: false }, move: { enable: true, speed: 0.8, direction: "none", random: true, straight: false, out_mode: "out", bounce: false, }, }, interactivity: { events: { onhover: { enable: true, mode: "bubble" }, onclick: { enable: false }, resize: true }, modes: { bubble: { distance: 200, size: 4, duration: 2, opacity: 0.8 }, }, }, retina_detect: true, background: { color: "transparent" }, };
+  const updateThemeIcons = (theme) => { const themeToggleBtns = [document.getElementById('themeToggleBtn'), document.getElementById('themeToggleBtnLogin')]; const iconHtml = theme === 'light' ? '<i class="bi bi-moon-stars-fill"></i>' : '<i class="bi bi-sun-fill"></i>'; themeToggleBtns.forEach(btn => { if (btn) btn.innerHTML = iconHtml; }); };
+  const initTheme = () => { const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.setAttribute('data-theme', savedTheme); updateThemeIcons(savedTheme); tsParticles.load('particles-js', savedTheme === 'light' ? particlesConfigLight : particlesConfigDark); };
+  const toggleTheme = () => { const currentTheme = document.documentElement.getAttribute('data-theme'); const newTheme = currentTheme === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', newTheme); localStorage.setItem('theme', newTheme); updateThemeIcons(newTheme); tsParticles.load('particles-js', newTheme === 'light' ? particlesConfigLight : particlesConfigDark); };
+  const BASE_URL = '';
+  const state = { accessToken: localStorage.getItem('accessToken') || null, refreshToken: localStorage.getItem('refreshToken') || null, currentUser: null, myCircles: [], dashboardFeed: { filter: { circle_id: null, tags: '' }, sortBy: 'newest', skip: 0, limit: 10, hasMore: true, isLoading: false }, circleView: { currentCircleId: null, sortBy: 'newest', tags: '', skip: 0, limit: 10, hasMore: true, isLoading: false }, postCreation: { type: 'standard', playlist: { videos: [] } } };
+  const dom = {
+    authSection: document.getElementById('authSection'), appSection: document.getElementById('appSection'), dashboardView: document.getElementById('dashboardView'),
+    circleView: document.getElementById('circleView'), welcomeMessage: document.getElementById('welcomeMessage'), userActions: document.getElementById('userActions'),
+    profileContainer: document.getElementById('profileContainer'), usersContainer: document.getElementById('usersContainer'),
+    userSuggestionsContainer: document.getElementById('userSuggestionsContainer'), followingContainer: document.getElementById('followingContainer'),
+    myCirclesContainer: document.getElementById('myCirclesContainer'), feedContainer: document.getElementById('feedContainer'),
+    circleHeader: document.getElementById('circleHeader'), circleFeedContainer: document.getElementById('circleFeedContainer'),
+    feedLoader: document.getElementById('feed-loader'), followRequestsContainer: document.getElementById('followRequestsContainer')
+  };
+  const setButtonLoading = (btn, isLoading) => { if(!btn) return; btn.disabled = isLoading; if(isLoading) { btn.dataset.html = btn.innerHTML; btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span>`; } else if (btn.dataset.html) { btn.innerHTML = btn.dataset.html; } };
+  const showStatus = (msg, type = 'success') => { const id = `a${Date.now()}`; document.getElementById('globalStatus').innerHTML = `<div id="${id}" class="alert alert-${type} alert-dismissible fade show"> ${msg} <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`; setTimeout(() => bootstrap.Alert.getOrCreateInstance(`#${id}`)?.close(), 4000); };
+  const getYouTubeID = url => { const arr = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/); return (arr && arr[1]) ? arr[1] : null; };
+  const debounce = (func, delay) => { let timeout; return (...args) => { clearTimeout(timeout); timeout = setTimeout(() => func.apply(this, args), delay); }; };
+
+  let isRefreshing = false; let failedQueue = [];
+  const processQueue = (error, token = null) => { failedQueue.forEach(prom => { if (error) { prom.reject(error); } else { prom.resolve(token); } }); failedQueue = []; };
+  async function apiFetch(endpoint, options = {}) {
+    const customOptions = { ...options, headers: { ...options.headers, 'Content-Type': 'application/json' } };
+    if (state.accessToken) { customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`; }
+    let response = await fetch(`${BASE_URL}${endpoint}`, customOptions);
+    if (response.status === 401 && state.refreshToken) {
+      if (isRefreshing) { return new Promise((resolve, reject) => { failedQueue.push({ resolve, reject }); }).then(() => { customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`; return fetch(`${BASE_URL}${endpoint}`, customOptions); }); }
+      isRefreshing = true;
+      try {
+        const refreshResponse = await fetch(`${BASE_URL}/auth/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: state.refreshToken }), });
+        if (!refreshResponse.ok) throw new Error("Refresh failed");
+        const tokenData = await refreshResponse.json();
+        storeTokens(tokenData.access_token, tokenData.refresh_token);
+        processQueue(null, tokenData.access_token);
+        customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`;
+        response = await fetch(`${BASE_URL}${endpoint}`, customOptions);
+      } catch (err) { processQueue(err, null); logout(); return Promise.reject(err); } finally { isRefreshing = false; }
+    }
+    if (!response.ok) { const err = await response.json().catch(() => ({ detail: `Error: ${response.status}` })); if (response.status !== 403 && response.status !== 401) { showStatus(err.detail || 'An unknown error occurred.', 'danger'); } throw new Error(err.detail); }
+    return response.status === 204 ? null : response.json();
+  }
+  const storeTokens = (access, refresh) => { state.accessToken = access; state.refreshToken = refresh; localStorage.setItem('accessToken', access); localStorage.setItem('refreshToken', refresh); };
+  const logout = () => { state.accessToken = null; state.refreshToken = null; state.currentUser = null; localStorage.removeItem('accessToken'); localStorage.removeItem('refreshToken'); localStorage.removeItem('pendingInviteToken'); window.location.hash = ''; handleRoute(); };
+  const login = async (username, password) => { const data = await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); storeTokens(data.access_token, data.refresh_token); await handleRoute(); showStatus('Login successful!', 'success'); return true; };
+  const register = async (username, password) => { await apiFetch('/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) }); showStatus('Registration successful! Please log in.', 'success'); return true; };
+ 
+  async function fetchAndRenderAll() { await fetchCurrentUser(); renderAllSidebarComponents(); }
+  async function fetchCurrentUser() { if (!state.accessToken) return; try { state.currentUser = await apiFetch('/users/me'); } catch (error) { console.error("Token might be expired or invalid, logging out.", error); logout(); } }
+  async function handleRoute() {
+    await fetchCurrentUser();
+    const hash = window.location.hash;
+    const circleRouteMatch = hash.match(/^#\/circle\/(.+)$/);
+    const followRouteMatch = hash.match(/^#\/follow\/(.+)$/);
+    const joinCircleMatch = hash.match(/^#\/join-circle\/(.+)$/);
+    
+    const pendingInviteToken = localStorage.getItem('pendingInviteToken');
+    if (pendingInviteToken && state.currentUser) {
+        localStorage.removeItem('pendingInviteToken');
+        await handleJoinByToken(pendingInviteToken, true);
+        return;
+    }
+
+    if (followRouteMatch) { await handleFollowByToken(followRouteMatch[1]); } 
+    else if (joinCircleMatch) { await handleJoinByToken(joinCircleMatch[1]); }
+    else if (circleRouteMatch) { state.dashboardFeed.filter.circle_id = null; await showCircleView(circleRouteMatch[1]); } 
+    else { await showDashboardView(); }
+  }
+  async function showDashboardView() { dom.circleView.classList.add('hidden'); if (state.currentUser) { dom.authSection.classList.add('hidden'); dom.appSection.classList.remove('hidden'); dom.dashboardView.classList.remove('hidden'); dom.welcomeMessage.textContent = `Welcome, ${state.currentUser.username}!`; dom.userActions.classList.remove('hidden'); await renderDashboard(); } else { dom.appSection.classList.add('hidden'); dom.authSection.classList.remove('hidden'); } }
+  async function showCircleView(circleId) { state.circleView.currentCircleId = circleId; dom.authSection.classList.add('hidden'); dom.dashboardView.classList.add('hidden'); dom.appSection.classList.remove('hidden'); dom.circleView.classList.remove('hidden'); dom.welcomeMessage.textContent = `Viewing a Circle`; dom.userActions.classList.toggle('hidden', !state.currentUser); await resetAndRenderCircleFeed(); }
+  async function renderDashboard() { renderAllSidebarComponents(); dom.usersContainer.innerHTML = '<p class="text-muted small text-center">Search for users by their name.</p>'; try { const myCircles = await apiFetch('/circles/mine'); state.myCircles = myCircles; renderMyCircles(myCircles); await resetAndRenderDashboardFeed(); } catch (error) { console.error("Failed to load dashboard data", error); } }
+  function renderAllSidebarComponents() { if (!state.currentUser) return; renderProfile(); renderFollowingList(); renderIncomingRequests(); renderUserSuggestions(); }
+  function renderProfile() { if (!state.currentUser) return; dom.profileContainer.innerHTML = `<div class="d-flex align-items-center mb-3"><div class="avatar avatar-lg me-3 d-flex align-items-center justify-content-center fs-2"><i class="bi bi-person-circle"></i></div><div><h4 class="mb-0">${state.currentUser.username}</h4><p class="mb-1"><strong>Following:</strong> ${state.currentUser.following_count}</p><p class="mb-0"><strong>Followers:</strong> ${state.currentUser.followers_count}</p></div></div><button class="btn btn-sm btn-success w-100" data-action="generate-follow-link"><i class="bi bi-magic"></i> Private Follow Link</button>`; }
+  function renderUserList(users, container, emptyMessage) { if (!users || users.length === 0) { container.innerHTML = `<p class="text-muted small text-center">${emptyMessage}</p>`; return; } if (!state.currentUser) return; const followingIds = state.currentUser.following.map(u => u._id); const outgoingRequestIds = state.currentUser.outgoing_requests; container.innerHTML = users.map(user => { if (user.username === state.currentUser.username) return ''; let buttonHtml; if (followingIds.includes(user._id)) { buttonHtml = `<button class="btn btn-sm btn-danger" data-action="unfollow" data-username="${user.username}">Unfollow</button>`; } else if (outgoingRequestIds.includes(user._id)) { buttonHtml = `<button class="btn btn-sm btn-secondary" data-action="cancel-request" data-username="${user.username}">Request Sent</button>`; } else { buttonHtml = `<button class="btn btn-sm btn-primary" data-action="request-follow" data-username="${user.username}">Request Follow</button>`; } return `<div class="list-group-item d-flex justify-content-between align-items-center"><div class="d-flex align-items-center"><div class="avatar avatar-sm me-2 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div><span>${user.username}</span></div>${buttonHtml}</div>`; }).join(''); }
+  function renderIncomingRequests() { if (!state.currentUser) return; const requests = state.currentUser.incoming_requests; if (!requests || requests.length === 0) { dom.followRequestsContainer.innerHTML = '<p class="text-muted small text-center">No new follow requests.</p>'; return; } dom.followRequestsContainer.innerHTML = requests.map(req => `<div class="list-group-item d-flex justify-content-between align-items-center"><div class="d-flex align-items-center"><div class="avatar avatar-sm me-2 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div><span>${req.requester.username}</span></div><div class="request-actions"><button class="btn btn-success btn-sm" data-action="accept-request" data-request-id="${req._id}"><i class="bi bi-check-lg"></i></button><button class="btn btn-danger btn-sm" data-action="decline-request" data-request-id="${req._id}"><i class="bi bi-x-lg"></i></button></div></div>`).join(''); }
+  function renderFollowingList() { if (!state.currentUser) return; renderUserList(state.currentUser.following, dom.followingContainer, "You aren't following anyone yet."); }
+  function renderUserSuggestions() { if (!state.currentUser) return; try { const suggestions = apiFetch('/users/suggestions'); suggestions.then(data => renderUserList(data, dom.userSuggestionsContainer, "No new suggestions from your circles.")); } catch (error) { console.error("Failed to load user suggestions", error); dom.userSuggestionsContainer.innerHTML = '<p class="text-danger small text-center">Could not load suggestions.</p>'; } }
+  function renderMyCircles(circles) { const { circle_id } = state.dashboardFeed.filter; let html = `<a href="#" class="list-group-item clickable list-group-item-action ${!circle_id ? 'active' : ''}" data-action="filter-feed" data-circle-id=""><i class="bi bi-collection-fill me-2"></i>All My Circles</a>`; html += circles.map(c => `<div class="list-group-item d-flex justify-content-between align-items-center p-0"><a href="#/circle/${c._id}" class="flex-grow-1 list-group-item-action border-0 clickable px-3 py-2" data-action="view-circle" data-circle-id="${c._id}"><i class="bi bi-hash"></i> ${c.name} ${c.is_password_protected ? '<i class="bi bi-lock-fill small ms-1 text-muted"></i>' : ''}</a></div>`).join(''); dom.myCirclesContainer.innerHTML = html || `<div class="empty-placeholder small">No circles yet.</div>`; document.getElementById('circleSelect').innerHTML = circles.map(c => `<option value="${c._id}">${c.name}</option>`).join(''); }
+  async function resetAndRenderDashboardFeed() { state.dashboardFeed.skip = 0; state.dashboardFeed.hasMore = true; dom.feedContainer.innerHTML = ''; await renderDashboardFeed(); }
+  async function renderDashboardFeed() { if (!state.dashboardFeed.hasMore || state.dashboardFeed.isLoading) return; state.dashboardFeed.isLoading = true; dom.feedLoader.classList.remove('hidden'); const { filter, skip, limit, sortBy } = state.dashboardFeed; let url = `/feed?skip=${skip}&limit=${limit}&sort_by=${sortBy}`; if (filter.circle_id) url += `&circle_id=${filter.circle_id}`; if (filter.tags) url += `&tags=${encodeURIComponent(filter.tags)}`; try { const feedData = await apiFetch(url); appendPosts(feedData.posts, dom.feedContainer); state.dashboardFeed.hasMore = feedData.has_more; state.dashboardFeed.skip += feedData.posts.length; if (dom.feedContainer.innerHTML === '' && !feedData.has_more) { dom.feedContainer.innerHTML = `<div class="empty-placeholder">Your feed is empty. Post something or broaden your filters!</div>`; } } catch (error) { dom.feedContainer.innerHTML = `<div class="empty-placeholder text-danger">Could not load feed.</div>`; } finally { state.dashboardFeed.isLoading = false; dom.feedLoader.classList.add('hidden'); } }
+  async function resetAndRenderCircleFeed() { state.circleView.skip = 0; state.circleView.hasMore = true; dom.circleFeedContainer.innerHTML = ''; dom.circleHeader.innerHTML = ''; await renderCircleFeed(); }
+  function renderJoinCirclePrompt(circleId, circleName) { if (!state.currentUser) { dom.circleHeader.innerHTML = `<h2><i class="bi bi-lock-fill"></i> ${circleName}</h2>`; dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder">This is a private, password-protected circle. Please <a href="#" id="loginFromCircleView">log in</a> to join.</div>`; document.getElementById('loginFromCircleView').addEventListener('click', (e) => { e.preventDefault(); window.location.hash = ''; handleRoute(); }); return; } dom.circleHeader.innerHTML = `<div class="d-flex justify-content-between align-items-center"><h2><i class="bi bi-lock-fill"></i> Join ${circleName}</h2><a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Feed</a></div>`; dom.circleFeedContainer.innerHTML = `<div class="glass-card text-center"><p class="fs-5">This circle is protected. Enter the password to gain access.</p><div class="input-group mt-3 mx-auto" style="max-width: 300px;"><input type="password" id="joinCirclePasswordInput" class="form-control" placeholder="Enter Password..."><button class="btn btn-primary" id="joinCircleSubmitBtn" data-circle-id="${circleId}">Join</button></div></div>`; }
+  async function renderCircleFeed() { const feedState = state.circleView; if (!feedState.hasMore || feedState.isLoading) return; feedState.isLoading = true; dom.feedLoader.classList.remove('hidden'); try { if (feedState.skip === 0) { const circleDetails = await apiFetch(`/circles/${feedState.currentCircleId}`); feedState.circleName = circleDetails.name; dom.circleHeader.innerHTML = `<div class="d-flex justify-content-between align-items-center flex-wrap gap-3"><div><h2><i class="bi bi-hash"></i> ${circleDetails.name}</h2><p class="text-muted mb-0">${circleDetails.description || 'A shared space for posts.'}</p></div><div class="d-flex align-items-center gap-2 flex-wrap"><button class="btn btn-sm btn-primary" data-action="open-chat" data-circle-id="${feedState.currentCircleId}"><i class="bi bi-chat-dots-fill"></i> Chat Room</button><button class="btn btn-sm btn-success" data-action="invite-to-circle" data-circle-id="${feedState.currentCircleId}"><i class="bi bi-send"></i> Invite</button><div class="input-group input-group-sm" style="width: auto;"><span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);"><i class="bi bi-tags"></i></span><input type="text" id="circleTagFilter" class="form-control border-start-0" placeholder="Filter by tags..." value="${feedState.tags}" style="min-width: 150px;"></div><div class="d-flex align-items-center gap-2"><label for="circleSortSelect" class="form-label mb-0 text-muted small">Sort by:</label><select id="circleSortSelect" class="form-select form-select-sm" style="width: auto;"><option value="newest" ${feedState.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="top" ${feedState.sortBy === 'top' ? 'selected' : ''}>Top</option></select></div><a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back</a></div></div>`; } let url = `/circles/${feedState.currentCircleId}/feed?skip=${feedState.skip}&limit=${feedState.limit}&sort_by=${feedState.sortBy}`; if (feedState.tags) { url += `&tags=${encodeURIComponent(feedState.tags)}`; } const feedData = await apiFetch(url); appendPosts(feedData.posts, dom.circleFeedContainer, feedState.circleName); feedState.hasMore = feedData.has_more; feedState.skip += feedData.posts.length; if (dom.circleFeedContainer.innerHTML === '' && !feedData.has_more) { dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder">This circle has no posts yet. Be the first!</div>`; } } catch (error) { try { const statusData = await apiFetch(`/circles/${feedState.currentCircleId}/status`); if (statusData.is_password_protected) { renderJoinCirclePrompt(feedState.currentCircleId, statusData.name); } else { dom.circleHeader.innerHTML = ''; dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder text-danger">This circle is private and you are not a member.</div>`; } } catch (statusError) { dom.circleHeader.innerHTML = ''; dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder text-danger">Could not find or access this circle.</div>`; } } finally { feedState.isLoading = false; dom.feedLoader.classList.add('hidden'); } }
+ 
+  function appendPosts(posts, container, circleName = null) {
+    const canDelete = (post) => state.currentUser && post.author_username === state.currentUser.username;
+    const postsHtml = posts.map(post => {
+      let contentHtml = '';
+      const postType = post.content.post_type || 'standard';
+      if (postType === 'yt-playlist' && post.content.playlist_data) {
+        const playlist = post.content.playlist_data; const coverImage = playlist.videos.length > 0 ? playlist.videos[0].imageSrc : 'https://via.placeholder.com/400x225.png?text=Playlist'; const playlistDataString = JSON.stringify(playlist).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+        contentHtml = `<div class="card mt-3 playlist-card" style="background-color: var(--form-input-bg); border-color: var(--border-color); position: relative;"><img src="${coverImage}" class="card-img-top" alt="Playlist Cover"><div class="card-body"><h5 class="card-title mb-1">${playlist.name}</h5><p class="card-text text-muted small">${playlist.videos.length} videos</p></div><div class="playlist-play-overlay" data-action="play-playlist" data-playlist='${playlistDataString}'><i class="bi bi-play-circle-fill"></i><span>Play All</span></div></div>`;
+      } else {
+        if (post.content.text) { contentHtml += `<p class="card-text" style="white-space: pre-wrap;">${post.content.text}</p>`; }
+        if (post.content.link) {
+          const videoId = getYouTubeID(post.content.link);
+          if (videoId) { contentHtml += `<div class="video-container my-2"><iframe src="https://www.youtube.com/embed/${videoId}" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`; } else { try { const host = new URL(post.content.link).hostname; contentHtml += `<a href="${post.content.link}" target="_blank" rel="noopener noreferrer" class="link-preview d-block text-decoration-none"><strong class="link-preview-title d-block">${post.content.link}</strong><span class="link-preview-host">${host}</span></a>`; } catch (e) { contentHtml += `<p class="text-muted">Invalid link: ${post.content.link}</p>` } }
+        }
+      }
+      if (post.content.tags && post.content.tags.length > 0) { contentHtml += `<div class="mt-3 post-tags">${post.content.tags.map(tag => `<span class="badge rounded-pill bg-secondary me-1" data-action="filter-by-tag" data-tag="${tag}">${tag}</span>`).join(' ')}</div>`; } const voteControls = `<div class="vote-controls"><button class="vote-btn up ${post.user_vote === 1 ? 'voted' : ''}" data-action="vote" data-post-id="${post._id}" data-direction="1" title="Upvote"><i class="bi bi-arrow-up-circle"></i></button><span class="vote-score" title="Post score">${post.score}</span><button class="vote-btn down ${post.user_vote === -1 ? 'voted' : ''}" data-action="vote" data-post-id="${post._id}" data-direction="-1" title="Downvote"><i class="bi bi-arrow-down-circle"></i></button></div>`; const displayCircleName = circleName || post.circle_name; return `<div class="post-card-wrapper" data-post-wrapper-id="${post._id}"><div class="glass-card post-card d-flex">${voteControls}<div class="post-card-body"><div class="d-flex justify-content-between align-items-start"><div class="d-flex align-items-center"><div class="avatar me-3 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div><div><strong class="d-block">${post.author_username}</strong><small class="text-muted">in <a href="#/circle/${post.circle_id}" class="text-reset fw-bold">${displayCircleName}</a> &bull; ${new Date(post.created_at).toLocaleString()}</small></div></div>${canDelete(post) ? `<button class="btn btn-danger btn-sm py-0 px-2" data-action="delete-post" data-post-id="${post._id}" data-circle-id="${post.circle_id}"><i class="bi bi-trash"></i></button>` : ''}</div><div class="mt-3">${contentHtml}</div></div></div></div>`; }).join('');
+    container.insertAdjacentHTML('beforeend', postsHtml);
+  }
+
+  const observer = new IntersectionObserver((entries) => { if (entries[0].isIntersecting) { if (!dom.circleView.classList.contains('hidden')) { renderCircleFeed(); } else if (!dom.dashboardView.classList.contains('hidden')) { renderDashboardFeed(); } } }, { rootMargin: '200px' }); observer.observe(dom.feedLoader);
+  const switchAuthView = (hideEl, showEl) => { hideEl.classList.add('animate-out'); hideEl.addEventListener('animationend', () => { hideEl.classList.add('hidden'); hideEl.classList.remove('animate-out'); showEl.classList.remove('hidden'); showEl.classList.add('animate-in'); showEl.addEventListener('animationend', () => { showEl.classList.remove('animate-in'); }, { once: true }); }, { once: true }); };
+  async function handleAuthAction(e, action) { const btn = e.currentTarget; const u = document.getElementById('usernameInput').value, p = document.getElementById('passwordInput').value; if (!u || !p) return showStatus('Username and password are required', 'warning'); setButtonLoading(btn, true); try { await action(u, p); } catch (error) {} finally { setButtonLoading(btn, false); } }
+  async function handleCreateCircle() { const btn = document.getElementById('submitCircleButton'); const name = document.getElementById('circleName').value; const description = document.getElementById('circleDescription').value; const is_public = document.getElementById('isPublicSwitch').checked; const passwordSwitch = document.getElementById('protectWithPasswordSwitch'); const password = document.getElementById('circlePassword').value; const payload = { name, description, is_public }; if (passwordSwitch.checked && password) { payload.password = password; } else if (passwordSwitch.checked && !password) { return showStatus('Password cannot be empty if protection is enabled.', 'warning'); } setButtonLoading(btn, true); try { await apiFetch('/circles', { method: 'POST', body: JSON.stringify(payload) }); showStatus('Circle created!', 'success'); bootstrap.Modal.getInstance('#createCircleModal').hide(); document.getElementById('createCircleForm').reset(); document.getElementById('circlePasswordContainer').classList.add('hidden'); const myCircles = await apiFetch('/circles/mine'); state.myCircles = myCircles; renderMyCircles(myCircles); } catch(error) {} finally { setButtonLoading(btn, false); } }
+  async function handleCreatePost() {
+    const btn = document.getElementById('submitPostButton'); const circle_id = document.getElementById('circleSelect').value; if (!circle_id) return showStatus('You must select a circle to post in.', 'warning');
+    const tags = document.getElementById('postTags').value.split(',').map(tag => tag.trim()).filter(Boolean); let payload = { tags, post_type: state.postCreation.type };
+    if (state.postCreation.type === 'standard') {
+      const text = document.getElementById('postText').value.trim(); const link = document.getElementById('postLink').value.trim(); if (!text && !link) return showStatus('A standard post must have either text or a link.', 'warning'); payload.text = text; payload.link = link;
+    } else { const playlistName = document.getElementById('playlistNameInput').value.trim(); if (!playlistName) return showStatus('Playlist name is required.', 'warning'); if (state.postCreation.playlist.videos.length === 0) return showStatus('A playlist must have at least one video.', 'warning'); payload.playlist_data = { name: playlistName, videos: state.postCreation.playlist.videos }; }
+    setButtonLoading(btn, true);
+    try {
+      await apiFetch(`/circles/${circle_id}/posts`, { method: 'POST', body: JSON.stringify(payload) }); showStatus('Post created!', 'success'); bootstrap.Modal.getInstance('#createPostModal').hide();
+      if (state.circleView.currentCircleId === circle_id) { await resetAndRenderCircleFeed(); } else if (!window.location.hash || window.location.hash === '#/') { await resetAndRenderDashboardFeed(); }
+    } catch(error) {} finally { setButtonLoading(btn, false); }
+  }
+  async function handleDeletePost(postId, circleId) { if (!confirm('Are you sure you want to delete this post?')) return; try { await apiFetch(`/circles/${circleId}/posts/${postId}`, { method: 'DELETE' }); showStatus('Post deleted.', 'success'); if (state.circleView.currentCircleId) await resetAndRenderCircleFeed(); else await resetAndRenderDashboardFeed(); } catch(error) {} }
+  async function handleUserSearch() { const btn = document.getElementById('userSearchBtn'); const query = document.getElementById('userSearchInput').value.trim(); if (!query) return; setButtonLoading(btn, true); dom.usersContainer.innerHTML = ''; try { const users = await apiFetch(`/users/discover?q=${encodeURIComponent(query)}`); renderUserList(users, dom.usersContainer, "No users found matching that name."); } catch (error) { console.error("User search failed", error); dom.usersContainer.innerHTML = '<p class="text-danger small text-center">Search failed.</p>'; } finally { setButtonLoading(btn, false); } }
+  async function handleVote(postId, direction) { if (!state.currentUser) return showStatus('Please log in to vote.', 'warning'); const postWrapper = document.querySelector(`[data-post-wrapper-id="${postId}"]`); if (!postWrapper) return; const upBtn = postWrapper.querySelector('.vote-btn.up'); const downBtn = postWrapper.querySelector('.vote-btn.down'); const scoreEl = postWrapper.querySelector('.vote-score'); const currentVote = upBtn.classList.contains('voted') ? 1 : (downBtn.classList.contains('voted') ? -1 : 0); const finalDirection = currentVote === direction ? 0 : direction; try { const result = await apiFetch(`/posts/${postId}/vote`, { method: 'POST', body: JSON.stringify({ direction: finalDirection }), }); upBtn.classList.toggle('voted', finalDirection === 1); downBtn.classList.toggle('voted', finalDirection === -1); scoreEl.textContent = result.new_score; } catch (error) { console.error("Voting failed", error); } }
+  async function handleJoinCircle(circleId) { const btn = document.getElementById('joinCircleSubmitBtn'); const passwordInput = document.getElementById('joinCirclePasswordInput'); const password = passwordInput.value; if (!password) return showStatus('A password is required to join.', 'warning'); setButtonLoading(btn, true); try { await apiFetch(`/circles/${circleId}/join`, { method: 'POST', body: JSON.stringify({ password }) }); showStatus('Password accepted! You have joined the circle.', 'success'); await fetchAndRenderAll(); await resetAndRenderCircleFeed(); } catch (error) { showStatus('Incorrect password or unable to join.', 'danger'); passwordInput.value = ''; } finally { setButtonLoading(btn, false); } }
+  async function handleGenerateFollowLink() { const btn = document.querySelector('[data-action="generate-follow-link"]'); setButtonLoading(btn, true); try { const { token } = await apiFetch('/users/me/generate-follow-token', { method: 'POST' }); const url = `${window.location.origin}${window.location.pathname}#/follow/${token}`; document.getElementById('followLinkInput').value = url; bootstrap.Modal.getInstance('#followLinkModal').show(); } catch(e) { showStatus('Could not generate follow link. Please try again.', 'danger'); } finally { setButtonLoading(btn, false); } }
+  async function handleFollowByToken(token) { if (!state.currentUser) { showStatus('Please log in to use this follow link.', 'info'); window.location.hash = ''; return; } try { const { followed_username } = await apiFetch('/users/follow-by-token', { method: 'POST', body: JSON.stringify({ token }) }); showStatus(`Success! You are now following ${followed_username}.`, 'success'); await fetchAndRenderAll(); } catch (error) { showStatus(error.message || 'This follow link is invalid or has expired.', 'danger'); } finally { window.location.hash = ''; } }
+  async function handleInviteToCircle(circleId) {
+    const inviteModal = bootstrap.Modal.getInstance('#inviteCircleModal');
+    const qrContainer = document.getElementById('qrCodeContainer');
+    const linkInput = document.getElementById('inviteLinkInput');
+    qrContainer.innerHTML = `<div class="spinner-border text-primary" role="status"></div>`;
+    linkInput.value = '';
+    inviteModal.show();
+    try {
+        const { token } = await apiFetch(`/circles/${circleId}/invite-token`, { method: 'POST' });
+        const url = `${window.location.origin}${window.location.pathname}#/join-circle/${token}`;
+        linkInput.value = url;
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+        qrContainer.innerHTML = `<img src="${qrUrl}" alt="Circle Invite QR Code">`;
+    } catch (error) {
+        showStatus('Could not create invite link.', 'danger');
+        inviteModal.hide();
+    }
+  }
+  async function handleJoinByToken(token, isRedirect = false) {
+    if (!state.currentUser) {
+        localStorage.setItem('pendingInviteToken', token);
+        showStatus('Please log in or register to accept the circle invite.', 'info');
+        if (window.location.hash) window.location.hash = '';
+        else handleRoute();
+        return;
+    }
+    try {
+        const { circle_id, circle_name } = await apiFetch('/circles/join-by-token', { method: 'POST', body: JSON.stringify({ token }) });
+        showStatus(`Successfully joined the circle: ${circle_name}!`, 'success');
+        await fetchAndRenderAll();
+        window.location.hash = `#/circle/${circle_id}`;
+    } catch (error) {
+        showStatus(error.message || 'This invite link is invalid or has expired.', 'danger');
+        if (!isRedirect) window.location.hash = '';
+    }
+  }
+  async function handleRequestFollow(username) { try { await apiFetch(`/users/${username}/request-follow`, { method: 'POST' }); showStatus('Follow request sent!', 'success'); await fetchAndRenderAll(); } catch(e) { showStatus(e.message, 'danger'); } }
+  async function handleUnfollow(username) { if (!confirm(`Are you sure you want to unfollow ${username}?`)) return; try { await apiFetch(`/users/${username}/follow`, { method: 'DELETE' }); showStatus(`You have unfollowed ${username}.`, 'info'); await fetchAndRenderAll(); } catch(e) { showStatus(e.message, 'danger'); } }
+  async function handleCancelRequest(username) { try { await apiFetch(`/users/${username}/cancel-request`, { method: 'DELETE' }); showStatus('Follow request cancelled.', 'info'); await fetchAndRenderAll(); } catch(e) { showStatus(e.message, 'danger'); } }
+  async function handleRespondToRequest(requestId, action) { try { await apiFetch(`/users/me/follow-requests/${requestId}/respond`, { method: 'POST', body: JSON.stringify({action}) }); showStatus(`Request ${action}ed.`, 'success'); await fetchAndRenderAll(); } catch(e) { showStatus(e.message, 'danger'); } }
+ 
+  // --- YOUTUBE ---
+  let ytPlaylistPlayer = null;
+  const playlistPlayerModal = new bootstrap.Modal(document.getElementById('playlistPlayerModal'));
+  function openPlaylistPlayerModal(playlist) {
+    if (!playlist || !playlist.videos || playlist.videos.length === 0) { showStatus("This playlist is empty or invalid.", "warning"); return; }
+    document.getElementById('playlistPlayerModalLabel').textContent = playlist.name;
+    playlistPlayerModal.show();
+    const videoIds = playlist.videos.map(v => v.id);
+    const updateUI = () => {
+      if (!ytPlaylistPlayer || typeof ytPlaylistPlayer.getPlaylistIndex !== 'function') return;
+      const queueList = document.getElementById('playlist-queue-list'); const infoSpan = document.getElementById('playlist-info-span'); if (!queueList || !infoSpan) return;
+      const currentIndex = ytPlaylistPlayer.getPlaylistIndex(); const totalVideos = ytPlaylistPlayer.getPlaylist().length; infoSpan.textContent = `Video ${currentIndex + 1} of ${totalVideos}`;
+      queueList.innerHTML = playlist.videos.map((video, index) => { const isActive = index === currentIndex ? 'active' : ''; return `<div class="playlist-queue-item list-group-item d-flex align-items-center gap-3 ${isActive}" data-index="${index}"><span class="text-muted fw-bold">${index + 1}</span><img src="${video.imageSrc}" width="100" class="rounded" alt="${video.title}"><div class="flex-grow-1" style="min-width: 0;"><p class="mb-0 small fw-bold text-truncate">${video.title}</p></div></div>`; }).join('');
+      const activeItem = queueList.querySelector('.active'); if (activeItem) { activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
     };
-    const setButtonLoading = (btn, isLoading) => { if(!btn) return; btn.disabled = isLoading; if(isLoading) { btn.dataset.html = btn.innerHTML; btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span>`; } else if (btn.dataset.html) { btn.innerHTML = btn.dataset.html; } };
-    const showStatus = (msg, type = 'success') => { const id = `a${Date.now()}`; document.getElementById('globalStatus').innerHTML = `<div id="${id}" class="alert alert-${type} alert-dismissible fade show"> ${msg} <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`; setTimeout(() => bootstrap.Alert.getOrCreateInstance(`#${id}`)?.close(), 4000); };
-    const getYouTubeID = url => { const arr = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/); return (arr && arr[1]) ? arr[1] : null; };
-    const debounce = (func, delay) => { let timeout; return (...args) => { clearTimeout(timeout); timeout = setTimeout(() => func.apply(this, args), delay); }; };
-
-    let isRefreshing = false; let failedQueue = [];
-    const processQueue = (error, token = null) => { failedQueue.forEach(prom => { if (error) { prom.reject(error); } else { prom.resolve(token); } }); failedQueue = []; };
-    async function apiFetch(endpoint, options = {}) {
-        const customOptions = { ...options, headers: { ...options.headers, 'Content-Type': 'application/json' } };
-        if (state.accessToken) { customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`; }
-        let response = await fetch(`${BASE_URL}${endpoint}`, customOptions);
-        if (response.status === 401 && state.refreshToken) {
-            if (isRefreshing) { return new Promise((resolve, reject) => { failedQueue.push({ resolve, reject }); }).then(() => { customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`; return fetch(`${BASE_URL}${endpoint}`, customOptions); }); }
-            isRefreshing = true;
-            try {
-                const refreshResponse = await fetch(`${BASE_URL}/auth/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: state.refreshToken }), });
-                if (!refreshResponse.ok) throw new Error("Refresh failed");
-                const tokenData = await refreshResponse.json();
-                storeTokens(tokenData.access_token, tokenData.refresh_token);
-                processQueue(null, tokenData.access_token);
-                customOptions.headers['Authorization'] = `Bearer ${state.accessToken}`;
-                response = await fetch(`${BASE_URL}${endpoint}`, customOptions);
-            } catch (err) { processQueue(err, null); logout(); return Promise.reject(err); } finally { isRefreshing = false; }
-        }
-        if (!response.ok) { const err = await response.json().catch(() => ({ detail: `Error: ${response.status}` })); if (response.status !== 403 && response.status !== 401) { showStatus(err.detail || 'An unknown error occurred.', 'danger'); } throw new Error(err.detail); }
-        return response.status === 204 ? null : response.json();
-    }
-    const storeTokens = (access, refresh) => { state.accessToken = access; state.refreshToken = refresh; localStorage.setItem('accessToken', access); localStorage.setItem('refreshToken', refresh); };
-    const logout = () => { state.accessToken = null; state.refreshToken = null; state.currentUser = null; localStorage.removeItem('accessToken'); localStorage.removeItem('refreshToken'); window.location.hash = ''; handleRoute(); };
-    const login = async (username, password) => { const data = await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); storeTokens(data.access_token, data.refresh_token); await handleRoute(); showStatus('Login successful!', 'success'); return true; };
-    const register = async (username, password) => { await apiFetch('/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) }); showStatus('Registration successful! Please log in.', 'success'); return true; };
-    
-    async function fetchAndRenderAll() {
-        await fetchCurrentUser();
-        renderAllSidebarComponents();
-    }
-    
-    async function fetchCurrentUser() { if (!state.accessToken) return; try { state.currentUser = await apiFetch('/users/me'); } catch (error) { console.error("Token might be expired or invalid, logging out.", error); logout(); } }
-    
-    async function handleRoute() {
-        await fetchCurrentUser();
-        const hash = window.location.hash;
-        const circleRouteMatch = hash.match(/^#\/circle\/(.+)$/);
-        const followRouteMatch = hash.match(/^#\/follow\/(.+)$/);
-        if (followRouteMatch) { await handleFollowByToken(followRouteMatch[1]); } 
-        else if (circleRouteMatch) { state.dashboardFeed.filter.circle_id = null; await showCircleView(circleRouteMatch[1]); } 
-        else { await showDashboardView(); }
-    }
-
-    async function showDashboardView() {
-        dom.circleView.classList.add('hidden');
-        if (state.currentUser) {
-            dom.authSection.classList.add('hidden');
-            dom.appSection.classList.remove('hidden');
-            dom.dashboardView.classList.remove('hidden');
-            dom.welcomeMessage.textContent = `Welcome, ${state.currentUser.username}!`;
-            dom.userActions.classList.remove('hidden');
-            await renderDashboard();
+    const onPlayerStateChange = (event) => { if (event.data === YT.PlayerState.PLAYING) { updateUI(); } };
+    const onPlayerReady = (event) => { event.target.loadPlaylist(videoIds); updateUI(); };
+    if (ytPlaylistPlayer && typeof ytPlaylistPlayer.loadPlaylist === 'function') { ytPlaylistPlayer.loadPlaylist(videoIds); } else { ytPlaylistPlayer = new YT.Player('playlist-player-embed', { height: '100%', width: '100%', playerVars: { 'autoplay': 1, 'controls': 1, 'rel': 0, 'modestbranding': 1 }, events: { 'onReady': onPlayerReady, 'onStateChange': onPlayerStateChange } }); }
+  }
+  function showYoutubeSearchLoading(container) { container.innerHTML = Array.from({length: 3}, () => `<div class="yt-search-result-skeleton"></div>`).join(''); }
+  async function handleYouTubeSearchInModal() { const btn = document.getElementById('youtubeSearchBtn'); const query = document.getElementById('youtubeSearchInput').value.trim(); const container = document.getElementById('youtubeSearchResultsContainer'); if (!query) return; setButtonLoading(btn, true); showYoutubeSearchLoading(container); try { const results = await ytApp.search(query); renderYouTubeSearchResultsInModal(results); } catch (e) { container.innerHTML = `<p class="text-danger small">${e.message}</p>`; } finally { setButtonLoading(btn, false); } }
+  function renderYouTubeSearchResultsInModal(results) { const container = document.getElementById('youtubeSearchResultsContainer'); if (!results || results.length === 0) { container.innerHTML = '<p class="text-muted small text-center">No videos found.</p>'; return; } const addedVideoIds = new Set(state.postCreation.playlist.videos.map(v => v.id)); container.innerHTML = results.map(video => { const isAdded = addedVideoIds.has(video.video_id); return `<div class="yt-search-result d-flex justify-content-between align-items-center"><div class="d-flex align-items-center" style="overflow: hidden;"><img src="${video.thumbnail}" width="80" class="me-2 rounded" alt="thumbnail"><small class="text-truncate">${video.title}</small></div><button type="button" class="btn ${isAdded ? 'btn-success' : 'btn-primary'} btn-sm py-0" data-action="add-video-to-playlist" data-video-id="${video.video_id}" data-video-title="${encodeURIComponent(video.title)}" data-video-img="${video.thumbnail}" ${isAdded ? 'disabled' : ''}>${isAdded ? ' Added' : '<i class="bi bi-plus-lg"></i>'}</button></div>`; }).join(''); }
+  function renderSelectedPlaylistVideos() { const container = document.getElementById('selectedPlaylistVideosContainer'); const videos = state.postCreation.playlist.videos; if (videos.length === 0) { container.innerHTML = '<p class="text-muted small text-center">Added videos will appear here.</p>'; return; } container.innerHTML = videos.map(video => `<div class="yt-selected-video d-flex justify-content-between align-items-center" draggable="true" data-video-id="${video.id}"><div class="d-flex align-items-center" style="overflow: hidden;"><i class="bi bi-grip-vertical me-2"></i><img src="${video.imageSrc}" width="80" class="me-2 rounded" alt="thumbnail"><small class="text-truncate">${video.title}</small></div><button type="button" class="btn btn-danger btn-sm py-0" data-action="remove-video-from-playlist" data-video-id="${video.id}"><i class="bi bi-trash"></i></button></div>`).join(''); }
+  function resetPostCreationModal() { document.getElementById('createPostForm').reset(); state.postCreation = { type: 'standard', playlist: { videos: [] } }; document.getElementById('postTypeSelect').value = 'standard'; document.getElementById('standardPostFields').classList.remove('hidden'); document.getElementById('playlistPostFields').classList.add('hidden'); renderSelectedPlaylistVideos(); document.getElementById('youtubeSearchResultsContainer').innerHTML = '<p class="text-muted small text-center">Search results will appear here.</p>'; }
+ 
+  // --- SMARTER CHAT & WEBRTC MANAGER ---
+  const chatManager = {
+    ws: null, peerConnections: {}, localStream: null, participants: new Map(), isCallActive: false,
+    connect(circleId) {
+        if (this.ws) this.disconnect();
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat/${circleId}?token=${state.accessToken}`;
+        this.ws = new WebSocket(wsUrl);
+        this.ws.onopen = () => { this.updateParticipant(state.currentUser._id, { username: state.currentUser.username }); this.addChatMessage({ type: 'system', text: 'Connected to chat.' }); };
+        this.ws.onmessage = (event) => this.handleMessage(JSON.parse(event.data));
+        this.ws.onclose = () => { this.addChatMessage({ type: 'system', text: 'Disconnected from chat.' }); this.disconnect(); };
+        this.ws.onerror = (err) => { console.error('WebSocket Error:', err); this.addChatMessage({ type: 'system', text: 'Connection error.' }); };
+    },
+    disconnect() {
+        if (this.isCallActive) this.leaveCall();
+        if (this.ws) { this.ws.close(); this.ws = null; }
+        this.participants.clear(); this.peerConnections = {}; this.updateUI();
+        const startCallBtn = document.getElementById('startCallBtn');
+        startCallBtn.innerHTML = '<i class="bi bi-telephone-fill"></i> Start Call';
+        startCallBtn.disabled = false;
+        startCallBtn.classList.replace('btn-danger', 'btn-success');
+    },
+    sendMessage(type, content = {}, to = null) { if(this.ws) this.ws.send(JSON.stringify({ type, content, to })); },
+    addChatMessage({ type = 'user', senderId = '', senderUsername = '', text = '' }) {
+        const container = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        div.className = 'chat-message';
+        if (type === 'system') {
+            div.classList.add('system');
+            div.textContent = text;
         } else {
-            dom.appSection.classList.add('hidden');
-            dom.authSection.classList.remove('hidden');
+            const isMyMessage = senderId === state.currentUser._id;
+            div.classList.add(isMyMessage ? 'my-message' : 'other-message');
+            const senderHTML = isMyMessage ? '' : `<span class="sender">${senderUsername}</span>`;
+            div.innerHTML = `${senderHTML}<div class="content">${text}</div>`;
         }
-    }
-
-    async function showCircleView(circleId) { state.circleView.currentCircleId = circleId; dom.authSection.classList.add('hidden'); dom.dashboardView.classList.add('hidden'); dom.appSection.classList.remove('hidden'); dom.circleView.classList.remove('hidden'); dom.welcomeMessage.textContent = `Viewing a Circle`; dom.userActions.classList.toggle('hidden', !state.currentUser); await resetAndRenderCircleFeed(); }
-    
-    async function renderDashboard() {
-        renderAllSidebarComponents();
-        dom.usersContainer.innerHTML = '<p class="text-muted small text-center">Search for users by their name.</p>';
-        try {
-            const myCircles = await apiFetch('/circles/mine');
-            state.myCircles = myCircles;
-            renderMyCircles(myCircles);
-            await resetAndRenderDashboardFeed();
-        } catch (error) { console.error("Failed to load dashboard data", error); }
-    }
-
-    function renderAllSidebarComponents() {
-        if (!state.currentUser) return;
-        renderProfile();
-        renderFollowingList();
-        renderIncomingRequests();
-        renderUserSuggestions();
-    }
-    
-    function renderProfile() {
-        if (!state.currentUser) return;
-        dom.profileContainer.innerHTML = `
-            <div class="d-flex align-items-center mb-3">
-                <div class="avatar avatar-lg me-3 d-flex align-items-center justify-content-center fs-2"><i class="bi bi-person-circle"></i></div>
-                <div>
-                    <h4 class="mb-0">${state.currentUser.username}</h4>
-                    <p class="mb-1"><strong>Following:</strong> ${state.currentUser.following_count}</p>
-                    <p class="mb-0"><strong>Followers:</strong> ${state.currentUser.followers_count}</p>
-                </div>
-            </div>
-            <button class="btn btn-sm btn-success w-100" data-action="generate-follow-link"><i class="bi bi-magic"></i> Private Follow Link</button>
-        `;
-    }
-
-    function renderUserList(users, container, emptyMessage) {
-        if (!users || users.length === 0) { container.innerHTML = `<p class="text-muted small text-center">${emptyMessage}</p>`; return; } 
-        if (!state.currentUser) return;
-
-        const followingIds = state.currentUser.following.map(u => u._id);
-        const outgoingRequestIds = state.currentUser.outgoing_requests;
-
-        container.innerHTML = users.map(user => {
-            if (user.username === state.currentUser.username) return '';
-            
-            let buttonHtml;
-            if (followingIds.includes(user._id)) {
-                buttonHtml = `<button class="btn btn-sm btn-danger" data-action="unfollow" data-username="${user.username}">Unfollow</button>`;
-            } else if (outgoingRequestIds.includes(user._id)) {
-                buttonHtml = `<button class="btn btn-sm btn-secondary" data-action="cancel-request" data-username="${user.username}">Request Sent</button>`;
-            } else {
-                buttonHtml = `<button class="btn btn-sm btn-primary" data-action="request-follow" data-username="${user.username}">Request Follow</button>`;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    },
+    updateParticipant(userId, data) {
+        if (!this.participants.has(userId)) {
+            this.participants.set(userId, { stream: null, isAudioOn: true, isVideoOn: false });
+        }
+        const participant = this.participants.get(userId);
+        Object.assign(participant, data);
+        this.updateUI();
+    },
+    removeParticipant(userId) {
+        if (this.peerConnections[userId]) { this.peerConnections[userId].close(); delete this.peerConnections[userId]; }
+        this.participants.delete(userId);
+        this.updateUI();
+    },
+    updateUI() {
+        const listEl = document.getElementById('chat-participants-list');
+        listEl.innerHTML = '';
+        document.getElementById('participant-count').textContent = this.participants.size;
+        for (const [userId, p] of this.participants.entries()) {
+            const name = userId === state.currentUser._id ? `${p.username} (You)` : p.username;
+            listEl.innerHTML += `<div class="list-group-item d-flex justify-content-between align-items-center"><span>${name}</span> <div>${p.isVideoOn ? '<i class="bi bi-camera-video-fill text-success"></i>' : ''} ${!p.isAudioOn ? '<i class="bi bi-mic-mute-fill text-danger"></i>' : ''}</div></div>`;
+        }
+        const gridEl = document.getElementById('videoGrid');
+        gridEl.innerHTML = '';
+        for (const [userId, p] of this.participants.entries()) {
+            if (!p.isVideoOn || !p.username) continue; 
+            const isLocal = userId === state.currentUser._id;
+            gridEl.innerHTML += `<div class="video-container ${isLocal ? 'is-local' : ''}" id="video-container-${userId}"><div class="video-placeholder"><i class="bi bi-person-bounding-box"></i></div><div class="video-overlay"><span class="video-overlay-name">${p.username}</span><div class="video-overlay-icons">${!p.isAudioOn ? '<i class="bi bi-mic-mute-fill"></i>' : ''}</div></div><div class="local-video-controls"><button class="btn btn-secondary btn-sm rounded-circle" data-action="toggle-mic"><i class="bi ${p.isAudioOn ? 'bi-mic-fill' : 'bi-mic-mute-fill'}"></i></button><button class="btn btn-secondary btn-sm rounded-circle" data-action="toggle-camera"><i class="bi ${p.isVideoOn ? 'bi-camera-video-fill' : 'bi-camera-video-off-fill'}"></i></button><button class="btn btn-danger btn-sm rounded-circle" data-action="leave-call"><i class="bi bi-telephone-x-fill"></i></button></div></div>`;
+        }
+        for (const [userId, p] of this.participants.entries()) {
+            if (p.isVideoOn && p.stream) {
+                const container = document.getElementById(`video-container-${userId}`);
+                if (container) {
+                    const videoEl = document.createElement('video');
+                    videoEl.srcObject = p.stream; videoEl.autoplay = true; videoEl.playsInline = true; videoEl.muted = userId === state.currentUser._id;
+                    container.querySelector('.video-placeholder').replaceWith(videoEl);
+                }
             }
-
-            return `<div class="list-group-item d-flex justify-content-between align-items-center">
-                <div class="d-flex align-items-center">
-                    <div class="avatar avatar-sm me-2 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div>
-                    <span>${user.username}</span>
-                </div>
-                ${buttonHtml}
-            </div>`;
-        }).join('');
-    }
-
-    function renderIncomingRequests() {
-        if (!state.currentUser) return;
-        const requests = state.currentUser.incoming_requests;
-        if (!requests || requests.length === 0) {
-            dom.followRequestsContainer.innerHTML = '<p class="text-muted small text-center">No new follow requests.</p>';
+        }
+    },
+    async joinOrLeaveCall() { if (this.isCallActive) this.leaveCall(); else this.joinCall(); },
+    async joinCall() {
+        if (this.isCallActive) return;
+        try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            this.isCallActive = true;
+            this.updateParticipant(state.currentUser._id, { stream: this.localStream, isVideoOn: true, isAudioOn: true });
+            this.sendMessage('media-state', { isVideoOn: true, isAudioOn: true });
+            const btn = document.getElementById('startCallBtn');
+            btn.innerHTML = '<i class="bi bi-telephone-x-fill"></i> Leave Call';
+            btn.classList.replace('btn-success', 'btn-danger');
+            for (const userId of this.participants.keys()) {
+                if (userId !== state.currentUser._id) this.createPeerConnection(userId, true);
+            }
+        } catch (err) { console.error('Could not get media', err); showStatus('Could not access camera/microphone.', 'danger'); }
+    },
+    leaveCall() {
+        if (!this.isCallActive) return;
+        this.localStream.getTracks().forEach(track => track.stop());
+        this.localStream = null; this.isCallActive = false;
+        Object.values(this.peerConnections).forEach(pc => pc.close());
+        this.peerConnections = {};
+        this.updateParticipant(state.currentUser._id, { stream: null, isVideoOn: false });
+        this.sendMessage('media-state', { isVideoOn: false, isAudioOn: false });
+        const btn = document.getElementById('startCallBtn');
+        btn.innerHTML = '<i class="bi bi-telephone-fill"></i> Start Call';
+        btn.classList.replace('btn-danger', 'btn-success');
+    },
+    toggleLocalAudio() {
+        const audioTrack = this.localStream?.getAudioTracks()[0];
+        if (audioTrack) { audioTrack.enabled = !audioTrack.enabled; const isAudioOn = audioTrack.enabled; this.updateParticipant(state.currentUser._id, { isAudioOn }); this.sendMessage('media-state', { isAudioOn }); }
+    },
+    toggleLocalVideo() {
+        const videoTrack = this.localStream?.getVideoTracks()[0];
+        if (videoTrack) { videoTrack.enabled = !videoTrack.enabled; const isVideoOn = videoTrack.enabled; this.updateParticipant(state.currentUser._id, { isVideoOn }); this.sendMessage('media-state', { isVideoOn }); }
+    },
+    async handleMessage(msg) {
+        switch(msg.type) {
+            case 'chat': this.addChatMessage({ type: 'user', senderId: msg.sender_id, senderUsername: msg.sender_username, text: msg.content }); break;
+            case 'chat-history': msg.history.forEach(m => this.addChatMessage({ type: 'user', senderId: m.sender_id, senderUsername: m.sender_username, text: m.content })); break;
+            case 'user-joined': this.updateParticipant(msg.user_id, { username: msg.username }); this.addChatMessage({ type: 'system', text: `${msg.username} joined.` }); if(this.isCallActive) this.createPeerConnection(msg.user_id, true); break;
+            case 'user-left': const username = this.participants.get(msg.user_id)?.username; if(username) this.addChatMessage({ type: 'system', text: `${username} left.` }); this.removeParticipant(msg.user_id); break;
+            case 'existing-users': msg.users.forEach(u => this.updateParticipant(u.user_id, {username: u.username})); break;
+            case 'media-state': this.updateParticipant(msg.from, msg.content); break;
+            case 'offer': this.handleOffer(msg.from, msg.content); break;
+            case 'answer': this.handleAnswer(msg.from, msg.content); break;
+            case 'candidate': this.handleCandidate(msg.from, msg.content); break;
+        }
+    },
+    createPeerConnection(peerId, isInitiator) {
+        if (!this.participants.has(peerId) || !this.participants.get(peerId).username) {
+            console.warn(`Attempted to create peer connection for user ${peerId} without full participant info. Aborting.`);
             return;
         }
-        dom.followRequestsContainer.innerHTML = requests.map(req => `
-            <div class="list-group-item d-flex justify-content-between align-items-center">
-                <div class="d-flex align-items-center">
-                    <div class="avatar avatar-sm me-2 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div>
-                    <span>${req.requester.username}</span>
-                </div>
-                <div class="request-actions">
-                    <button class="btn btn-success btn-sm" data-action="accept-request" data-request-id="${req._id}"><i class="bi bi-check-lg"></i></button>
-                    <button class="btn btn-danger btn-sm" data-action="decline-request" data-request-id="${req._id}"><i class="bi bi-x-lg"></i></button>
-                </div>
-            </div>
-        `).join('');
-    }
+        if (this.peerConnections[peerId]) this.peerConnections[peerId].close();
+        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        this.peerConnections[peerId] = pc;
+        if(this.localStream) this.localStream.getTracks().forEach(track => pc.addTrack(track, this.localStream));
+        pc.onicecandidate = e => e.candidate && this.sendMessage('candidate', e.candidate, peerId);
+        pc.ontrack = e => this.updateParticipant(peerId, { stream: e.streams[0] });
+        if (isInitiator) { pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => this.sendMessage('offer', pc.localDescription, peerId)); }
+    },
+    async handleOffer(peerId, offer) {
+        if (!this.participants.has(peerId)) {
+            console.warn(`Received offer from unknown peer ID: ${peerId}. Waiting for user-joined event.`);
+            return; // This check prevents the undefined error
+        }
+        this.createPeerConnection(peerId, false);
+        await this.peerConnections[peerId].setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await this.peerConnections[peerId].createAnswer();
+        await this.peerConnections[peerId].setLocalDescription(answer);
+        this.sendMessage('answer', this.peerConnections[peerId].localDescription, peerId);
+    },
+    async handleAnswer(peerId, answer) { if(this.peerConnections[peerId]) await this.peerConnections[peerId].setRemoteDescription(new RTCSessionDescription(answer)); },
+    async handleCandidate(peerId, cand) { if(this.peerConnections[peerId]?.remoteDescription) await this.peerConnections[peerId].addIceCandidate(new RTCIceCandidate(cand)); },
+  };
 
-    function renderFollowingList() { if (!state.currentUser) return; renderUserList(state.currentUser.following, dom.followingContainer, "You aren't following anyone yet."); }
-    function renderUserSuggestions() { if (!state.currentUser) return; try { const suggestions = apiFetch('/users/suggestions'); suggestions.then(data => renderUserList(data, dom.userSuggestionsContainer, "No new suggestions from your circles.")); } catch (error) { console.error("Failed to load user suggestions", error); dom.userSuggestionsContainer.innerHTML = '<p class="text-danger small text-center">Could not load suggestions.</p>'; } }
-    
-    function renderMyCircles(circles) { const { circle_id } = state.dashboardFeed.filter; let html = `<a href="#" class="list-group-item clickable list-group-item-action ${!circle_id ? 'active' : ''}" data-action="filter-feed" data-circle-id=""><i class="bi bi-collection-fill me-2"></i>All My Circles</a>`; html += circles.map(c => `<div class="list-group-item d-flex justify-content-between align-items-center p-0"><a href="#/circle/${c._id}" class="flex-grow-1 list-group-item-action border-0 clickable px-3 py-2 ${circle_id === c._id ? 'active' : ''}" data-action="view-circle" data-circle-id="${c._id}"><i class="bi bi-hash"></i> ${c.name} ${c.is_password_protected ? '<i class="bi bi-lock-fill small ms-1 text-muted"></i>' : ''}</a><button class="btn btn-secondary btn-sm py-0 px-2 me-2" title="Share Circle" data-action="share-circle" data-circle-id="${c._id}"><i class="bi bi-share"></i></button></div>`).join(''); dom.myCirclesContainer.innerHTML = html || `<div class="empty-placeholder small">No circles yet.</div>`; document.getElementById('circleSelect').innerHTML = circles.map(c => `<option value="${c._id}">${c.name}</option>`).join(''); }
-    
-    async function resetAndRenderDashboardFeed() { state.dashboardFeed.skip = 0; state.dashboardFeed.hasMore = true; dom.feedContainer.innerHTML = ''; await renderDashboardFeed(); }
-    async function renderDashboardFeed() { if (!state.dashboardFeed.hasMore || state.dashboardFeed.isLoading) return; state.dashboardFeed.isLoading = true; dom.feedLoader.classList.remove('hidden'); const { filter, skip, limit, sortBy } = state.dashboardFeed; let url = `/feed?skip=${skip}&limit=${limit}&sort_by=${sortBy}`; if (filter.circle_id) url += `&circle_id=${filter.circle_id}`; if (filter.tags) url += `&tags=${encodeURIComponent(filter.tags)}`; try { const feedData = await apiFetch(url); appendPosts(feedData.posts, dom.feedContainer); state.dashboardFeed.hasMore = feedData.has_more; state.dashboardFeed.skip += feedData.posts.length; if (dom.feedContainer.innerHTML === '' && !feedData.has_more) { dom.feedContainer.innerHTML = `<div class="empty-placeholder">Your feed is empty. Post something or broaden your filters!</div>`; } } catch (error) { dom.feedContainer.innerHTML = `<div class="empty-placeholder text-danger">Could not load feed.</div>`; } finally { state.dashboardFeed.isLoading = false; dom.feedLoader.classList.add('hidden'); } }
-    
-    async function resetAndRenderCircleFeed() { state.circleView.skip = 0; state.circleView.hasMore = true; dom.circleFeedContainer.innerHTML = ''; dom.circleHeader.innerHTML = ''; await renderCircleFeed(); }
-    function renderJoinCirclePrompt(circleId, circleName) { if (!state.currentUser) { dom.circleHeader.innerHTML = `<h2><i class="bi bi-lock-fill"></i> ${circleName}</h2>`; dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder">This is a Whisper Circle. Please <a href="#" id="loginFromCircleView">log in</a> to join.</div>`; document.getElementById('loginFromCircleView').addEventListener('click', (e) => { e.preventDefault(); window.location.hash = ''; handleRoute(); }); return; } dom.circleHeader.innerHTML = `<div class="d-flex justify-content-between align-items-center"><h2><i class="bi bi-lock-fill"></i> Join ${circleName}</h2><a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Feed</a></div>`; dom.circleFeedContainer.innerHTML = `<div class="glass-card text-center"><p class="fs-5">This is a Whisper Circle. Enter the correct whisper to gain access.</p><div class="input-group mt-3 mx-auto" style="max-width: 300px;"><input type="password" id="joinCirclePasswordInput" class="form-control" placeholder="Enter Whisper..."><button class="btn btn-primary" id="joinCircleSubmitBtn" data-circle-id="${circleId}">Join</button></div></div>`; }
-    async function renderCircleFeed() { const feedState = state.circleView; if (!feedState.hasMore || feedState.isLoading) return; feedState.isLoading = true; dom.feedLoader.classList.remove('hidden'); try { if (feedState.skip === 0) { const circleDetails = await apiFetch(`/circles/${feedState.currentCircleId}`); feedState.circleName = circleDetails.name; dom.circleHeader.innerHTML = `<div class="d-flex justify-content-between align-items-center flex-wrap gap-3"><div><h2><i class="bi bi-hash"></i> ${circleDetails.name}</h2><p class="text-muted mb-0">${circleDetails.description || 'A shared space for posts.'}</p></div><div class="d-flex align-items-center gap-3 flex-wrap"><div class="input-group input-group-sm" style="width: auto;"><span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);"><i class="bi bi-tags"></i></span><input type="text" id="circleTagFilter" class="form-control border-start-0" placeholder="Filter by tags..." value="${feedState.tags}" style="min-width: 150px;"></div><div class="d-flex align-items-center gap-2"><label for="circleSortSelect" class="form-label mb-0 text-muted small">Sort by:</label><select id="circleSortSelect" class="form-select form-select-sm" style="width: auto;"><option value="newest" ${feedState.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="top" ${feedState.sortBy === 'top' ? 'selected' : ''}>Top</option></select></div><a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Feed</a></div></div>`; } let url = `/circles/${feedState.currentCircleId}/feed?skip=${feedState.skip}&limit=${feedState.limit}&sort_by=${feedState.sortBy}`; if (feedState.tags) { url += `&tags=${encodeURIComponent(feedState.tags)}`; } const feedData = await apiFetch(url); appendPosts(feedData.posts, dom.circleFeedContainer, feedState.circleName); feedState.hasMore = feedData.has_more; feedState.skip += feedData.posts.length; if (dom.circleFeedContainer.innerHTML === '' && !feedData.has_more) { dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder">This circle has no posts yet. Be the first!</div>`; } } catch (error) { try { const statusData = await apiFetch(`/circles/${feedState.currentCircleId}/status`); if (statusData.is_password_protected) { renderJoinCirclePrompt(feedState.currentCircleId, statusData.name); } else { dom.circleHeader.innerHTML = ''; dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder text-danger">This circle is private and you are not a member.</div>`; } } catch (statusError) { dom.circleHeader.innerHTML = ''; dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder text-danger">Could not find or access this circle.</div>`; } } finally { feedState.isLoading = false; dom.feedLoader.classList.add('hidden'); } }
-    
-    function appendPosts(posts, container, circleName = null) { const canDelete = (post) => state.currentUser && post.author_username === state.currentUser.username; const postsHtml = posts.map(post => { let contentHtml = ''; if (post.content.text) { contentHtml += `<p class="card-text" style="white-space: pre-wrap;">${post.content.text}</p>`; } if (post.content.link) { const videoId = getYouTubeID(post.content.link); if (videoId) { contentHtml += `<div class="video-container my-2"><iframe src="https://www.youtube.com/embed/${videoId}" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`; } else { try { const host = new URL(post.content.link).hostname; contentHtml += `<a href="${post.content.link}" target="_blank" rel="noopener noreferrer" class="link-preview d-block text-decoration-none"><strong class="link-preview-title d-block">${post.content.link}</strong><span class="link-preview-host">${host}</span></a>`; } catch (e) { contentHtml += `<p class="text-muted">Invalid link: ${post.content.link}</p>` } } } if (post.content.tags && post.content.tags.length > 0) { contentHtml += `<div class="mt-3 post-tags">${post.content.tags.map(tag => `<span class="badge rounded-pill bg-secondary me-1" data-action="filter-by-tag" data-tag="${tag}">${tag}</span>`).join(' ')}</div>`; } const voteControls = `<div class="vote-controls"><button class="vote-btn up ${post.user_vote === 1 ? 'voted' : ''}" data-action="vote" data-post-id="${post._id}" data-direction="1" title="Upvote"><i class="bi bi-arrow-up-circle"></i></button><span class="vote-score" title="Post score">${post.score}</span><button class="vote-btn down ${post.user_vote === -1 ? 'voted' : ''}" data-action="vote" data-post-id="${post._id}" data-direction="-1" title="Downvote"><i class="bi bi-arrow-down-circle"></i></button></div>`; const displayCircleName = circleName || post.circle_name; return `<div class="post-card-wrapper" data-post-wrapper-id="${post._id}"><div class="glass-card post-card d-flex">${voteControls}<div class="post-card-body"><div class="d-flex justify-content-between align-items-start"><div class="d-flex align-items-center"><div class="avatar me-3 d-flex align-items-center justify-content-center"><i class="bi bi-person-circle"></i></div><div><strong class="d-block">${post.author_username}</strong><small class="text-muted">in <a href="#/circle/${post.circle_id}" class="text-reset fw-bold">${displayCircleName}</a> &bull; ${new Date(post.created_at).toLocaleString()}</small></div></div>${canDelete(post) ? `<button class="btn btn-danger btn-sm py-0 px-2" data-action="delete-post" data-post-id="${post._id}" data-circle-id="${post.circle_id}"><i class="bi bi-trash"></i></button>` : ''}</div><div class="mt-3">${contentHtml}</div></div></div></div>`; }).join(''); container.insertAdjacentHTML('beforeend', postsHtml); }
-    const observer = new IntersectionObserver((entries) => { if (entries[0].isIntersecting) { if (!dom.circleView.classList.contains('hidden')) { renderCircleFeed(); } else if (!dom.dashboardView.classList.contains('hidden')) { renderDashboardFeed(); } } }, { rootMargin: '200px' }); observer.observe(dom.feedLoader);
-    const switchAuthView = (hideEl, showEl) => { hideEl.classList.add('animate-out'); hideEl.addEventListener('animationend', () => { hideEl.classList.add('hidden'); hideEl.classList.remove('animate-out'); showEl.classList.remove('hidden'); showEl.classList.add('animate-in'); showEl.addEventListener('animationend', () => { showEl.classList.remove('animate-in'); }, { once: true }); }, { once: true }); };
-    async function handleAuthAction(e, action) { const btn = e.currentTarget; const u = document.getElementById('usernameInput').value, p = document.getElementById('passwordInput').value; if (!u || !p) return showStatus('Username and password are required', 'warning'); setButtonLoading(btn, true); try { await action(u, p); } catch (error) {} finally { setButtonLoading(btn, false); } }
-    
-    async function handleCreateCircle() { const btn = document.getElementById('submitCircleButton'); const name = document.getElementById('circleName').value; const description = document.getElementById('circleDescription').value; const is_public = document.getElementById('isPublicSwitch').checked; const passwordSwitch = document.getElementById('protectWithPasswordSwitch'); const password = document.getElementById('circlePassword').value; const payload = { name, description, is_public }; if (passwordSwitch.checked && password) { payload.password = password; } else if (passwordSwitch.checked && !password) { return showStatus('Password cannot be empty if protection is enabled.', 'warning'); } setButtonLoading(btn, true); try { await apiFetch('/circles', { method: 'POST', body: JSON.stringify(payload) }); showStatus('Circle created!', 'success'); bootstrap.Modal.getInstance('#createCircleModal').hide(); document.getElementById('createCircleForm').reset(); document.getElementById('circlePasswordContainer').classList.add('hidden'); const myCircles = await apiFetch('/circles/mine'); state.myCircles = myCircles; renderMyCircles(myCircles); } catch(error) {} finally { setButtonLoading(btn, false); } }
-    async function handleCreatePost() { const btn = document.getElementById('submitPostButton'); const circle_id = document.getElementById('circleSelect').value; if (!circle_id) return showStatus('You must select a circle to post in.', 'warning'); const text = document.getElementById('postText').value.trim(); const link = document.getElementById('postLink').value.trim(); const tags = document.getElementById('postTags').value.split(',').map(tag => tag.trim()).filter(Boolean); if (!text && !link) return showStatus('A post must have either text or a link.', 'warning'); setButtonLoading(btn, true); try { await apiFetch(`/circles/${circle_id}/posts`, { method: 'POST', body: JSON.stringify({ text, link, tags }) }); showStatus('Post created!', 'success'); bootstrap.Modal.getInstance('#createPostModal').hide(); document.getElementById('createPostForm').reset(); if (state.circleView.currentCircleId === circle_id) { await resetAndRenderCircleFeed(); } else if (!window.location.hash || window.location.hash === '#/') { await resetAndRenderDashboardFeed(); } } catch(error) {} finally { setButtonLoading(btn, false); } }
-    async function handleDeletePost(postId, circleId) { if (!confirm('Are you sure you want to delete this post?')) return; try { await apiFetch(`/circles/${circleId}/posts/${postId}`, { method: 'DELETE' }); showStatus('Post deleted.', 'success'); if (state.circleView.currentCircleId) await resetAndRenderCircleFeed(); else await resetAndRenderDashboardFeed(); } catch(error) {} }
-    
-    async function handleUserSearch() { const btn = document.getElementById('userSearchBtn'); const query = document.getElementById('userSearchInput').value.trim(); if (!query) return; setButtonLoading(btn, true); dom.usersContainer.innerHTML = ''; try { const users = await apiFetch(`/users/discover?q=${encodeURIComponent(query)}`); renderUserList(users, dom.usersContainer, "No users found matching that name."); } catch (error) { console.error("User search failed", error); dom.usersContainer.innerHTML = '<p class="text-danger small text-center">Search failed.</p>'; } finally { setButtonLoading(btn, false); } }
-    async function handleVote(postId, direction) { if (!state.currentUser) return showStatus('Please log in to vote.', 'warning'); const postWrapper = document.querySelector(`[data-post-wrapper-id="${postId}"]`); if (!postWrapper) return; const upBtn = postWrapper.querySelector('.vote-btn.up'); const downBtn = postWrapper.querySelector('.vote-btn.down'); const scoreEl = postWrapper.querySelector('.vote-score'); const currentVote = upBtn.classList.contains('voted') ? 1 : (downBtn.classList.contains('voted') ? -1 : 0); const finalDirection = currentVote === direction ? 0 : direction; try { const result = await apiFetch(`/posts/${postId}/vote`, { method: 'POST', body: JSON.stringify({ direction: finalDirection }), }); upBtn.classList.toggle('voted', finalDirection === 1); downBtn.classList.toggle('voted', finalDirection === -1); scoreEl.textContent = result.new_score; } catch (error) { console.error("Voting failed", error); } }
-    async function handleJoinCircle(circleId) { const btn = document.getElementById('joinCircleSubmitBtn'); const passwordInput = document.getElementById('joinCirclePasswordInput'); const password = passwordInput.value; if (!password) return showStatus('A "whisper" is required to join.', 'warning'); setButtonLoading(btn, true); try { await apiFetch(`/circles/${circleId}/join`, { method: 'POST', body: JSON.stringify({ password }) }); showStatus('Whisper accepted! You have joined the circle.', 'success'); await fetchCurrentUser(); const myCircles = await apiFetch('/circles/mine'); state.myCircles = myCircles; renderMyCircles(myCircles); await resetAndRenderCircleFeed(); } catch (error) { showStatus('Incorrect whisper or unable to join.', 'danger'); passwordInput.value = ''; } finally { setButtonLoading(btn, false); } }
-    
-    async function handleGenerateFollowLink() { const btn = document.querySelector('[data-action="generate-follow-link"]'); setButtonLoading(btn, true); try { const { token } = await apiFetch('/users/me/generate-follow-token', { method: 'POST' }); const url = `${window.location.origin}${window.location.pathname}#/follow/${token}`; document.getElementById('followLinkInput').value = url; bootstrap.Modal.getInstance('#followLinkModal').show(); } catch(e) { showStatus('Could not generate follow link. Please try again.', 'danger'); } finally { setButtonLoading(btn, false); } }
-    async function handleFollowByToken(token) { if (!state.currentUser) { showStatus('Please log in to use this follow link.', 'info'); window.location.hash = ''; return; } try { const { followed_username } = await apiFetch('/users/follow-by-token', { method: 'POST', body: JSON.stringify({ token }) }); showStatus(`Success! You are now following ${followed_username}.`, 'success'); await fetchAndRenderAll(); } catch (error) { showStatus(error.message || 'This follow link is invalid or has expired.', 'danger'); } finally { window.location.hash = ''; } }
-    
-    async function handleRequestFollow(username) { try { await apiFetch(`/users/${username}/request-follow`, { method: 'POST' }); showStatus('Follow request sent!', 'success'); await fetchAndRenderAll(); } catch(e) { showStatus(e.message, 'danger'); } }
-    async function handleUnfollow(username) { if (!confirm(`Are you sure you want to unfollow ${username}?`)) return; try { await apiFetch(`/users/${username}/follow`, { method: 'DELETE' }); showStatus(`You have unfollowed ${username}.`, 'info'); await fetchAndRenderAll(); } catch(e) { showStatus(e.message, 'danger'); } }
-    async function handleCancelRequest(username) { try { await apiFetch(`/users/${username}/cancel-request`, { method: 'DELETE' }); showStatus('Follow request cancelled.', 'info'); await fetchAndRenderAll(); } catch(e) { showStatus(e.message, 'danger'); } }
-    async function handleRespondToRequest(requestId, action) { try { await apiFetch(`/users/me/follow-requests/${requestId}/respond`, { method: 'POST', body: JSON.stringify({action}) }); showStatus(`Request ${action}ed.`, 'success'); await fetchAndRenderAll(); } catch(e) { showStatus(e.message, 'danger'); } }
 
-    document.addEventListener('DOMContentLoaded', () => {
-        new bootstrap.Modal('#createPostModal'); new bootstrap.Modal('#createCircleModal'); new bootstrap.Modal('#followLinkModal');
-        const authWelcome = document.getElementById('authWelcome'); const authFormContainer = document.getElementById('authFormContainer');
-        document.getElementById('loginButton').addEventListener('click', () => switchAuthView(authWelcome, authFormContainer));
-        document.getElementById('backToWelcomeBtn').addEventListener('click', () => switchAuthView(authFormContainer, authWelcome));
-        document.getElementById('loginSubmitButton').addEventListener('click', e => handleAuthAction(e, login));
-        document.getElementById('registerSubmitButton').addEventListener('click', e => handleAuthAction(e, register));
-        document.getElementById('logoutButton').addEventListener('click', logout);
-        document.getElementById('createCircleBtn').addEventListener('click', () => bootstrap.Modal.getInstance('#createCircleModal').show());
-        document.getElementById('submitCircleButton').addEventListener('click', handleCreateCircle);
-        document.getElementById('createPostBtn').addEventListener('click', () => bootstrap.Modal.getInstance('#createPostModal').show());
-        document.getElementById('submitPostButton').addEventListener('click', handleCreatePost);
-        document.getElementById('userSearchBtn').addEventListener('click', handleUserSearch);
-        document.getElementById('userSearchInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleUserSearch(); });
-        document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
-        document.getElementById('themeToggleBtnLogin').addEventListener('click', toggleTheme);
-        document.getElementById('protectWithPasswordSwitch').addEventListener('change', e => { document.getElementById('circlePasswordContainer').classList.toggle('hidden', !e.target.checked); });
-        document.getElementById('copyFollowLinkBtn').addEventListener('click', (e) => { const linkInput = document.getElementById('followLinkInput'); linkInput.select(); document.execCommand('copy'); showStatus('Link copied to clipboard!', 'success'); });
-        document.getElementById('dashboardSortSelect').addEventListener('change', (e) => { state.dashboardFeed.sortBy = e.target.value; resetAndRenderDashboardFeed(); });
-        document.getElementById('dashboardTagFilter').addEventListener('input', debounce(e => { state.dashboardFeed.filter.tags = e.target.value; resetAndRenderDashboardFeed(); }, 500));
-        document.body.addEventListener('change', e => { if (e.target.id === 'circleSortSelect') { state.circleView.sortBy = e.target.value; resetAndRenderCircleFeed(); } });
-        document.body.addEventListener('input', debounce(e => { if (e.target.id === 'circleTagFilter') { state.circleView.tags = e.target.value; resetAndRenderCircleFeed(); } }, 500));
-        
-        window.addEventListener('hashchange', handleRoute);
-        document.body.addEventListener('click', e => {
-            const link = e.target.closest('a'); if (link && link.getAttribute('href') === '#') { e.preventDefault(); if (link.classList.contains('btn')) { window.location.hash = ''; } }
-            const joinBtn = e.target.closest('#joinCircleSubmitBtn'); if (joinBtn) { handleJoinCircle(joinBtn.dataset.circleId); return; }
-            const target = e.target.closest('[data-action]'); if (!target) return;
-            const { action, ...data } = target.dataset;
-            switch(action) {
-                case 'generate-follow-link': handleGenerateFollowLink(); break;
-                case 'request-follow': handleRequestFollow(data.username); break;
-                case 'unfollow': handleUnfollow(data.username); break;
-                case 'cancel-request': handleCancelRequest(data.username); break;
-                case 'accept-request': handleRespondToRequest(data.requestId, 'accept'); break;
-                case 'decline-request': handleRespondToRequest(data.requestId, 'decline'); break;
-                case 'vote': handleVote(data.postId, parseInt(data.direction)); break;
-                case 'delete-post': handleDeletePost(data.postId, data.circleId); break;
-                case 'filter-feed': if(window.location.hash !== '') window.location.hash = ''; state.dashboardFeed.filter.circle_id = data.circleId || null; renderMyCircles(state.myCircles); resetAndRenderDashboardFeed(); break;
-                case 'share-circle': const url = `${window.location.origin}${window.location.pathname}#/circle/${data.circleId}`; navigator.clipboard.writeText(url).then(() => showStatus('Share link copied to clipboard!', 'success')); break;
-                case 'filter-by-tag':
-                    if (!dom.circleView.classList.contains('hidden')) { const filterInput = document.getElementById('circleTagFilter'); if (filterInput) { filterInput.value = data.tag; state.circleView.tags = data.tag; resetAndRenderCircleFeed(); }
-                    } else { const filterInput = document.getElementById('dashboardTagFilter'); if (filterInput) { filterInput.value = data.tag; state.dashboardFeed.filter.tags = data.tag; resetAndRenderDashboardFeed(); } }
-                    break;
-            }
-        });
-        initTheme();
-        handleRoute();
+  document.addEventListener('DOMContentLoaded', () => {
+    ['#createPostModal', '#createCircleModal', '#followLinkModal', '#inviteCircleModal', '#chatModal', '#playlistPlayerModal'].forEach(id => new bootstrap.Modal(id));
+    const authWelcome = document.getElementById('authWelcome'); const authFormContainer = document.getElementById('authFormContainer');
+    document.getElementById('loginButton').addEventListener('click', () => switchAuthView(authWelcome, authFormContainer));
+    document.getElementById('backToWelcomeBtn').addEventListener('click', () => switchAuthView(authFormContainer, authWelcome));
+    document.getElementById('loginSubmitButton').addEventListener('click', e => handleAuthAction(e, login));
+    document.getElementById('registerSubmitButton').addEventListener('click', e => handleAuthAction(e, register));
+    document.getElementById('logoutButton').addEventListener('click', logout);
+    document.getElementById('createCircleBtn').addEventListener('click', () => bootstrap.Modal.getInstance('#createCircleModal').show());
+    document.getElementById('submitCircleButton').addEventListener('click', handleCreateCircle);
+    document.getElementById('createPostBtn').addEventListener('click', () => bootstrap.Modal.getInstance('#createPostModal').show());
+    document.getElementById('createPostModal').addEventListener('hidden.bs.modal', resetPostCreationModal);
+    document.getElementById('submitPostButton').addEventListener('click', handleCreatePost);
+    document.getElementById('userSearchBtn').addEventListener('click', handleUserSearch);
+    document.getElementById('userSearchInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleUserSearch(); });
+    document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
+    document.getElementById('themeToggleBtnLogin').addEventListener('click', toggleTheme);
+    document.getElementById('protectWithPasswordSwitch').addEventListener('change', e => { document.getElementById('circlePasswordContainer').classList.toggle('hidden', !e.target.checked); });
+    document.getElementById('copyFollowLinkBtn').addEventListener('click', () => { navigator.clipboard.writeText(document.getElementById('followLinkInput').value); showStatus('Link copied!', 'success'); });
+    document.getElementById('copyInviteLinkBtn').addEventListener('click', () => { navigator.clipboard.writeText(document.getElementById('inviteLinkInput').value); showStatus('Invite link copied!', 'success'); });
+    document.getElementById('dashboardSortSelect').addEventListener('change', (e) => { state.dashboardFeed.sortBy = e.target.value; resetAndRenderDashboardFeed(); });
+    document.getElementById('dashboardTagFilter').addEventListener('input', debounce(e => { state.dashboardFeed.filter.tags = e.target.value; resetAndRenderDashboardFeed(); }, 500));
+    document.body.addEventListener('change', e => { if (e.target.id === 'circleSortSelect') { state.circleView.sortBy = e.target.value; resetAndRenderCircleFeed(); } });
+    document.body.addEventListener('input', debounce(e => { if (e.target.id === 'circleTagFilter') { state.circleView.tags = e.target.value; resetAndRenderCircleFeed(); } }, 500));
+    document.getElementById('postTypeSelect').addEventListener('change', e => { const isStandard = e.target.value === 'standard'; state.postCreation.type = e.target.value; document.getElementById('standardPostFields').classList.toggle('hidden', !isStandard); document.getElementById('playlistPostFields').classList.toggle('hidden', isStandard); });
+    document.getElementById('youtubeSearchBtn').addEventListener('click', handleYouTubeSearchInModal);
+    document.getElementById('youtubeSearchInput').addEventListener('keypress', e => { if (e.key === 'Enter') handleYouTubeSearchInModal(); });
+    document.getElementById('playlistPlayerModal').addEventListener('hidden.bs.modal', () => { if (ytPlaylistPlayer && typeof ytPlaylistPlayer.destroy === 'function') { ytPlaylistPlayer.destroy(); ytPlaylistPlayer = null; } });
+    document.getElementById('playlist-prev-btn').addEventListener('click', () => { if (ytPlaylistPlayer) ytPlaylistPlayer.previousVideo(); });
+    document.getElementById('playlist-next-btn').addEventListener('click', () => { if (ytPlaylistPlayer) ytPlaylistPlayer.nextVideo(); });
+    document.getElementById('playlist-queue-list').addEventListener('click', (e) => { const item = e.target.closest('.playlist-queue-item'); if (item && ytPlaylistPlayer) { const index = parseInt(item.dataset.index, 10); ytPlaylistPlayer.playVideoAt(index); } });
+    
+    // Chat Modal listeners
+    document.getElementById('chatModal').addEventListener('hidden.bs.modal', () => chatManager.disconnect());
+    document.getElementById('startCallBtn').addEventListener('click', () => chatManager.joinOrLeaveCall());
+    document.getElementById('chatSendBtn').addEventListener('click', () => { 
+        const input = document.getElementById('chatInput'); 
+        if (input.value) { 
+            chatManager.sendMessage('chat', input.value); 
+            // FIX: DO NOT add message here. Wait for broadcast from server to ensure single source of truth.
+            input.value = ''; 
+        } 
     });
-  </script>
+    document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('chatSendBtn').click(); });
+
+    let draggedItem = null;
+    const selectedVideosContainer = document.getElementById('selectedPlaylistVideosContainer');
+    selectedVideosContainer.addEventListener('dragstart', e => { draggedItem = e.target; setTimeout(() => e.target.classList.add('dragging'), 0); });
+    selectedVideosContainer.addEventListener('dragend', e => { if(draggedItem) draggedItem.classList.remove('dragging'); });
+    selectedVideosContainer.addEventListener('dragover', e => { e.preventDefault(); const afterElement = [...selectedVideosContainer.querySelectorAll('.yt-selected-video:not(.dragging)')].reduce((closest, child) => { const box = child.getBoundingClientRect(); const offset = e.clientY - box.top - box.height / 2; return (offset < 0 && offset > closest.offset) ? { offset, element: child } : closest; }, { offset: Number.NEGATIVE_INFINITY }).element; if (afterElement == null) { selectedVideosContainer.appendChild(draggedItem); } else { selectedVideosContainer.insertBefore(draggedItem, afterElement); } });
+    selectedVideosContainer.addEventListener('drop', e => { if (draggedItem) { const newOrderIds = [...selectedVideosContainer.querySelectorAll('.yt-selected-video')].map(el => el.dataset.videoId); state.postCreation.playlist.videos.sort((a, b) => newOrderIds.indexOf(a.id) - newOrderIds.indexOf(b.id)); draggedItem = null; } });
+   
+    window.addEventListener('hashchange', handleRoute);
+    document.body.addEventListener('click', e => {
+      const link = e.target.closest('a'); if (link && link.getAttribute('href') === '#') { e.preventDefault(); if (link.classList.contains('btn')) { window.location.hash = ''; } }
+      const joinBtn = e.target.closest('#joinCircleSubmitBtn'); if (joinBtn) { handleJoinCircle(joinBtn.dataset.circleId); return; }
+      const target = e.target.closest('[data-action]'); if (!target) return;
+      const { action, ...data } = target.dataset;
+      switch(action) {
+        case 'generate-follow-link': handleGenerateFollowLink(); break;
+        case 'request-follow': handleRequestFollow(data.username); break;
+        case 'unfollow': handleUnfollow(data.username); break;
+        case 'cancel-request': handleCancelRequest(data.username); break;
+        case 'accept-request': handleRespondToRequest(data.requestId, 'accept'); break;
+        case 'decline-request': handleRespondToRequest(data.requestId, 'decline'); break;
+        case 'vote': handleVote(data.postId, parseInt(data.direction)); break;
+        case 'delete-post': handleDeletePost(data.postId, data.circleId); break;
+        case 'filter-feed': if(window.location.hash !== '') window.location.hash = ''; state.dashboardFeed.filter.circle_id = data.circleId || null; renderMyCircles(state.myCircles); resetAndRenderDashboardFeed(); break;
+        case 'invite-to-circle': handleInviteToCircle(data.circleId); break;
+        case 'open-chat': bootstrap.Modal.getInstance('#chatModal').show(); document.getElementById('chatMessages').innerHTML = ''; chatManager.connect(data.circleId); break;
+        case 'leave-call': chatManager.leaveCall(); break;
+        case 'toggle-mic': chatManager.toggleLocalAudio(); break;
+        case 'toggle-camera': chatManager.toggleLocalVideo(); break;
+        case 'add-video-to-playlist': if (!state.postCreation.playlist.videos.some(v => v.id === data.videoId)) { state.postCreation.playlist.videos.push({ id: data.videoId, title: decodeURIComponent(data.videoTitle), imageSrc: data.videoImg }); renderSelectedPlaylistVideos(); target.innerHTML = ' Added'; target.classList.replace('btn-primary', 'btn-success'); target.disabled = true; } break;
+        case 'remove-video-from-playlist':
+          state.postCreation.playlist.videos = state.postCreation.playlist.videos.filter(v => v.id !== data.videoId); renderSelectedPlaylistVideos();
+          const addButton = document.querySelector(`#youtubeSearchResultsContainer [data-video-id="${data.videoId}"]`); if (addButton) { addButton.innerHTML = '<i class="bi bi-plus-lg"></i>'; addButton.classList.replace('btn-success', 'btn-primary'); addButton.disabled = false; } break;
+        case 'filter-by-tag':
+          if (!dom.circleView.classList.contains('hidden')) { const filterInput = document.getElementById('circleTagFilter'); if (filterInput) { filterInput.value = data.tag; state.circleView.tags = data.tag; resetAndRenderCircleFeed(); }
+          } else { const filterInput = document.getElementById('dashboardTagFilter'); if (filterInput) { filterInput.value = data.tag; state.dashboardFeed.filter.tags = data.tag; resetAndRenderDashboardFeed(); } } break;
+        case 'play-playlist':
+          try { const playlistDataString = data.playlist.replace(/&quot;/g, '"').replace(/&apos;/g, "'"); const playlist = JSON.parse(playlistDataString); openPlaylistPlayerModal(playlist); } 
+          catch (err) { console.error("Failed to parse playlist data:", err); showStatus("Could not play the playlist.", "danger"); } break;
+      }
+    });
+    initTheme();
+    handleRoute();
+  });
+ </script>
 </body>
 </html>

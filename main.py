@@ -5,8 +5,9 @@
 import os
 import re
 import secrets
+import json
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, List, Dict
 from contextlib import asynccontextmanager
 from enum import Enum
 
@@ -14,7 +15,7 @@ from enum import Enum
 import uvicorn
 import jwt
 from jwt.exceptions import PyJWTError
-from fastapi import FastAPI, HTTPException, Body, Depends, status, Query, Request
+from fastapi import FastAPI, HTTPException, Body, Depends, status, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import FileResponse
@@ -33,6 +34,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 FOLLOW_TOKEN_EXPIRE_MINUTES = 10
+INVITE_TOKEN_EXPIRE_HOURS = 24
 
 # --- Database Configuration ---
 MONGO_DETAILS = os.getenv("MONGO_URI", "mongodb://localhost:27017/?retryWrites=true&w=majority&directConnection=true")
@@ -44,7 +46,9 @@ users_collection = db.get_collection("users")
 circles_collection = db.get_collection("circles")
 posts_collection = db.get_collection("posts")
 follow_tokens_collection = db.get_collection("follow_tokens")
-follow_requests_collection = db.get_collection("follow_requests") # NEW: For follow requests
+follow_requests_collection = db.get_collection("follow_requests")
+invite_tokens_collection = db.get_collection("invite_tokens")
+chat_messages_collection = db.get_collection("chat_messages")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -59,9 +63,10 @@ async def lifespan(app: FastAPI):
     posts_collection.create_index([("score", DESCENDING), ("created_at", DESCENDING)])
     posts_collection.create_index([("content.tags", ASCENDING)])
     follow_tokens_collection.create_indexes([IndexModel([("expires_at", DESCENDING)], expireAfterSeconds=0)])
-    # NEW: Indexes for the follow requests collection
+    invite_tokens_collection.create_indexes([IndexModel([("expires_at", DESCENDING)], expireAfterSeconds=0)])
     follow_requests_collection.create_index([("requester_id", ASCENDING)])
     follow_requests_collection.create_index([("recipient_id", ASCENDING)])
+    chat_messages_collection.create_index([("circle_id", ASCENDING), ("timestamp", DESCENDING)])
     print("🚀 Database connection established and indexes ensured.")
     yield
     client.close()
@@ -69,8 +74,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Circles Social API",
-    description="A complete API for a social application with user authentication, circles, roles, and posts.",
-    version="2.4.0", # Version Bump for Follow Request System
+    description="A complete API with user auth, circles, posts, and real-time chat/video with persistent history.",
+    version="4.0.2",
     lifespan=lifespan,
 )
 
@@ -86,6 +91,17 @@ class PyObjectId(ObjectId):
         if not ObjectId.is_valid(v): raise ValueError("Invalid ObjectId")
         return ObjectId(v)
 
+class ChatMessage(BaseModel):
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+    circle_id: PyObjectId
+    sender_id: PyObjectId
+    sender_username: str
+    content: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    class Config:
+        json_encoders = {ObjectId: str}
+        populate_by_name = True
+
 class RoleEnum(str, Enum):
     member = "member"
     moderator = "moderator"
@@ -94,6 +110,10 @@ class RoleEnum(str, Enum):
 class SortByEnum(str, Enum):
     newest = "newest"
     top = "top"
+
+class PostTypeEnum(str, Enum):
+    standard = "standard"
+    yt_playlist = "yt-playlist"
 
 class UserRegister(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
@@ -118,17 +138,15 @@ class UserPublicProfile(BaseModel):
     followers_count: int
     class Config: json_encoders = {ObjectId: str}; populate_by_name = True
 
-# NEW: Model for representing an incoming follow request
 class FollowRequestOut(BaseModel):
     request_id: PyObjectId = Field(alias="_id")
     requester: UserPublicProfile
     class Config: json_encoders = {ObjectId: str}; populate_by_name = True
 
-# MODIFIED: UserPrivateProfile now includes pending follow requests
 class UserPrivateProfile(UserPublicProfile):
     following: list[UserPublicProfile] = []
     incoming_requests: list[FollowRequestOut] = []
-    outgoing_requests: list[PyObjectId] = [] # List of user IDs the current user has sent requests to
+    outgoing_requests: list[PyObjectId] = []
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -148,9 +166,8 @@ class FollowByTokenRequest(BaseModel):
 class FollowByTokenResponse(BaseModel):
     followed_username: str
 
-# NEW: Model for responding to a follow request
 class RespondToRequest(BaseModel):
-    action: str # "accept" or "decline"
+    action: str
 
 class CircleMember(BaseModel):
     user_id: PyObjectId
@@ -180,14 +197,40 @@ class CircleOut(BaseModel):
     member_count: int
     is_password_protected: bool
     class Config: json_encoders = {ObjectId: str}; populate_by_name = True
+    
+class InviteTokenCreateResponse(BaseModel):
+    token: str
+    expires_at: datetime
+
+class JoinByTokenRequest(BaseModel):
+    token: str
+
+class JoinByTokenResponse(BaseModel):
+    circle_id: str
+    circle_name: str
+
+class YouTubeVideo(BaseModel):
+    id: str
+    title: str
+    imageSrc: str
+
+class PlaylistData(BaseModel):
+    name: str
+    videos: list[YouTubeVideo]
 
 class PostCreate(BaseModel):
+    post_type: PostTypeEnum = PostTypeEnum.standard
     text: str | None = Field(None, max_length=10000)
     link: str | None = Field(None)
     tags: list[str] = Field(default_factory=list)
+    playlist_data: PlaylistData | None = None
     @model_validator(mode='after')
-    def check_text_or_link_exists(self) -> 'PostCreate':
-        if not self.text and not self.link: raise ValueError('A post must contain either text or a link.')
+    def check_content_exists(self) -> 'PostCreate':
+        if self.post_type == PostTypeEnum.standard and not self.text and not self.link:
+            raise ValueError('A standard post must contain either text or a link.')
+        if self.post_type == PostTypeEnum.yt_playlist:
+            if not self.playlist_data: raise ValueError('A YouTube playlist post must contain playlist data.')
+            if not self.playlist_data.name or not self.playlist_data.videos: raise ValueError('Playlist data must include a name and at least one video.')
         self.tags = sorted(list(set([tag.strip().lower() for tag in self.tags if tag.strip()])))
         return self
 
@@ -227,31 +270,31 @@ def create_access_token(username: str) -> str:
 def create_refresh_token(username: str) -> str:
     return create_jwt_token(data={"sub": username}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS), token_type="refresh")
 
-async def get_optional_current_user(request: Request) -> UserInDB | None:
-    auth_header = request.headers.get("Authorization")
-    if not auth_header: return None
+async def get_current_user_from_token(token: str) -> UserInDB | None:
+    if not token: return None
     try:
-        scheme, token = auth_header.split()
-        if scheme.lower() != "bearer": return None
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("token_type") != "access": return None
         username: str | None = payload.get("sub")
         if not username: return None
         user = users_collection.find_one({"username": username})
         return UserInDB(**user) if user else None
-    except (ValueError, PyJWTError): return None
+    except (PyJWTError, ValueError): return None
 
+async def get_optional_current_user(request: Request) -> UserInDB | None:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header: return None
+    try:
+        scheme, token = auth_header.split()
+        if scheme.lower() != "bearer": return None
+        return await get_current_user_from_token(token)
+    except ValueError: return None
+    
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
     credentials_exception = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials", headers={"WWW-Authenticate": "Bearer"})
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str | None = payload.get("sub")
-        token_type: str | None = payload.get("token_type")
-        if username is None or token_type != "access": raise credentials_exception
-    except PyJWTError: raise credentials_exception
-    user = users_collection.find_one({"username": username})
+    user = await get_current_user_from_token(token)
     if user is None: raise credentials_exception
-    return UserInDB(**user)
+    return user
 
 async def get_circle_or_404(circle_id: str) -> dict:
     if not ObjectId.is_valid(circle_id): raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Circle ID")
@@ -260,9 +303,8 @@ async def get_circle_or_404(circle_id: str) -> dict:
     return circle
 
 async def check_circle_membership(current_user: UserInDB = Depends(get_current_user), circle: dict = Depends(get_circle_or_404)) -> dict:
-    is_password_protected = "password_hash" in circle and circle["password_hash"]
-    if not circle["is_public"] or is_password_protected:
-        if not any(member['user_id'] == current_user.id for member in circle.get('members', [])):
+    if not any(member['user_id'] == current_user.id for member in circle.get('members', [])):
+        if not circle["is_public"] or ("password_hash" in circle and circle["password_hash"]):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not a member of this circle.")
     return circle
 
@@ -275,9 +317,122 @@ def _get_posts_aggregation_pipeline(match_stage: dict, sort_stage: dict, skip: i
         pipeline.append({"$addFields": {"user_vote": {"$cond": {"if": {"$in": [current_user.id, {"$ifNull": ["$upvotes", []]}]}, "then": 1, "else": {"$cond": {"if": {"$in": [current_user.id, {"$ifNull": ["$downvotes", []]}]}, "then": -1, "else": 0}}}}}})
     pipeline.extend([sort_stage, {"$skip": skip}, {"$limit": limit}])
     return pipeline
+    
+# ==============================================================================
+# 4. WEBSOCKET & CHAT MANAGER
+# ==============================================================================
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, circle_id: str, user: UserInDB):
+        await websocket.accept()
+        if circle_id not in self.active_connections:
+            self.active_connections[circle_id] = {}
+        
+        join_msg = {"type": "user-joined", "user_id": str(user.id), "username": user.username}
+        await self.broadcast(json.dumps(join_msg), circle_id, websocket)
+
+        user_list = [{"user_id": uid, "username": ws.scope["user"].username} for uid, ws in self.active_connections[circle_id].items()]
+        await websocket.send_json({"type": "existing-users", "users": user_list})
+
+        history_cursor = chat_messages_collection.find({"circle_id": ObjectId(circle_id)}).sort("timestamp", DESCENDING).limit(50)
+        
+        def serialize_history(doc):
+            doc['_id'] = str(doc['_id'])
+            doc['circle_id'] = str(doc['circle_id'])
+            doc['sender_id'] = str(doc['sender_id'])
+            doc['timestamp'] = doc['timestamp'].isoformat()
+            return doc
+
+        history = [serialize_history(msg) for msg in history_cursor]
+        history.reverse()
+        await websocket.send_json({"type": "chat-history", "history": history})
+
+        self.active_connections[circle_id][str(user.id)] = websocket
+        websocket.scope["user"] = user
+
+    def disconnect(self, websocket: WebSocket, circle_id: str, user_id: str):
+        if circle_id in self.active_connections and user_id in self.active_connections[circle_id]:
+            del self.active_connections[circle_id][user_id]
+            if not self.active_connections[circle_id]:
+                del self.active_connections[circle_id]
+
+    async def broadcast(self, message: str, circle_id: str, exclude: WebSocket | None = None):
+        if circle_id in self.active_connections:
+            for connection in self.active_connections[circle_id].values():
+                if connection != exclude:
+                    await connection.send_text(message)
+    
+    async def send_personal_message(self, message: str, user_id: str, circle_id: str):
+        if circle_id in self.active_connections and user_id in self.active_connections[circle_id]:
+            await self.active_connections[circle_id][user_id].send_text(message)
+
+manager = ConnectionManager()
+
+@app.websocket("/ws/chat/{circle_id}")
+async def websocket_endpoint(websocket: WebSocket, circle_id: str, token: str = Query(...)):
+    user = await get_current_user_from_token(token)
+    if not user:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+        
+    circle = await get_circle_or_404(circle_id)
+    is_member = any(m['user_id'] == user.id for m in circle.get('members', []))
+    if not is_member:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    user_id = str(user.id)
+    await manager.connect(websocket, circle_id, user)
+    
+    try:
+        while True:
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            msg_type = message.get("type")
+            
+            # ** THE FIX FOR VIDEO STATE **
+            if msg_type in ["offer", "answer", "candidate"]:
+                # Peer-to-peer messages for WebRTC signaling
+                recipient_id = message.get("to")
+                message["from"] = user_id
+                await manager.send_personal_message(json.dumps(message), recipient_id, circle_id)
+            elif msg_type == "media-state":
+                # State changes (video/mic on/off) must be broadcast to everyone
+                message["from"] = user_id
+                await manager.broadcast(json.dumps(message), circle_id, exclude=websocket)
+            elif msg_type == "chat":
+                # Chat messages are saved and then broadcast to all (including sender)
+                chat_message = ChatMessage(
+                    circle_id=ObjectId(circle_id),
+                    sender_id=user.id,
+                    sender_username=user.username,
+                    content=message.get("content", "")
+                )
+                chat_messages_collection.insert_one(chat_message.model_dump(by_alias=True))
+                
+                broadcast_msg = {
+                    "type": "chat",
+                    "_id": str(chat_message.id),
+                    "sender_id": str(user.id),
+                    "sender_username": user.username,
+                    "content": chat_message.content,
+                    "timestamp": chat_message.timestamp.isoformat()
+                }
+                await manager.broadcast(json.dumps(broadcast_msg), circle_id)
+            else:
+                 # Fallback for any other general messages
+                message["from"] = user_id
+                await manager.broadcast(json.dumps(message), circle_id, exclude=websocket)
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, circle_id, user_id)
+        await manager.broadcast(json.dumps({"type": "user-left", "user_id": user_id}), circle_id)
+
 
 # ==============================================================================
-# 4. API ENDPOINTS
+# 5. API ENDPOINTS
 # ==============================================================================
 
 # --- Authentication Endpoints ---
@@ -307,8 +462,7 @@ async def refresh_access_token(body: TokenRefreshRequest):
         if payload.get("token_type") != "refresh": raise credentials_exception
         username: str | None = payload.get("sub")
         if username is None: raise credentials_exception
-    except PyJWTError:
-        raise credentials_exception
+    except PyJWTError: raise credentials_exception
     user = users_collection.find_one({"username": username})
     if user is None: raise credentials_exception
     new_access_token = create_access_token(username)
@@ -326,21 +480,15 @@ async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
             "pipeline": [
                 {"$lookup": { "from": "users", "localField": "requester_id", "foreignField": "_id", "as": "requester_details"}},
                 {"$unwind": "$requester_details"},
-                {"$addFields": {"requester": {
-                    "_id": "$requester_details._id", "username": "$requester_details.username",
-                    "followers_count": {"$size": {"$ifNull": ["$requester_details.followers", []]}},
-                    "following_count": {"$size": {"$ifNull": ["$requester_details.following", []]}},
-                }}},
+                {"$addFields": {"requester": { "_id": "$requester_details._id", "username": "$requester_details.username", "followers_count": {"$size": {"$ifNull": ["$requester_details.followers", []]}}, "following_count": {"$size": {"$ifNull": ["$requester_details.following", []]}}}}},
                 {"$project": {"requester_details": 0, "recipient_id": 0, "requester_id": 0}}
             ]
         }},
         {"$lookup": {"from": "follow_requests", "localField": "_id", "foreignField": "requester_id", "as": "outgoing_requests_docs"}},
         {"$addFields": {
-            "followers_count": {"$size": {"$ifNull": ["$followers", []]}},
-            "following_count": {"$size": {"$ifNull": ["$following", []]}},
+            "followers_count": {"$size": {"$ifNull": ["$followers", []]}}, "following_count": {"$size": {"$ifNull": ["$following", []]}},
             "following": { "$map": { "input": "$following_details", "as": "user", "in": { "_id": "$$user._id", "username": "$$user.username", "followers_count": {"$size": {"$ifNull": ["$$user.followers", []]}}, "following_count": {"$size": {"$ifNull": ["$$user.following", []]}}}}},
-            "incoming_requests": "$incoming_requests_docs",
-            "outgoing_requests": "$outgoing_requests_docs.recipient_id"
+            "incoming_requests": "$incoming_requests_docs", "outgoing_requests": "$outgoing_requests_docs.recipient_id"
         }}
     ]
     result = list(users_collection.aggregate(pipeline))
@@ -362,15 +510,11 @@ async def discover_users(q: str = Query(..., min_length=1), current_user: UserIn
 
 @app.post("/users/{username_to_request}/request-follow", status_code=status.HTTP_201_CREATED, tags=["Users"])
 async def request_to_follow_user(username_to_request: str, current_user: UserInDB = Depends(get_current_user)):
-    if current_user.username.lower() == username_to_request.lower():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot send a follow request to yourself.")
+    if current_user.username.lower() == username_to_request.lower(): raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot send a follow request to yourself.")
     recipient = users_collection.find_one({"username": {"$regex": f"^{re.escape(username_to_request)}$", "$options": "i"}})
     if not recipient: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
-    if recipient["_id"] in current_user.following:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You are already following this user.")
-    existing_request = follow_requests_collection.find_one({"requester_id": current_user.id, "recipient_id": recipient["_id"]})
-    if existing_request:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You have already sent a follow request to this user.")
+    if recipient["_id"] in current_user.following: raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You are already following this user.")
+    if follow_requests_collection.find_one({"requester_id": current_user.id, "recipient_id": recipient["_id"]}): raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You have already sent a follow request to this user.")
     follow_requests_collection.insert_one({"requester_id": current_user.id, "recipient_id": recipient["_id"], "created_at": datetime.now(timezone.utc)})
     return {"detail": "Follow request sent successfully."}
 
@@ -385,8 +529,7 @@ async def respond_to_follow_request(request_id: str, body: RespondToRequest, cur
     if not ObjectId.is_valid(request_id): raise HTTPException(status_code=400, detail="Invalid request ID.")
     request_obj_id = ObjectId(request_id)
     request_doc = follow_requests_collection.find_one({"_id": request_obj_id})
-    if not request_doc or request_doc["recipient_id"] != current_user.id:
-        raise HTTPException(status_code=404, detail="Follow request not found or you are not the recipient.")
+    if not request_doc or request_doc["recipient_id"] != current_user.id: raise HTTPException(status_code=404, detail="Follow request not found or you are not the recipient.")
     if body.action == "accept":
         users_collection.update_one({"_id": current_user.id}, {"$addToSet": {"followers": request_doc["requester_id"]}})
         users_collection.update_one({"_id": request_doc["requester_id"]}, {"$addToSet": {"following": current_user.id}})
@@ -422,15 +565,13 @@ async def follow_by_token(body: FollowByTokenRequest, current_user: UserInDB = D
 @app.get("/circles/mine", response_model=list[CircleOut], tags=["Circles"])
 async def list_my_circles(current_user: UserInDB = Depends(get_current_user)):
     circles_cursor = circles_collection.find({"members.user_id": current_user.id}).sort("name", ASCENDING)
-    result = [CircleOut(**c, member_count=len(c.get("members", [])), is_password_protected="password_hash" in c and c.get("password_hash") is not None) for c in circles_cursor]
-    return result
+    return [CircleOut(**c, member_count=len(c.get("members", [])), is_password_protected="password_hash" in c and c.get("password_hash") is not None) for c in circles_cursor]
 
 @app.post("/circles", response_model=CircleOut, status_code=status.HTTP_201_CREATED, tags=["Circles"])
 async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depends(get_current_user)):
     first_member = CircleMember(user_id=current_user.id, username=current_user.username, role=RoleEnum.admin)
     new_circle_doc = {"name": circle_data.name, "description": circle_data.description, "is_public": circle_data.is_public, "owner_id": current_user.id, "members": [first_member.model_dump()], "created_at": datetime.now(timezone.utc)}
-    if circle_data.password:
-        new_circle_doc["password_hash"] = pwd_context.hash(circle_data.password)
+    if circle_data.password: new_circle_doc["password_hash"] = pwd_context.hash(circle_data.password)
     result = circles_collection.insert_one(new_circle_doc)
     created_circle = circles_collection.find_one({"_id": result.inserted_id})
     is_protected = "password_hash" in created_circle and created_circle.get("password_hash") is not None
@@ -449,6 +590,25 @@ async def join_password_protected_circle(join_data: CircleJoin, circle: dict = D
     new_member = CircleMember(user_id=current_user.id, username=current_user.username, role=RoleEnum.member)
     circles_collection.update_one({"_id": circle["_id"]}, {"$addToSet": {"members": new_member.model_dump()}})
 
+@app.post("/circles/{circle_id}/invite-token", response_model=InviteTokenCreateResponse, tags=["Circles"])
+async def create_invite_token(circle: dict = Depends(check_circle_membership)):
+    token = secrets.token_urlsafe(24)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=INVITE_TOKEN_EXPIRE_HOURS)
+    invite_tokens_collection.insert_one({"token": token, "circle_id": circle["_id"], "expires_at": expires_at})
+    return InviteTokenCreateResponse(token=token, expires_at=expires_at)
+    
+@app.post("/circles/join-by-token", response_model=JoinByTokenResponse, tags=["Circles"])
+async def join_circle_by_token(body: JoinByTokenRequest, current_user: UserInDB = Depends(get_current_user)):
+    token_doc = invite_tokens_collection.find_one({"token": body.token, "expires_at": {"$gt": datetime.now(timezone.utc)}})
+    if not token_doc: raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invite link is invalid or has expired.")
+    circle = circles_collection.find_one({"_id": token_doc["circle_id"]})
+    if not circle: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The circle associated with this invite no longer exists.")
+    if any(m['user_id'] == current_user.id for m in circle.get("members", [])):
+        return JoinByTokenResponse(circle_id=str(circle["_id"]), circle_name=circle["name"])
+    new_member = CircleMember(user_id=current_user.id, username=current_user.username, role=RoleEnum.member)
+    circles_collection.update_one({"_id": circle["_id"]}, {"$addToSet": {"members": new_member.model_dump()}})
+    return JoinByTokenResponse(circle_id=str(circle["_id"]), circle_name=circle["name"])
+
 @app.get("/circles/{circle_id}", response_model=CircleOut, tags=["Circles"])
 async def get_circle_details(circle: dict = Depends(check_circle_membership)):
     is_protected = "password_hash" in circle and circle.get("password_hash") is not None
@@ -457,10 +617,13 @@ async def get_circle_details(circle: dict = Depends(check_circle_membership)):
 @app.get("/circles/{circle_id}/feed", response_model=FeedResponse, tags=["Circles"])
 async def get_circle_feed(circle_id: str, skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=50), sort_by: SortByEnum = Query(SortByEnum.newest), tags: str | None = Query(None), current_user: UserInDB | None = Depends(get_optional_current_user)):
     circle = await get_circle_or_404(circle_id)
-    is_password_protected = "password_hash" in circle and circle.get("password_hash")
     is_member = current_user and any(m['user_id'] == current_user.id for m in circle.get('members', []))
-    can_view = (circle["is_public"] and not is_password_protected) or is_member
-    if not can_view: raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED if not current_user else status.HTTP_403_FORBIDDEN, detail="You must be a member to view this circle's feed.")
+    can_view = circle["is_public"] or is_member
+    if not can_view:
+        if "password_hash" in circle and circle["password_hash"]:
+             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="This circle is password protected. Please join to view.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You must be a member to view this circle's feed.")
+
     match_query = {"circle_id": circle["_id"]}
     if tags:
         tag_list = [tag.strip().lower() for tag in tags.split(',') if tag.strip()]
@@ -503,8 +666,7 @@ async def delete_post(circle_id: str, post_id: str, current_user: UserInDB = Dep
     if not post: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found in this circle")
     member_info = next((m for m in circle.get('members', []) if m['user_id'] == current_user.id), None)
     user_is_mod_or_admin = member_info and RoleEnum(member_info['role']) in [RoleEnum.moderator, RoleEnum.admin]
-    if not (post['author_id'] == current_user.id or user_is_mod_or_admin):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to delete this post")
+    if not (post['author_id'] == current_user.id or user_is_mod_or_admin): raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to delete this post")
     posts_collection.delete_one({"_id": ObjectId(post_id)})
 
 @app.get("/feed", response_model=FeedResponse, tags=["Feed"])
@@ -514,8 +676,7 @@ async def get_my_feed(current_user: UserInDB = Depends(get_current_user), skip: 
     if not user_circles: return FeedResponse(posts=[], has_more=False)
     match_query = {}
     if circle_id:
-        if not ObjectId.is_valid(circle_id) or ObjectId(circle_id) not in user_circles:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot filter by a circle you are not a member of.")
+        if not ObjectId.is_valid(circle_id) or ObjectId(circle_id) not in user_circles: raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot filter by a circle you are not a member of.")
         match_query["circle_id"] = ObjectId(circle_id)
     else:
         match_query["circle_id"] = {"$in": list(user_circles.keys())}
@@ -532,7 +693,7 @@ async def get_my_feed(current_user: UserInDB = Depends(get_current_user), skip: 
     return FeedResponse(posts=posts_list, has_more=(skip + len(posts_list)) < total_posts)
 
 # ==============================================================================
-# 5. STATIC FILE SERVING
+# 6. STATIC FILE SERVING
 # ==============================================================================
 if not os.path.exists("static"): os.makedirs("static"); print("Created 'static' directory.")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -547,13 +708,13 @@ async def serve_frontend(full_path: str):
     return FileResponse(static_file_path)
 
 # ==============================================================================
-# 6. SERVER EXECUTION
+# 7. SERVER EXECUTION
 # ==============================================================================
 if __name__ == "__main__":
     print("Starting server...")
     print("Access the API docs at http://127.0.0.1:8000/docs")
     print("Access the User Interface at http://127.0.0.1:8000/")
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
 """
 uvicorn main:app --reload
 """
