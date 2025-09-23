@@ -90,10 +90,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+origins = [
+    "http://127.0.0.1:8080",
+    "https://oblivious-circles.vercel.app"
+]
 # Add CORS middleware for decoupled frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=origins,  # Allows all origins
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
