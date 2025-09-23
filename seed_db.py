@@ -1,3 +1,6 @@
+"""
+seed_db.py - A script to populate the MongoDB database with realistic demo data for the myCircles app.
+"""
 import pymongo
 from pymongo import MongoClient
 from passlib.context import CryptContext
@@ -5,105 +8,212 @@ from bson import ObjectId
 from datetime import datetime, timezone, timedelta
 import random
 
-# ==============================================================================
-# 1. CONFIGURATION
-# ==============================================================================
+# 1. Database & Password-Hashing Setup
 MONGO_DETAILS = "mongodb://localhost:27017/?retryWrites=true&w=majority&directConnection=true"
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-client = MongoClient(MONGO_DETAILS)
-db = client.circles_app
 
+try:
+    client = MongoClient(MONGO_DETAILS)
+    db = client.circles_app
+    client.admin.command('ping')
+    print("✅ MongoDB connection successful.")
+except pymongo.errors.ConnectionFailure as e:
+    print(f"🔥 MongoDB connection failed: {e}")
+    exit(1)
+
+# Get all collections
 users_collection = db.get_collection("users")
 circles_collection = db.get_collection("circles")
 posts_collection = db.get_collection("posts")
+events_collection = db.get_collection("events")
 follow_requests_collection = db.get_collection("follow_requests")
-follow_tokens_collection = db.get_collection("follow_tokens")
-chat_messages_collection = db.get_collection("chat_messages")
-invite_tokens_collection = db.get_collection("invite_tokens")
 
-# ==============================================================================
-# 2. SEEDING LOGIC
-# ==============================================================================
 
-def seed_data():
-    """Clears and populates the database with realistic demo content."""
-    
+def clear_collections():
+    """Wipes all data from the relevant collections."""
     print("🔥 Clearing existing data...")
-    users_collection.delete_many({})
-    circles_collection.delete_many({})
-    posts_collection.delete_many({})
-    follow_requests_collection.delete_many({})
-    follow_tokens_collection.delete_many({})
-    chat_messages_collection.delete_many({})
-    invite_tokens_collection.delete_many({})
-    print("✅ Collections cleared.")
-
-    # --- Create Users ---
-    print("\n🌱 Seeding users...")
-    users_to_create = [
-        {"username": "alice", "password": "password123"},
-        {"username": "bob", "password": "password123"},
-        {"username": "charlie", "password": "password123"},
-        {"username": "diana", "password": "password123"},
-        {"username": "eve", "password": "password123"}, 
+    collections_to_clear = [
+        users_collection,
+        circles_collection,
+        posts_collection,
+        events_collection,
+        follow_requests_collection,
+        # Legacy collections if they exist
+        db.get_collection("follow_tokens"),
+        db.get_collection("chat_messages"),
+        db.get_collection("invite_tokens")
     ]
-    
-    user_docs = []
-    for user_data in users_to_create:
-        user_docs.append({
-            "username": user_data["username"],
-            "password_hash": pwd_context.hash(user_data["password"]),
-            "following": [],
-            "followers": []
-        })
-    users_collection.insert_many(user_docs)
-    
-    all_users_cursor = users_collection.find({})
-    users = {u['username']: u for u in all_users_cursor}
-    user_ids = list(users.values())
-    print(f"✅ Created {len(users)} users.")
+    for collection in collections_to_clear:
+        collection.delete_many({})
+    print("✅ All collections cleared.")
 
-    # --- Establish Pre-approved Follows ---
-    print("\n🤝 Seeding pre-approved follow relationships...")
-    users_collection.update_one({"_id": users['bob']['_id']}, {"$addToSet": {"following": users['alice']['_id']}})
-    users_collection.update_one({"_id": users['alice']['_id']}, {"$addToSet": {"followers": users['bob']['_id']}})
-    
-    users_collection.update_one({"_id": users['charlie']['_id']}, {"$addToSet": {"following": {"$each": [users['alice']['_id'], users['bob']['_id']]}}})
-    users_collection.update_one({"_id": users['alice']['_id']}, {"$addToSet": {"followers": users['charlie']['_id']}})
-    users_collection.update_one({"_id": users['bob']['_id']}, {"$addToSet": {"followers": users['charlie']['_id']}})
-    
-    users_collection.update_one({"_id": users['diana']['_id']}, {"$addToSet": {"following": users['alice']['_id']}})
-    users_collection.update_one({"_id": users['alice']['_id']}, {"$addToSet": {"followers": users['diana']['_id']}})
+
+def seed_users():
+    """Creates a set of demo users."""
+    print("\n🌱 Seeding users...")
+    users_data = [
+        {"username": "alice",   "password": "password123"},
+        {"username": "bob",     "password": "password123"},
+        {"username": "charlie", "password": "password123"},
+        {"username": "diana",   "password": "password123"},
+        {"username": "eve",     "password": "password123"},
+        {"username": "frank",   "password": "password123"},
+    ]
+    user_docs = [{
+        "_id": ObjectId(),
+        "username": u["username"],
+        "password_hash": pwd_context.hash(u["password"]),
+        "following": [],
+        "followers": []
+    } for u in users_data]
+    users_collection.insert_many(user_docs)
+    print(f"✅ Created {len(user_docs)} users.")
+    return {u['username']: u for u in users_collection.find()}
+
+
+def seed_relationships(users):
+    """Creates follow relationships and pending requests."""
+    print("\n🤝 Seeding user relationships...")
+    # Pre-approved follows
+    relationships = {
+        'alice': ['bob', 'charlie', 'diana'],
+        'bob': ['alice', 'charlie'],
+        'charlie': ['diana'],
+        'diana': ['alice', 'bob'],
+        'frank': ['alice', 'bob', 'charlie', 'diana']
+    }
+    for follower_name, following_list in relationships.items():
+        follower_id = users[follower_name]['_id']
+        following_ids = [users[name]['_id'] for name in following_list]
+        
+        # Update follower's "following" list
+        users_collection.update_one(
+            {"_id": follower_id},
+            {"$addToSet": {"following": {"$each": following_ids}}}
+        )
+        # Update each followed user's "followers" list
+        for followed_id in following_ids:
+            users_collection.update_one(
+                {"_id": followed_id},
+                {"$addToSet": {"followers": follower_id}}
+            )
     print("✅ Pre-approved follows created.")
 
-    # --- Create a Pending Follow Request ---
-    print("\n⏳ Seeding a pending follow request...")
+    # Pending follow request
     follow_requests_collection.insert_one({
         "requester_id": users['eve']['_id'],
         "recipient_id": users['alice']['_id'],
         "created_at": datetime.now(timezone.utc)
     })
     print("✅ Pending request from 'eve' to 'alice' created.")
-    
-    # --- Create Circles ---
-    print("\n🎨 Seeding circles with members...")
-    circles_to_create = [
-        {"name": "Wanderlust Wishlist", "description": "A public circle for sharing travel dreams and bucket list destinations.", "is_public": True, "owner_id": users['alice']['_id'], "members": [{"user_id": users['alice']['_id'], "username": "alice", "role": "admin"}, {"user_id": users['bob']['_id'], "username": "bob", "role": "moderator"}, {"user_id": users['charlie']['_id'], "username": "charlie", "role": "member"}]},
-        {"name": "Media Club", "description": "A private space for discussing our favorite movies, shows, and videos.", "is_public": False, "owner_id": users['bob']['_id'], "members": [{"user_id": users['bob']['_id'], "username": "bob", "role": "admin"}, {"user_id": users['diana']['_id'], "username": "diana", "role": "member"}, {"user_id": users['alice']['_id'], "username": "alice", "role": "member"}]},
-        {"name": "Tech & Gadgets", "description": "Latest news, reviews, and discussions on all things tech.", "is_public": True, "owner_id": users['charlie']['_id'], "members": [{"user_id": users['charlie']['_id'], "username": "charlie", "role": "admin"}, {"user_id": users['diana']['_id'], "username": "diana", "role": "moderator"}, {"user_id": users['bob']['_id'], "username": "bob", "role": "member"}]},
-        {"name": "Secret Book Club", "description": "Shhh... it's a secret. Password is 'bookworm'.", "is_public": True, "owner_id": users['diana']['_id'], "password_hash": pwd_context.hash("bookworm"), "members": [{"user_id": users['diana']['_id'], "username": "diana", "role": "admin"}]}
-    ]
-    circles_collection.insert_many(circles_to_create)
-    all_circles_cursor = circles_collection.find({})
-    circles = {c['name']: c for c in all_circles_cursor}
-    print("✅ Circles created (including a password-protected one).")
 
-    # --- Create Posts ---
+
+def seed_circles(users):
+    """Creates demo circles with members."""
+    print("\n🎨 Seeding circles...")
+    now = datetime.now(timezone.utc)
+    circle_docs = [
+        {
+            "_id": ObjectId(), "name": "Wanderlust Wishlist",
+            "description": "A public circle for sharing travel dreams and bucket list destinations.", "is_public": True,
+            "owner_id": users['alice']['_id'], "created_at": now - timedelta(days=10),
+            "members": [
+                {"user_id": users['alice']['_id'], "username": "alice", "role": "admin"},
+                {"user_id": users['bob']['_id'], "username": "bob", "role": "member"},
+                {"user_id": users['diana']['_id'], "username": "diana", "role": "member"},
+                {"user_id": users['frank']['_id'], "username": "frank", "role": "moderator"},
+            ]
+        },
+        {
+            "_id": ObjectId(), "name": "Media Club",
+            "description": "A private space for discussing our favorite movies, shows, and videos.", "is_public": False,
+            "owner_id": users['bob']['_id'], "created_at": now - timedelta(days=8),
+            "members": [
+                {"user_id": users['bob']['_id'], "username": "bob", "role": "admin"},
+                {"user_id": users['alice']['_id'], "username": "alice", "role": "member"},
+                {"user_id": users['charlie']['_id'], "username": "charlie", "role": "member"},
+            ]
+        },
+        {
+            "_id": ObjectId(), "name": "Tech & Gadgets",
+            "description": "Latest news, reviews, and discussions on all things tech.", "is_public": True,
+            "owner_id": users['charlie']['_id'], "created_at": now - timedelta(days=5),
+            "members": [
+                {"user_id": users['charlie']['_id'], "username": "charlie", "role": "admin"},
+                {"user_id": users['diana']['_id'], "username": "diana", "role": "moderator"},
+                {"user_id": users['frank']['_id'], "username": "frank", "role": "member"},
+            ]
+        },
+        {
+            "_id": ObjectId(), "name": "Secret Book Club",
+            "description": "Shhh... it's a secret. Password is 'bookworm'.", "is_public": True,
+            "owner_id": users['diana']['_id'], "created_at": now - timedelta(days=3),
+            "password_hash": pwd_context.hash("bookworm"),
+            "members": [{"user_id": users['diana']['_id'], "username": "diana", "role": "admin"}]
+        }
+    ]
+    circles_collection.insert_many(circle_docs)
+    print("✅ Circles created (including a private and a password-protected one).")
+    return {c['name']: c for c in circles_collection.find()}
+
+
+def seed_posts(users, circles):
+    """Seeds a variety of post types with random interactions."""
     print("\n📝 Seeding posts with diverse content...")
-    posts_to_create = []
-    # Add a YouTube Playlist Post
-    playlist_post = {
-        "circle_id": circles['Media Club']['_id'], "author_id": users['alice']['_id'], "author_username": 'alice',
+    now = datetime.now(timezone.utc)
+    all_user_ids = [u['_id'] for u in users.values()]
+    
+    post_docs = []
+
+    # --- Pinned Post ---
+    post_docs.append({
+        "_id": ObjectId(), "circle_id": circles['Wanderlust Wishlist']['_id'], "author_id": users['frank']['_id'],
+        "author_username": 'frank', "is_pinned": True, "created_at": now - timedelta(days=9),
+        "content": {
+            "post_type": "standard", "text": "📌 **Welcome to the Wishlist!**\n\nShare your ultimate travel goals here. Please be respectful and keep discussions on-topic. Let's explore the world together!",
+            "tags": ["welcome", "rules", "announcement"]
+        },
+        "upvotes": [users['alice']['_id'], users['diana']['_id']], "downvotes": []
+    })
+
+    # --- Wishlist Post ---
+    post_docs.append({
+        "_id": ObjectId(), "circle_id": circles['Wanderlust Wishlist']['_id'], "author_id": users['alice']['_id'],
+        "author_username": 'alice', "is_pinned": False, "created_at": now - timedelta(days=2),
+        "content": {
+            "post_type": "wishlist", "text": "This camera would be perfect for the Northern Lights trip we talked about!", "tags": ["gear", "photography", "aurora"],
+            "wishlist_data": {
+                "url": "https://www.bhphotovideo.com/c/product/1749841-REG/sony_alpha_a7r_v_mirrorless.html",
+                "title": "Sony a7R V Mirrorless Camera",
+                "description": "Combining resolution and precision, the Sony a7R V is the mirrorless camera designed for those who crave detail.",
+                "image": "https://www.bhphotovideo.com/images/images2500x2500/sony_ilce_7rm5_b_alpha_a7r_v_mirrorless_1731388.jpg"
+            }
+        },
+        "upvotes": [users['bob']['_id'], users['frank']['_id']], "downvotes": []
+    })
+
+    # --- Poll Post ---
+    post_docs.append({
+        "_id": ObjectId(), "circle_id": circles['Tech & Gadgets']['_id'], "author_id": users['charlie']['_id'],
+        "author_username": 'charlie', "is_pinned": False, "created_at": now - timedelta(hours=12),
+        "content": {
+            "post_type": "poll", "tags": ["discussion", "phones", "opinion"],
+            "poll_data": {
+                "question": "Which foldable phone style is the future?",
+                "options": [
+                    {"text": "Book Style (like Galaxy Fold)", "votes": [users['frank']['_id'], users['diana']['_id']]},
+                    {"text": "Clamshell Style (like Galaxy Flip)", "votes": [users['charlie']['_id']]},
+                    {"text": "Neither, flat phones are better!", "votes": []}
+                ]
+            }
+        },
+        "upvotes": [users['diana']['_id'], users['frank']['_id']], "downvotes": []
+    })
+    
+    # --- YouTube Playlist Post ---
+    post_docs.append({
+        "_id": ObjectId(), "circle_id": circles['Media Club']['_id'], "author_id": users['alice']['_id'],
+        "author_username": 'alice', "is_pinned": False, "created_at": now - timedelta(days=1),
         "content": {
             "post_type": "yt-playlist", "tags": ["music", "chill", "focus"],
             "playlist_data": {
@@ -113,67 +223,90 @@ def seed_data():
                     {"id": "jfKfPfyJRdk", "title": "lofi hip hop radio - beats to sleep/chill to", "imageSrc": "https://i.ytimg.com/vi/jfKfPfyJRdk/hq720.jpg"}
                 ]
             }
-        }, "upvotes": [users['diana']['_id'], users['bob']['_id']], "downvotes": [],
-        "created_at": datetime.now(timezone.utc) - timedelta(days=2)
-    }
-    posts_to_create.append(playlist_post)
+        },
+        "upvotes": [users['bob']['_id'], users['charlie']['_id']], "downvotes": []
+    })
 
-    # Add Standard Posts
-    for i in range(30): # Create more posts for pagination testing
-        circle_name = random.choice(list(circles.keys()))
-        chosen_circle = circles[circle_name]
-        if not chosen_circle['members']: continue
-        member = random.choice(chosen_circle['members'])
+    # --- 20 Standard Posts ---
+    for i in range(20):
+        circle = random.choice(list(circles.values()))
+        member = random.choice(circle['members'])
         author = users[member['username']]
         
-        post_content = {}
-        if circle_name == "Wanderlust Wishlist":
-            post_content = {"link": "https://example.com/travel", "text": "Dreaming of my next adventure to " + random.choice(["Patagonia", "the Amazon", "Tokyo"]) + "! ✈️", "tags": ["travel", "wanderlust", "adventure", "bucketlist"]}
-        elif circle_name == "Media Club":
-            post_content = {"link": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "text": "Just finished watching a new series. Mind blown! 🤯 We need to discuss.", "tags": ["movies", "tvshows", "recommendation"]}
-        elif circle_name == "Secret Book Club":
-            post_content = {"text": "Just finished '" + random.choice(["Dune", "Project Hail Mary", "The Three-Body Problem"]) + "'. What a ride! Who's read it?", "tags": ["books", "sci-fi", "reading"]}
-        else: # Tech & Gadgets
-             post_content = {"link": "https://example.com/tech", "text": "What does everyone think about the latest " + random.choice(["Smartphone", "Laptop", "AI advancements"]) + "?", "tags": ["tech", "gadgets", "news"]}
-        
-        post_content["post_type"] = "standard"
-
-        # Add random votes to make the 'top' sort interesting
-        num_upvotes = random.randint(0, len(user_ids))
-        num_downvotes = random.randint(0, len(user_ids) - num_upvotes)
-        shuffled_users = random.sample(user_ids, num_upvotes + num_downvotes)
-        
-        upvoters = [u['_id'] for u in shuffled_users[:num_upvotes]]
-        downvoters = [u['_id'] for u in shuffled_users[num_upvotes:]]
-
-        posts_to_create.append({
-            "circle_id": chosen_circle["_id"], "author_id": author["_id"], "author_username": author["username"],
-            "content": post_content, "upvotes": upvoters, "downvotes": downvoters, "score": 0,
-            "created_at": datetime.now(timezone.utc) - timedelta(hours=i*3 + random.randint(1, 12))
+        post_docs.append({
+            "_id": ObjectId(), "circle_id": circle['_id'], "author_id": author['_id'], "author_username": author['username'],
+            "is_pinned": False, "created_at": now - timedelta(hours=i * 4 + random.randint(1, 3)),
+            "content": {
+                "post_type": "standard", "text": f"This is a standard post ({i+1}/20) by {author['username']} in the '{circle['name']}' circle.", "tags": ["general", "discussion"]
+            },
+            "upvotes": random.sample(all_user_ids, k=random.randint(0, len(all_user_ids))),
+            "downvotes": []
         })
-    posts_collection.insert_many(posts_to_create)
+    
+    for post in post_docs:
+        # Prevent users from upvoting their own post or being in both up/down votes
+        post_author_id = post['author_id']
+        if post_author_id in post['upvotes']: post['upvotes'].remove(post_author_id)
+        
+        available_downvoters = list(set(all_user_ids) - set(post['upvotes']) - {post_author_id})
+        post['downvotes'] = random.sample(available_downvoters, k=random.randint(0, len(available_downvoters)))
+        
+        post['score'] = len(post['upvotes']) - len(post['downvotes'])
+    
+    if post_docs:
+        posts_collection.insert_many(post_docs)
+    print(f"✅ {len(post_docs)} posts seeded.")
 
-    # Recalculate scores for all posts
-    for post in posts_collection.find():
-        score = len(post.get('upvotes', [])) - len(post.get('downvotes', []))
-        posts_collection.update_one({'_id': post['_id']}, {'$set': {'score': score}})
 
-    print(f"✅ {len(posts_to_create)} posts created with random votes.")
+def seed_events(users, circles):
+    """Seeds upcoming and past events with attendees."""
+    print("\n📅 Seeding events...")
+    now = datetime.now(timezone.utc)
+    event_docs = [
+        {
+            "_id": ObjectId(), "circle_id": circles['Tech & Gadgets']['_id'], "creator_id": users['diana']['_id'],
+            "title": "Tech Conference Watch Party", "description": "Let's watch the keynote live and discuss the new announcements.",
+            "start_time": now + timedelta(days=7, hours=3), "end_time": now + timedelta(days=7, hours=5),
+            "location": "Online / Circle Chat Room", "attendees": [users['diana']['_id'], users['frank']['_id']]
+        },
+        {
+            "_id": ObjectId(), "circle_id": circles['Wanderlust Wishlist']['_id'], "creator_id": users['frank']['_id'],
+            "title": "Planning Session: Southeast Asia Trip", "description": "Let's brainstorm an itinerary for a potential group trip next year!",
+            "start_time": now + timedelta(days=12, hours=1), "location": "Zoom (Link to be provided)",
+            "attendees": [users['frank']['_id'], users['alice']['_id'], users['diana']['_id']]
+        },
+        {
+            "_id": ObjectId(), "circle_id": circles['Media Club']['_id'], "creator_id": users['bob']['_id'],
+            "title": "Movie Night: Retro Sci-Fi", "description": "We watched 'Blade Runner'. The discussion was epic!",
+            "start_time": now - timedelta(days=4), "end_time": now - timedelta(days=4, hours=-3),
+            "location": "Bob's Place", "attendees": [users['bob']['_id'], users['alice']['_id']]
+        }
+    ]
+    if event_docs:
+        events_collection.insert_many(event_docs)
+    print(f"✅ {len(event_docs)} events seeded (upcoming and past).")
+
+
+def main():
+    """Main function to run the seeding process."""
+    clear_collections()
+    seeded_users = seed_users()
+    seed_relationships(seeded_users)
+    seeded_circles = seed_circles(seeded_users)
+    seed_posts(seeded_users, seeded_circles)
+    seed_events(seeded_users, seeded_circles)
 
     print("\n\n🎉 Demo database seeded successfully! 🎉")
-    print("You can now run the FastAPI server and test with the following users (password for all is 'password123'):")
-    for username in users:
-        print(f"- {username}")
-    print("\nLog in as 'alice' to see the pending follow request from 'eve'.")
-    print("Try joining the 'Secret Book Club' with the password 'bookworm'.")
+    print("Use the following users (password = 'password123'):")
+    for username in seeded_users:
+        print(f" - {username}")
+    print("\n💡 Suggestions:")
+    print("  - Log in as 'alice' to see the pending follow request from 'eve'.")
+    print("  - Try joining the 'Secret Book Club' with the password 'bookworm'.")
+    print("  - Check the 'Tech & Gadgets' circle for an upcoming event.")
+
 
 if __name__ == "__main__":
-    try:
-        client.admin.command('ping')
-        print("MongoDB connection successful.")
-        seed_data()
-    except Exception as e:
-        print(f"An error occurred: {e}")
-    finally:
-        client.close()
-        print("\nMongoDB connection closed.")
+    main()
+    client.close()
+    print("\nMongoDB connection closed.")
