@@ -7,6 +7,7 @@ import os
 import re
 import secrets
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Optional, Union, Callable
 from contextlib import asynccontextmanager
@@ -31,6 +32,9 @@ from bson import ObjectId
 from pydantic_core import core_schema
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 
 # ==============================================================================
 # 1. CONFIGURATION & INITIALIZATION
@@ -43,6 +47,23 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 FOLLOW_TOKEN_EXPIRE_MINUTES = 10
 INVITE_TOKEN_EXPIRE_HOURS = 24
+
+# Cloudinary Configuration
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
+
+if all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET,
+        secure=True
+    )
+    print("Cloudinary configured.")
+else:
+    print("Warning: Cloudinary credentials not found in environment variables. Image uploads will be disabled.")
+
 
 # MongoDB
 MONGO_DETAILS = os.getenv("MONGO_URI", "mongodb://localhost:27017/?retryWrites=true&w=majority&directConnection=true")
@@ -92,6 +113,8 @@ app = FastAPI(
 
 origins = [
     "http://127.0.0.1:8080",
+    "http://localhost:8080",
+    "http://0.0.0.0:8080",
     "https://oblivious-circles.vercel.app"
 ]
 # Add CORS middleware for decoupled frontend
@@ -156,6 +179,7 @@ class PostTypeEnum(str, Enum):
     yt_playlist = "yt-playlist"
     poll = "poll"
     wishlist = "wishlist"
+    image = "image"
 
 
 class UserRegister(BaseModel):
@@ -319,6 +343,13 @@ class PollData(BaseModel):
     options: list[PollOption] = Field(..., min_items=2, max_items=10)
 
 
+class ImageData(BaseModel):
+    url: AnyHttpUrl
+    public_id: str
+    height: int
+    width: int
+
+
 class WishlistData(BaseModel):
     url: AnyHttpUrl
     title: str
@@ -334,6 +365,7 @@ class PostCreate(BaseModel):
     playlist_data: Optional[PlaylistData] = None
     poll_data: Optional[PollData] = None
     wishlist_data: Optional[WishlistData] = None
+    image_data: Optional[ImageData] = None
 
     def model_validate(self):
         if self.post_type == PostTypeEnum.standard and not self.text and not self.link:
@@ -345,6 +377,9 @@ class PostCreate(BaseModel):
             raise ValueError('A poll post must contain poll_data.')
         if self.post_type == PostTypeEnum.wishlist and not self.wishlist_data:
             raise ValueError('A wishlist post must contain wishlist_data.')
+        # Allow an image post if it has image_data OR a link to be processed
+        if self.post_type == PostTypeEnum.image and not self.image_data and not self.link:
+            raise ValueError('An image post must contain image_data from an upload or a direct link.')
         self.tags = sorted(set(tag.strip().lower() for tag in self.tags if tag.strip()))
         return self
 
@@ -722,6 +757,24 @@ async def websocket_endpoint(websocket: WebSocket, circle_id: str, token: str = 
 # ==============================================================================
 
 # -- Utilities --
+
+@app.get("/utils/cloudinary-signature", tags=["Utilities"])
+async def get_cloudinary_signature(current_user: UserInDB = Depends(get_current_user)):
+    """Provides a signature for direct-from-browser uploads to Cloudinary."""
+    if not all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
+        raise HTTPException(status_code=503, detail="Cloudinary service is not configured on the server.")
+    
+    timestamp = int(time.time())
+    params_to_sign = {"timestamp": timestamp}
+    
+    signature = cloudinary.utils.api_sign_request(params_to_sign, CLOUDINARY_API_SECRET)
+    
+    return {
+        "signature": signature,
+        "timestamp": timestamp,
+        "api_key": CLOUDINARY_API_KEY,
+        "cloud_name": CLOUDINARY_CLOUD_NAME
+    }
 
 
 @app.get("/utils/extract-metadata", response_model=MetadataResponse, tags=["Utilities"])
@@ -1186,6 +1239,37 @@ async def create_post_in_circle(
     post_data: PostCreate, circle: dict = Depends(check_circle_membership),
     current_user: UserInDB = Depends(get_current_user)
 ):
+    # Centralized logic to handle image URL uploads for both 'standard' and 'image' post types.
+    is_standard_post_with_image_link = (
+        post_data.post_type == PostTypeEnum.standard and
+        post_data.link and
+        re.search(r'\.(jpg|jpeg|png|gif|webp)$', post_data.link.lower())
+    )
+    is_image_post_with_link = (
+        post_data.post_type == PostTypeEnum.image and
+        post_data.link and not post_data.image_data
+    )
+
+    if is_standard_post_with_image_link or is_image_post_with_link:
+        if all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
+            try:
+                # Upload the image to Cloudinary from the provided URL
+                upload_result = cloudinary.uploader.upload(post_data.link)
+                # Convert the post to a proper image post
+                post_data.post_type = PostTypeEnum.image
+                post_data.image_data = ImageData(
+                    url=upload_result.get("secure_url"),
+                    public_id=upload_result.get("public_id"),
+                    height=upload_result.get("height"),
+                    width=upload_result.get("width")
+                )
+                # Clear the link as it's now stored in image_data
+                post_data.link = None
+            except Exception as e:
+                # If upload fails, proceed as a standard post with a link
+                print(f"Cloudinary auto-upload failed: {e}")
+                post_data.post_type = PostTypeEnum.standard
+
     post_data.model_validate()
     content_data = jsonable_encoder(post_data.dict(exclude_unset=True))
     new_post_doc = {
@@ -1412,41 +1496,12 @@ async def cancel_rsvp_to_event(
 
 
 # ==============================================================================
-# 6. STATIC FILE SERVING (Optional)
-# ==============================================================================
-# This part is for convenience if you want to serve the frontend from the same
-# server as the backend. For a truly decoupled setup, you would typically
-# run the frontend on a separate server (e.g., Vercel, Netlify, or a Node.js server)
-# and have it make API calls to this backend.
-# The CORS middleware added earlier allows for this.
-
-# To serve a frontend, create a 'static' directory in the same folder as main.py
-# and place your index.html and other assets (CSS, JS) inside it.
-if not os.path.exists("static"):
-    os.makedirs("static")
-
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-@app.get("/{full_path:path}", response_class=FileResponse, include_in_schema=False)
-async def serve_frontend(full_path: str):
-    # This catch-all route serves the frontend's entry point (index.html)
-    # for any path that doesn't match an API route.
-    # This is useful for single-page applications (SPAs) with client-side routing.
-    static_file_path = os.path.join("static", "index.html")
-    if os.path.exists(static_file_path):
-        return FileResponse(static_file_path)
-    else:
-        # If no index.html is found, we assume this is an API-only server.
-        # You can customize this response.
-        return {"message": "Welcome to the Circles API. No frontend is configured."}
-
-
-# ==============================================================================
 # 7. SERVER EXECUTION
 # ==============================================================================
 if __name__ == "__main__":
     print("Starting server on http://127.0.0.1:8000")
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
 """
 uvicorn main:app --reload
 """
