@@ -246,7 +246,6 @@ const dom = {
 	circleView: document.getElementById('circleView'),
 	welcomeMessage: document.getElementById('welcomeMessage'),
 	userActions: document.getElementById('userActions'),
-	profileContainer: document.getElementById('profileContainer'),
 	myCirclesContainer: document.getElementById('myCirclesContainer'),
 	feedContainer: document.getElementById('feedContainer'),
 	circleHeader: document.getElementById('circleHeader'),
@@ -464,7 +463,7 @@ async function showDashboardView() {
 		dom.authSection.classList.add('hidden');
 		dom.appSection.classList.remove('hidden');
 		dom.dashboardView.classList.remove('hidden');
-		dom.welcomeMessage.textContent = `Welcome, ${state.currentUser.username}!`;
+		dom.welcomeMessage.innerHTML = `Welcome, ${state.currentUser.username}! <img src="${generateAvatarUrl(state.currentUser.username)}" class="avatar avatar-sm ms-2">`;
 		dom.userActions.classList.remove('hidden');
 		await renderDashboard();
 	} else {
@@ -487,31 +486,26 @@ async function showCircleView(circleId) {
 async function renderDashboard() {
 	renderAllSidebarComponents();
 	try {
-		const myCircles = await apiFetch('/circles/mine');
-		state.myCircles = myCircles;
-		renderMyCircles(myCircles);
 		await resetAndRenderDashboardFeed();
 	} catch (error) {
 		console.error("Failed to load dashboard data", error);
 	}
 }
 
-function renderAllSidebarComponents() {
+async function renderAllSidebarComponents() {
 	if (!state.currentUser) return;
-	renderProfile();
+
+	try {
+		const myCircles = await apiFetch('/circles/mine');
+		state.myCircles = myCircles;
+		renderMyCircles(myCircles);
+	} catch (error) {
+		console.error("Failed to load sidebar components", error);
+		dom.myCirclesContainer.innerHTML = `<div class="empty-placeholder text-danger small">Could not load circles.</div>`;
+	}
 }
 
-function renderProfile() {
-	if (!state.currentUser) return;
-	dom.profileContainer.innerHTML = `
-<div class="d-flex align-items-center mb-3">
-<img src="${generateAvatarUrl(state.currentUser.username)}" class="avatar avatar-lg me-3">
-<div>
-<h4 class="mb-0">${state.currentUser.username}</h4>
-</div>
-</div>
-`;
-}
+
 
 function renderMyCircles(circles) {
 	const {
@@ -525,12 +519,13 @@ data-action="filter-feed" data-circle-id="">
 	html += circles.map(c => `
 <div class="list-group-item d-flex justify-content-between align-items-center p-0">
 <a href="#/circle/${c._id}" class="flex-grow-1 list-group-item-action border-0 clickable px-3 py-2"
-data-action="view-circle" data-circle-id="${c._id}">
+data-action="view-circle" data-circle-id="${c._id}" data-bs-toggle="tooltip" title="${c.name}">
 <i class="bi bi-hash"></i> ${c.name} ${c.is_password_protected ? '<i class="bi bi-lock-fill small ms-1 text-muted"></i>' : ''}
 </a>
 </div>
 `).join('');
 	dom.myCirclesContainer.innerHTML = html || `<div class="empty-placeholder small">No circles yet.</div>`;
+	initTooltips();
 }
 
 async function resetAndRenderDashboardFeed() {
@@ -770,11 +765,11 @@ function appendPosts(posts, container, circleName = null) {
 
 						return `
 <div class="poll-option ${isVotedByUser ? 'voted-by-user' : ''} ${!isPollActive ? 'poll-disabled' : ''}" ${voteAction}>
-    <div class="progress" style="width: ${percentage}%;"></div>
-    <div class="d-flex justify-content-between align-items-center position-relative">
-        <span>${option.text} ${isVotedByUser ? '<i class="bi bi-check-circle-fill"></i>' : ''}</span>
-        <span class="fw-bold small">${percentage.toFixed(0)}% (${option.votes})</span>
-    </div>
+    <div class="progress" style="width: ${percentage}%;"></div>
+    <div class="d-flex justify-content-between align-items-center position-relative">
+        <span>${option.text} ${isVotedByUser ? '<i class="bi bi-check-circle-fill"></i>' : ''}</span>
+        <span class="fw-bold small">${percentage.toFixed(0)}% (${option.votes})</span>
+    </div>
 </div>`;
 					}).join('');
 
@@ -828,11 +823,11 @@ ${pollFooterHtml}`;
 								console.error(`Invalid URL in wishlist post ${postId}: ${item.url}`);
 							}
 							contentHtml += `
-                                <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="list-group-item list-group-item-action d-flex align-items-center">
-                                    <img src="https://www.google.com/s2/favicons?domain=${hostDomain}&sz=32" class="favicon me-2" alt="${hostDomain} favicon">
-                                    <span class="text-truncate">${item.url}</span>
-                                    <i class="bi bi-box-arrow-up-right ms-auto text-muted"></i>
-                                </a>`;
+                                <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="list-group-item list-group-item-action d-flex align-items-center">
+                                    <img src="https://www.google.com/s2/favicons?domain=${hostDomain}&sz=32" class="favicon me-2" alt="${hostDomain} favicon">
+                                    <span class="text-truncate">${item.url}</span>
+                                    <i class="bi bi-box-arrow-up-right ms-auto text-muted"></i>
+                                </a>`;
 						}
 					});
 					contentHtml += '</div>';
@@ -903,16 +898,16 @@ ${post.content.tags.map(tag => `<span class="badge rounded-pill bg-secondary me-
 
 		const seenByFooter = `
 <div class="post-footer mt-3 pt-3">
-    <div class="seen-by-container ${post.is_seen_by_user ? 'seen-by-user' : ''}"
-        data-action="show-seen-status"
-        data-post-id="${postId}"
-        data-seen-count="${seenCount}"
-        title="See who has viewed this post">
-        <div class="avatar-stack">
-            ${seenByUsers.map(user => `<img src="${generateAvatarUrl(user.username)}" class="avatar-small" title="${user.username}">`).join('')}
-        </div>
-        <span class="seen-by-text">${seenByText}</span>
-    </div>
+    <div class="seen-by-container ${post.is_seen_by_user ? 'seen-by-user' : ''}"
+        data-action="show-seen-status"
+        data-post-id="${postId}"
+        data-seen-count="${seenCount}"
+        title="See who has viewed this post">
+        <div class="avatar-stack">
+            ${seenByUsers.map(user => `<img src="${generateAvatarUrl(user.username)}" class="avatar-small" title="${user.username}">`).join('')}
+        </div>
+        <span class="seen-by-text">${seenByText}</span>
+    </div>
 </div>
 `;
 
@@ -920,7 +915,7 @@ ${post.content.tags.map(tag => `<span class="badge rounded-pill bg-secondary me-
 		const displayCircleName = circleName || post.circle_name;
 		const dropdownMenu = `
 <div class="dropdown">
-<button class="btn btn-sm py-0 px-2" type="button" data-bs-toggle="dropdown"><i class="bi bi-three-dots-vertical"></i></button>
+<button class="btn btn-sm py-0 px-2" type="button" data-bs-toggle="dropdown" data-bs-toggle="tooltip" title="More options"><i class="bi bi-three-dots-vertical"></i></button>
 <ul class="dropdown-menu dropdown-menu-dark">
 ${canPin() ? `<li><a class="dropdown-item" href="#" data-action="pin-post" data-post-id="${postId}">${post.is_pinned ? 'Unpin Post' : 'Pin Post'}</a></li>` : ''}
 ${canModify(post) ? `<li><a class="dropdown-item text-danger" href="#" data-action="delete-post" data-post-id="${postId}" data-circle-id="${post.circle_id}">Delete Post</a></li>` : ''}
@@ -933,7 +928,7 @@ ${canModify(post) ? `<li><a class="dropdown-item text-danger" href="#" data-acti
 <div class="post-card-body">
 <div class="d-flex justify-content-between align-items-start">
 <div class="d-flex align-items-center">
-    <img src="${generateAvatarUrl(post.author_username)}" class="avatar me-3">
+    <img src="${generateAvatarUrl(post.author_username)}" class="avatar me-3">
 <div>
 <strong class="d-block">${post.author_username} ${post.is_pinned ? '<i class="bi bi-pin-angle-fill text-primary" title="Pinned Post"></i>' : ''}</strong>
 <small class="text-muted">in <a href="#/circle/${post.circle_id}" class="text-reset fw-bold">${displayCircleName}</a> &bull; ${new Date(post.created_at).toLocaleString()}</small>
@@ -942,7 +937,7 @@ ${canModify(post) ? `<li><a class="dropdown-item text-danger" href="#" data-acti
 ${(canPin() || canModify(post)) ? dropdownMenu : ''}
 </div>
 <div class="mt-3">${contentHtml}</div>
-    ${seenByFooter}
+    ${seenByFooter}
 </div>
 </div>
 </div>`;
@@ -954,6 +949,7 @@ ${(canPin() || canModify(post)) ? dropdownMenu : ''}
 		el.dataset.observed = "true";
 		postObserver.observe(el);
 	});
+	initTooltips();
 }
 
 const observer = new IntersectionObserver((entries) => {
@@ -978,6 +974,10 @@ const switchAuthView = (hideEl, showEl) => {
 		showEl.classList.add('animate-in');
 		showEl.addEventListener('animationend', () => {
 			showEl.classList.remove('animate-in');
+			// UX Improvement: Auto-focus the first input field for a smoother login/register experience.
+			if (showEl.id === 'authFormContainer') {
+				document.getElementById('usernameInput').focus();
+			}
 		}, {
 			once: true
 		});
@@ -1021,18 +1021,27 @@ async function handleCreateCircle() {
 
 	setButtonLoading(btn, true);
 	try {
-		await apiFetch('/circles', {
+		// UX Improvement: Capture the new circle data to navigate directly to it.
+		const newCircle = await apiFetch('/circles', {
 			method: 'POST',
 			body: JSON.stringify(payload)
 		});
-		showStatus('Circle created!', 'success');
+		showStatus(`Circle "${newCircle.name}" created! Navigating...`, 'success');
 		bootstrap.Modal.getInstance('#createCircleModal').hide();
 		document.getElementById('createCircleForm').reset();
 		document.getElementById('circlePasswordContainer').classList.add('hidden');
-		const myCircles = await apiFetch('/circles/mine');
-		state.myCircles = myCircles;
-		renderMyCircles(myCircles);
-	} catch (error) {} finally {
+
+		// Update state locally instead of a full refetch for better performance.
+		state.myCircles.push(newCircle);
+		state.myCircles.sort((a, b) => a.name.localeCompare(b.name));
+		renderMyCircles(state.myCircles);
+
+		// Navigate to the new circle for a seamless user flow.
+		window.location.hash = `#/circle/${newCircle._id}`;
+
+	} catch (error) {
+		// Error is already shown by apiFetch
+	} finally {
 		setButtonLoading(btn, false);
 	}
 }
@@ -1044,7 +1053,9 @@ async function handleImageUpload(file) {
 
 	previewImg.src = URL.createObjectURL(file);
 	previewContainer.classList.remove('hidden');
+	// UX Improvement: Reset progress bar state on new upload
 	progressBar.style.width = '0%';
+	progressBar.classList.remove('bg-success', 'bg-danger');
 	state.postCreation.imageData = null;
 
 	try {
@@ -1075,8 +1086,12 @@ async function handleImageUpload(file) {
 					width: response.width
 				};
 				showStatus('Image uploaded successfully!', 'success');
+				// UX Improvement: Show success color on the progress bar.
+				progressBar.classList.add('bg-success');
 			} else {
 				showStatus(`Image upload failed: ${JSON.parse(xhr.responseText).error.message}`, 'danger');
+				// UX Improvement: Show error color on the progress bar.
+				progressBar.classList.add('bg-danger');
 				previewContainer.classList.add('hidden');
 			}
 		};
@@ -1237,7 +1252,9 @@ async function handleCreatePost(btn) {
 }
 
 async function handleDeletePost(postId, circleId) {
-	if (!confirm('Are you sure you want to delete this post?')) return;
+	// UX Improvement: A custom modal would be a better user experience than a browser confirm().
+	// This would require adding new HTML which is out of scope, so we use confirm() for now.
+	if (!confirm('Are you sure you want to permanently delete this post?')) return;
 	try {
 		await apiFetch(`/circles/${circleId}/posts/${postId}`, {
 			method: 'DELETE'
@@ -1266,11 +1283,11 @@ async function handleShowSeenStatus(postId) {
 		const renderUsers = (users) => {
 			if (users.length === 0) return '<li class="list-group-item text-muted">None</li>';
 			return users.map(user => `
-    <li class="list-group-item d-flex align-items-center">
-        <img src="${generateAvatarUrl(user.username)}" class="avatar-small me-3">
-        <span>${user.username}</span>
-    </li>
-    `).join('');
+    <li class="list-group-item d-flex align-items-center">
+        <img src="${generateAvatarUrl(user.username)}" class="avatar-small me-3">
+        <span>${user.username}</span>
+    </li>
+    `).join('');
 		};
 
 		seenList.innerHTML = renderUsers(data.seen);
@@ -1731,7 +1748,7 @@ function renderCircleManagementUI(circle) {
 			return `
 <div class="list-group-item d-flex justify-content-between align-items-center">
 <div>
-    <img src="${generateAvatarUrl(member.username)}" class="avatar-small me-2">
+    <img src="${generateAvatarUrl(member.username)}" class="avatar-small me-2">
 <strong>${member.username}</strong>
 <span class="badge rounded-pill ${roleBadge} ms-2">${member.role}</span>
 </div>
@@ -1779,6 +1796,7 @@ async function handleUpdateCircleSettings(btn) {
 
 async function handleManageMemberRole(btn, userId, newRole) {
 	const circleId = document.getElementById('manageCircleId').value;
+	// UX Improvement: A custom modal would be a better user experience than a browser confirm().
 	if (!confirm(`Are you sure you want to change this member's role to ${newRole}?`)) return;
 	setButtonLoading(btn, true);
 	try {
@@ -1799,6 +1817,7 @@ async function handleManageMemberRole(btn, userId, newRole) {
 
 async function handleKickMember(btn, userId, username) {
 	const circleId = document.getElementById('manageCircleId').value;
+	// UX Improvement: A custom modal would be a better user experience than a browser confirm().
 	if (!confirm(`Are you sure you want to kick ${username} from the circle?`)) return;
 	setButtonLoading(btn, true);
 	try {
@@ -1849,29 +1868,41 @@ const renderWishlistStagingArea = () => {
 		try {
 			const hostname = new URL(url).hostname.replace('www.', '');
 			return `
-                <div class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
-                    <div class="d-flex align-items-center text-truncate" style="min-width: 0;">
-                        <img src="https://www.google.com/s2/favicons?domain=${hostname}&sz=32" class="favicon me-2" alt="favicon">
-                        <span class="url-text text-truncate">${url}</span>
-                        <input type="text" class="form-control form-control-sm url-input hidden" value="${url}">
-                    </div>
-                    <div class="btn-group" style="flex-shrink: 0;">
-                        <button class="btn btn-sm btn-secondary" data-action="edit-wishlist-item"><i class="bi bi-pencil"></i></button>
-                        <button class="btn btn-sm btn-success hidden" data-action="save-wishlist-item"><i class="bi bi-check-lg"></i></button>
-                        <button class="btn btn-sm btn-danger" data-action="remove-wishlist-item"><i class="bi bi-trash"></i></button>
-                    </div>
-                </div>
-            `;
+                <div class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
+                    <div class="d-flex align-items-center text-truncate" style="min-width: 0;">
+                        <img src="https://www.google.com/s2/favicons?domain=${hostname}&sz=32" class="favicon me-2" alt="favicon">
+                        <span class="url-text text-truncate">${url}</span>
+                        <input type="text" class="form-control form-control-sm url-input hidden" value="${url}">
+                    </div>
+                    <div class="btn-group" style="flex-shrink: 0;">
+                        <button class="btn btn-sm btn-secondary" data-action="edit-wishlist-item"><i class="bi bi-pencil"></i></button>
+                        <button class="btn btn-sm btn-success hidden" data-action="save-wishlist-item"><i class="bi bi-check-lg"></i></button>
+                        <button class="btn btn-sm btn-danger" data-action="remove-wishlist-item"><i class="bi bi-trash"></i></button>
+                    </div>
+                </div>
+            `;
 		} catch (e) {
 			return `
-                <div class="list-group-item d-flex justify-content-between align-items-center text-danger" data-index="${index}">
-                    <span class="text-truncate">Invalid URL: ${url}</span>
-                    <button class="btn btn-sm btn-danger" data-action="remove-wishlist-item"><i class="bi bi-trash"></i></button>
-                </div>
-            `;
+                <div class="list-group-item d-flex justify-content-between align-items-center text-danger" data-index="${index}">
+                    <span class="text-truncate">Invalid URL: ${url}</span>
+                    <button class="btn btn-sm btn-danger" data-action="remove-wishlist-item"><i class="bi bi-trash"></i></button>
+                </div>
+            `;
 		}
 	}).join('');
 };
+
+// UX Improvement: Helper function to initialize Bootstrap Tooltips, especially for dynamic content.
+const initTooltips = () => {
+	const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+	[...tooltipTriggerList].forEach(tooltipTriggerEl => {
+		// Avoid re-initializing the same tooltip, which can cause issues.
+		if (!bootstrap.Tooltip.getInstance(tooltipTriggerEl)) {
+			new bootstrap.Tooltip(tooltipTriggerEl);
+		}
+	});
+};
+
 
 document.addEventListener('DOMContentLoaded', () => {
 	[
@@ -1891,6 +1922,24 @@ document.addEventListener('DOMContentLoaded', () => {
 			console.warn(`Modal element with ID ${id} was not found and could not be initialized.`);
 		}
 	});
+
+	// UX Improvement: Initialize tooltips on page load.
+	initTooltips();
+
+	// UX Improvement: Add focus management to modals for better accessibility and usability.
+	document.getElementById('createCircleModal')?.addEventListener('shown.bs.modal', () => {
+		document.getElementById('circleName')?.focus();
+	});
+	document.getElementById('createPostModal')?.addEventListener('shown.bs.modal', () => {
+		document.querySelector('#createTextPost textarea')?.focus();
+	});
+	document.getElementById('youtubeSearchModal')?.addEventListener('shown.bs.modal', () => {
+		document.getElementById('youtubeSearchInput')?.focus();
+	});
+	document.getElementById('inviteCircleModal')?.addEventListener('shown.bs.modal', () => {
+		document.getElementById('inviteLinkInput')?.select();
+	});
+
 
 	const authWelcome = document.getElementById('authWelcome');
 	const authFormContainer = document.getElementById('authFormContainer');
@@ -1948,7 +1997,7 @@ document.addEventListener('DOMContentLoaded', () => {
 				urls: []
 			}
 		};
-        document.getElementById('poll-ai-prompt').value = '';
+        document.getElementById('poll-ai-prompt').value = '';
 		document.getElementById('pollQuestionInput').value = '';
 		renderPollOptionsUI();
 
@@ -2286,18 +2335,19 @@ document.addEventListener('DOMContentLoaded', () => {
 		questionInput.value = question;
 
 		container.innerHTML = options.map((optionText, index) => `
-            <div class="input-group input-group-sm mb-2">
-                <span class="input-group-text">${index + 1}</span>
-                <input type="text" class="form-control poll-option-input" data-index="${index}" value="${optionText}" placeholder="Option ${index + 1}">
-                <button class="btn btn-outline-danger" type="button" data-action="remove-poll-option" data-index="${index}" ${options.length <= 2 ? 'disabled' : ''}>
-                    <i class="bi bi-trash"></i>
-                </button>
-            </div>
-        `).join('');
+            <div class="input-group input-group-sm mb-2">
+                <span class="input-group-text">${index + 1}</span>
+                <input type="text" class="form-control poll-option-input" data-index="${index}" value="${optionText}" placeholder="Option ${index + 1}">
+                <button class="btn btn-outline-danger" type="button" data-action="remove-poll-option" data-index="${index}" ${options.length <= 2 ? 'disabled' : ''}>
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        `).join('');
 
 		const addBtn = document.getElementById('addPollOptionBtn');
 		if (addBtn) {
-			addBtn.disabled = options.length >= 5;
+			// UX Improvement: Hide the button when max options are reached, instead of just disabling it.
+			addBtn.classList.toggle('hidden', options.length >= 5);
 		}
 	}
 
@@ -2348,3 +2398,4 @@ document.addEventListener('DOMContentLoaded', () => {
 	initTheme();
 	handleRoute();
 });
+
