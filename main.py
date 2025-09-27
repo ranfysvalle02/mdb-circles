@@ -45,7 +45,6 @@ SECRET_KEY = os.getenv("SECRET_KEY", "a-very-secret-key-that-you-should-change")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
-FOLLOW_TOKEN_EXPIRE_MINUTES = 10
 INVITE_TOKEN_EXPIRE_HOURS = 24
 
 # Cloudinary Configuration
@@ -74,8 +73,6 @@ users_collection = db.get_collection("users")
 circles_collection = db.get_collection("circles")
 posts_collection = db.get_collection("posts")
 events_collection = db.get_collection("events")
-follow_tokens_collection = db.get_collection("follow_tokens")
-follow_requests_collection = db.get_collection("follow_requests")
 invite_tokens_collection = db.get_collection("invite_tokens")
 chat_messages_collection = db.get_collection("chat_messages")
 
@@ -94,10 +91,7 @@ async def lifespan(app: FastAPI):
     posts_collection.create_index([("is_pinned", DESCENDING), ("created_at", DESCENDING)])
     posts_collection.create_index([("content.tags", ASCENDING)])
     events_collection.create_index([("circle_id", ASCENDING), ("start_time", DESCENDING)])
-    follow_tokens_collection.create_indexes([IndexModel([("expires_at", DESCENDING)], expireAfterSeconds=0)])
     invite_tokens_collection.create_indexes([IndexModel([("expires_at", DESCENDING)], expireAfterSeconds=0)])
-    follow_requests_collection.create_index([("requester_id", ASCENDING)])
-    follow_requests_collection.create_index([("recipient_id", ASCENDING)])
     chat_messages_collection.create_index([("circle_id", ASCENDING), ("timestamp", DESCENDING)])
     print("Database indexes ensured.")
     yield
@@ -111,19 +105,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-origins = [
-    "http://127.0.0.1:8080",
-    "http://localhost:8080",
-    "http://0.0.0.0:8080",
-    "https://oblivious-circles.vercel.app"
-]
-# Add CORS middleware for decoupled frontend
+# FIX: Allow all origins for development to resolve CORS issues.
+# For production, you should restrict this to your actual frontend domain.
+origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Allows all origins
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 class PermissionsPolicyMiddleware(BaseHTTPMiddleware):
@@ -196,38 +187,23 @@ class UserInDB(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     username: str
     password_hash: str
-    following: list[PyObjectId] = []
-    followers: list[PyObjectId] = []
 
     class Config:
         json_encoders = {ObjectId: str}
         allow_population_by_field_name = True
 
 
-class UserPublicProfile(BaseModel):
+class UserOut(BaseModel):
     id: PyObjectId = Field(alias="_id")
     username: str
-    following_count: int
-    followers_count: int
 
     class Config:
         json_encoders = {ObjectId: str}
         allow_population_by_field_name = True
 
-
-class FollowRequestOut(BaseModel):
-    request_id: PyObjectId = Field(alias="_id")
-    requester: UserPublicProfile
-
-    class Config:
-        json_encoders = {ObjectId: str}
-        allow_population_by_field_name = True
-
-
-class UserPrivateProfile(UserPublicProfile):
-    following: list[UserPublicProfile] = []
-    incoming_requests: list[FollowRequestOut] = []
-    outgoing_requests: list[PyObjectId] = []
+class UserMeOut(UserOut):
+    # This model can be expanded later if more private user fields are added
+    pass
 
 
 class TokenResponse(BaseModel):
@@ -238,23 +214,6 @@ class TokenResponse(BaseModel):
 
 class TokenRefreshRequest(BaseModel):
     refresh_token: str
-
-
-class FollowTokenCreateResponse(BaseModel):
-    token: str
-    expires_at: datetime
-
-
-class FollowByTokenRequest(BaseModel):
-    token: str
-
-
-class FollowByTokenResponse(BaseModel):
-    followed_username: str
-
-
-class RespondToRequest(BaseModel):
-    action: str
 
 
 class CircleMember(BaseModel):
@@ -799,17 +758,17 @@ async def extract_metadata(url: AnyHttpUrl, current_user: UserInDB = Depends(get
 # -- AUTH --
 
 
-@app.post("/auth/register", response_model=UserPublicProfile, status_code=201, tags=["Authentication"])
+@app.post("/auth/register", response_model=UserOut, status_code=201, tags=["Authentication"])
 async def register_user(user_data: UserRegister):
     if users_collection.find_one({"username": user_data.username}):
         raise HTTPException(status_code=400, detail="Username already registered")
     new_user_doc = {
-        "username": user_data.username, "password_hash": pwd_context.hash(user_data.password),
-        "following": [], "followers": []
+        "username": user_data.username, 
+        "password_hash": pwd_context.hash(user_data.password)
     }
     result = users_collection.insert_one(new_user_doc)
     created_user = users_collection.find_one({"_id": result.inserted_id})
-    return UserPublicProfile(**created_user, following_count=0, followers_count=0)
+    return UserOut(**created_user)
 
 
 @app.post("/auth/login", response_model=TokenResponse, tags=["Authentication"])
@@ -840,165 +799,13 @@ async def refresh_access_token(body: TokenRefreshRequest):
     new_refresh_token = create_refresh_token(username)
     return TokenResponse(access_token=new_access_token, refresh_token=new_refresh_token)
 
-# -- User & Follow Requests --
+# -- User --
 
 
-@app.get("/users/me", response_model=UserPrivateProfile, tags=["Users"])
+@app.get("/users/me", response_model=UserMeOut, tags=["Users"])
 async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
-    pipeline = [
-        {"$match": {"_id": current_user.id}},
-        {"$lookup": {
-            "from": "users", "localField": "following", "foreignField": "_id", "as": "following_details"
-        }},
-        {"$lookup": {
-            "from": "follow_requests", "localField": "_id", "foreignField": "recipient_id",
-            "as": "incoming_requests_docs",
-            "pipeline": [
-                {"$lookup": {
-                    "from": "users", "localField": "requester_id", "foreignField": "_id", "as": "requester_details"
-                }},
-                {"$unwind": "$requester_details"},
-                {"$addFields": { "requester": {
-                    "_id": "$requester_details._id", "username": "$requester_details.username",
-                    "followers_count": {"$size": {"$ifNull": ["$requester_details.followers", []]}},
-                    "following_count": {"$size": {"$ifNull": ["$requester_details.following", []]}}
-                }}},
-                {"$project": {"requester_details": 0, "recipient_id": 0, "requester_id": 0}}
-            ]
-        }},
-        {"$lookup": {
-            "from": "follow_requests", "localField": "_id", "foreignField": "requester_id", "as": "outgoing_requests_docs"
-        }},
-        {"$addFields": {
-            "followers_count": {"$size": {"$ifNull": ["$followers", []]}},
-            "following_count": {"$size": {"$ifNull": ["$following", []]}},
-            "following": { "$map": {
-                "input": "$following_details", "as": "user",
-                "in": {
-                    "_id": "$$user._id", "username": "$$user.username",
-                    "followers_count": {"$size": {"$ifNull": ["$$user.followers", []]}},
-                    "following_count": {"$size": {"$ifNull": ["$$user.following", []]}}
-                }
-            }},
-            "incoming_requests": "$incoming_requests_docs",
-            "outgoing_requests": "$outgoing_requests_docs.recipient_id"
-        }}
-    ]
-    result = list(users_collection.aggregate(pipeline))
-    if not result: raise HTTPException(status_code=404, detail="User not found")
-    return UserPrivateProfile(**result[0])
-
-
-@app.get("/users/suggestions", response_model=List[UserPublicProfile], tags=["Users"])
-async def get_user_suggestions(current_user: UserInDB = Depends(get_current_user), limit: int = Query(5, ge=1, le=20)):
-    pipeline = [
-        {"$match": {"members.user_id": current_user.id}},
-        {"$unwind": "$members"},
-        {"$group": {"_id": "$members.user_id"}},
-        {"$match": {"_id": {"$nin": [current_user.id] + current_user.following}}},
-        {"$limit": limit},
-        {"$lookup": {"from": "users", "localField": "_id", "foreignField": "_id", "as": "user_details"}},
-        {"$unwind": "$user_details"},
-        {"$replaceRoot": {"newRoot": "$user_details"}},
-        {"$addFields": {
-            "followers_count": {"$size": {"$ifNull": ["$followers", []]}},
-            "following_count": {"$size": {"$ifNull": ["$following", []]}}
-        }},
-        {"$project": {"password_hash": 0, "following": 0, "followers": 0}}
-    ]
-    suggestions_cursor = circles_collection.aggregate(pipeline)
-    return [UserPublicProfile(**user) for user in suggestions_cursor]
-
-
-@app.get("/users/discover", response_model=List[UserPublicProfile], tags=["Users"])
-async def discover_users(
-    q: str = Query(..., min_length=1), current_user: UserInDB = Depends(get_current_user),
-    limit: int = Query(10, ge=1, le=25)
-):
-    safe_query = re.escape(q)
-    pipeline = [
-        {"$match": {"username": {"$regex": safe_query, "$options": "i"}, "_id": {"$ne": current_user.id}}},
-        {"$limit": limit},
-        {"$addFields": {
-            "followers_count": {"$size": {"$ifNull": ["$followers", []]}},
-            "following_count": {"$size": {"$ifNull": ["$following", []]}}
-        }},
-        {"$project": {"password_hash": 0, "following": 0, "followers": 0}}
-    ]
-    results = list(users_collection.aggregate(pipeline))
-    return [UserPublicProfile(**user) for user in results]
-
-
-@app.post("/users/{username_to_request}/request-follow", status_code=201, tags=["Users"])
-async def request_to_follow_user(username_to_request: str, current_user: UserInDB = Depends(get_current_user)):
-    if current_user.username.lower() == username_to_request.lower():
-        raise HTTPException(status_code=400, detail="You cannot send a follow request to yourself.")
-    recipient = users_collection.find_one({"username": {"$regex": f"^{re.escape(username_to_request)}$", "$options": "i"}})
-    if not recipient: raise HTTPException(status_code=404, detail="User not found.")
-    if recipient["_id"] in current_user.following:
-        raise HTTPException(status_code=400, detail="You are already following this user.")
-    if follow_requests_collection.find_one({"requester_id": current_user.id, "recipient_id": recipient["_id"]}):
-        raise HTTPException(status_code=400, detail="You have already sent a follow request to this user.")
-    follow_requests_collection.insert_one({
-        "requester_id": current_user.id, "recipient_id": recipient["_id"], "created_at": datetime.now(timezone.utc)
-    })
-    return {"detail": "Follow request sent successfully."}
-
-
-@app.delete("/users/{recipient_username}/cancel-request", status_code=204, tags=["Users"])
-async def cancel_follow_request(recipient_username: str, current_user: UserInDB = Depends(get_current_user)):
-    recipient = users_collection.find_one({"username": {"$regex": f"^{re.escape(recipient_username)}$", "$options": "i"}})
-    if not recipient: raise HTTPException(status_code=404, detail="User not found.")
-    follow_requests_collection.delete_one({"requester_id": current_user.id, "recipient_id": recipient["_id"]})
-
-
-@app.post("/users/me/follow-requests/{request_id}/respond", status_code=204, tags=["Users"])
-async def respond_to_follow_request(request_id: str, body: RespondToRequest, current_user: UserInDB = Depends(get_current_user)):
-    if not ObjectId.is_valid(request_id): raise HTTPException(status_code=400, detail="Invalid request ID.")
-    request_obj_id = ObjectId(request_id)
-    request_doc = follow_requests_collection.find_one({"_id": request_obj_id})
-    if not request_doc or request_doc["recipient_id"] != current_user.id:
-        raise HTTPException(status_code=404, detail="Follow request not found or you are not the recipient.")
-    if body.action == "accept":
-        users_collection.update_one({"_id": current_user.id}, {"$addToSet": {"followers": request_doc["requester_id"]}})
-        users_collection.update_one({"_id": request_doc["requester_id"]}, {"$addToSet": {"following": current_user.id}})
-    follow_requests_collection.delete_one({"_id": request_obj_id})
-
-
-@app.delete("/users/{username_to_unfollow}/follow", status_code=204, tags=["Users"])
-async def unfollow_user(username_to_unfollow: str, current_user: UserInDB = Depends(get_current_user)):
-    target_user = users_collection.find_one({"username": {"$regex": f"^{re.escape(username_to_unfollow)}$", "$options": "i"}})
-    if not target_user: raise HTTPException(status_code=404, detail="User to unfollow not found")
-    users_collection.update_one({"_id": current_user.id}, {"$pull": {"following": target_user["_id"]}})
-    users_collection.update_one({"_id": target_user["_id"]}, {"$pull": {"followers": current_user.id}})
-
-
-@app.post("/users/me/generate-follow-token", response_model=FollowTokenCreateResponse, tags=["Users"])
-async def generate_follow_token(current_user: UserInDB = Depends(get_current_user)):
-    token = secrets.token_urlsafe(32)
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=FOLLOW_TOKEN_EXPIRE_MINUTES)
-    follow_tokens_collection.insert_one({
-        "token": token, "user_id_to_follow": current_user.id,
-        "created_at": datetime.now(timezone.utc), "expires_at": expires_at
-    })
-    return FollowTokenCreateResponse(token=token, expires_at=expires_at)
-
-
-@app.post("/users/follow-by-token", response_model=FollowByTokenResponse, tags=["Users"])
-async def follow_by_token(body: FollowByTokenRequest, current_user: UserInDB = Depends(get_current_user)):
-    token_doc = follow_tokens_collection.find_one_and_delete({
-        "token": body.token, "expires_at": {"$gt": datetime.now(timezone.utc)}
-    })
-    if not token_doc: raise HTTPException(status_code=400, detail="Follow link is invalid or has expired.")
-    target_user_id = token_doc["user_id_to_follow"]
-    if current_user.id == target_user_id:
-        raise HTTPException(status_code=400, detail="You cannot use a follow link for yourself.")
-    target_user = users_collection.find_one({"_id": target_user_id})
-    if not target_user:
-        raise HTTPException(status_code=404, detail="The user associated with this link could not be found.")
-    users_collection.update_one({"_id": current_user.id}, {"$addToSet": {"following": target_user_id}})
-    users_collection.update_one({"_id": target_user_id}, {"$addToSet": {"followers": current_user.id}})
-    return FollowByTokenResponse(followed_username=target_user["username"])
+    # FIX: Use by_alias=True to ensure the dictionary key is "_id" for validation.
+    return UserMeOut(**current_user.dict(by_alias=True))
 
 # -- Circles --
 
@@ -1505,3 +1312,4 @@ if __name__ == "__main__":
 """
 uvicorn main:app --reload
 """
+
