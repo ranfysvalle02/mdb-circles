@@ -1,8 +1,3 @@
-# ==============================================================================
-# Circles Social API (FastAPI backend)
-# main.py
-# ==============================================================================
-
 import os
 import re
 import secrets
@@ -17,15 +12,16 @@ from urllib.parse import urlparse
 import uvicorn
 import jwt
 import requests
+import openai
 from bs4 import BeautifulSoup
 from jwt.exceptions import PyJWTError
-from fastapi import FastAPI, HTTPException, Body, Depends, status, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Body, Depends, status, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, AnyHttpUrl
+from pydantic import BaseModel, Field, AnyHttpUrl, ConfigDict
 from passlib.context import CryptContext
 from pymongo import MongoClient, ASCENDING, DESCENDING, IndexModel
 from bson import ObjectId
@@ -36,6 +32,9 @@ import cloudinary
 import cloudinary.uploader
 import cloudinary.api
 
+# load .env
+from dotenv import load_dotenv
+load_dotenv()
 # ==============================================================================
 # 1. CONFIGURATION & INITIALIZATION
 # ==============================================================================
@@ -46,6 +45,14 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 INVITE_TOKEN_EXPIRE_HOURS = 24
+
+# OpenAI Configuration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
+    print("OpenAI client configured.")
+else:
+    print("Warning: OPENAI_API_KEY not found. AI features will be disabled.")
 
 # Cloudinary Configuration
 CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
@@ -61,7 +68,7 @@ if all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
     )
     print("Cloudinary configured.")
 else:
-    print("Warning: Cloudinary credentials not found in environment variables. Image uploads will be disabled.")
+    print("Warning: Cloudinary credentials not found. Image uploads will be disabled.")
 
 
 # MongoDB
@@ -87,7 +94,6 @@ async def lifespan(app: FastAPI):
     circles_collection.create_index([("name", ASCENDING)])
     posts_collection.create_index([("circle_id", ASCENDING)])
     posts_collection.create_index([("created_at", DESCENDING)])
-    posts_collection.create_index([("score", DESCENDING), ("created_at", DESCENDING)])
     posts_collection.create_index([("is_pinned", DESCENDING), ("created_at", DESCENDING)])
     posts_collection.create_index([("content.tags", ASCENDING)])
     events_collection.create_index([("circle_id", ASCENDING), ("start_time", DESCENDING)])
@@ -105,8 +111,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# FIX: Allow all origins for development to resolve CORS issues.
-# For production, you should restrict this to your actual frontend domain.
 origins = ["*"]
 
 app.add_middleware(
@@ -162,7 +166,6 @@ class RoleEnum(str, Enum):
 
 class SortByEnum(str, Enum):
     newest = "newest"
-    top = "top"
 
 
 class PostTypeEnum(str, Enum):
@@ -187,22 +190,15 @@ class UserInDB(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     username: str
     password_hash: str
-
-    class Config:
-        json_encoders = {ObjectId: str}
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UserOut(BaseModel):
     id: PyObjectId = Field(alias="_id")
     username: str
-
-    class Config:
-        json_encoders = {ObjectId: str}
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 class UserMeOut(UserOut):
-    # This model can be expanded later if more private user fields are added
     pass
 
 
@@ -220,9 +216,7 @@ class CircleMember(BaseModel):
     user_id: PyObjectId
     username: str
     role: RoleEnum = RoleEnum.member
-
-    class Config:
-        json_encoders = {ObjectId: str}
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class CircleCreate(BaseModel):
@@ -257,16 +251,16 @@ class CircleOut(BaseModel):
     member_count: int
     is_password_protected: bool
     user_role: Optional[RoleEnum] = None
+    model_config = ConfigDict(populate_by_name=True)
 
-    class Config:
-        json_encoders = {ObjectId: str}
-        allow_population_by_field_name = True
 
 class CircleManagementOut(CircleOut):
     members: List[CircleMember] = []
 
+
 class MemberRoleUpdate(BaseModel):
     role: RoleEnum
+
 
 class InviteTokenCreateResponse(BaseModel):
     token: str
@@ -309,7 +303,7 @@ class ImageData(BaseModel):
     width: int
 
 
-class WishlistData(BaseModel):
+class WishlistItem(BaseModel):
     url: AnyHttpUrl
     title: str
     description: Optional[str] = None
@@ -323,8 +317,9 @@ class PostCreate(BaseModel):
     tags: list[str] = Field(default_factory=list)
     playlist_data: Optional[PlaylistData] = None
     poll_data: Optional[PollData] = None
-    wishlist_data: Optional[WishlistData] = None
+    wishlist_data: Optional[List[WishlistItem]] = None
     image_data: Optional[ImageData] = None
+    poll_duration_hours: Optional[int] = None
 
     def model_validate(self):
         if self.post_type == PostTypeEnum.standard and not self.text and not self.link:
@@ -332,11 +327,13 @@ class PostCreate(BaseModel):
         if self.post_type == PostTypeEnum.yt_playlist:
             if not self.playlist_data or not self.playlist_data.name or not self.playlist_data.videos:
                 raise ValueError('A YouTube playlist post must contain a name and at least one video.')
-        if self.post_type == PostTypeEnum.poll and not self.poll_data:
-            raise ValueError('A poll post must contain poll_data.')
-        if self.post_type == PostTypeEnum.wishlist and not self.wishlist_data:
-            raise ValueError('A wishlist post must contain wishlist_data.')
-        # Allow an image post if it has image_data OR a link to be processed
+        if self.post_type == PostTypeEnum.poll:
+            if not self.poll_data:
+                raise ValueError('A poll post must contain poll_data.')
+            if self.poll_duration_hours is None or self.poll_duration_hours <= 0:
+                raise ValueError('A poll must have a valid duration.')
+        if self.post_type == PostTypeEnum.wishlist and (not self.wishlist_data or len(self.wishlist_data) == 0):
+            raise ValueError('A wishlist post must contain at least one item.')
         if self.post_type == PostTypeEnum.image and not self.image_data and not self.link:
             raise ValueError('An image post must contain image_data from an upload or a direct link.')
         self.tags = sorted(set(tag.strip().lower() for tag in self.tags if tag.strip()))
@@ -351,25 +348,28 @@ class PostOut(BaseModel):
     author_username: str
     content: dict[str, Any]
     created_at: datetime
-    score: int = 0
     is_pinned: bool = False
-    upvotes_count: int = 0
-    downvotes_count: int = 0
-    user_vote: int = 0
+    seen_by_count: int = 0
+    is_seen_by_user: bool = False
     poll_results: Optional[dict] = None
+    seen_by_user_objects: Optional[List[dict]] = []
+    model_config = ConfigDict(populate_by_name=True)
 
-    class Config:
-        json_encoders = {ObjectId: str}
-        allow_population_by_field_name = True
+
+class SeenUser(BaseModel):
+    user_id: PyObjectId
+    username: str
+    model_config = ConfigDict(populate_by_name=True)
+    
+
+class SeenStatusResponse(BaseModel):
+    seen: List[SeenUser]
+    unseen: List[SeenUser]
 
 
 class FeedResponse(BaseModel):
     posts: list[PostOut]
     has_more: bool
-
-
-class VoteRequest(BaseModel):
-    direction: int
 
 
 class PollVoteRequest(BaseModel):
@@ -390,6 +390,7 @@ class EventCreate(BaseModel):
     end_time: Optional[datetime] = None
     location: Optional[str] = Field(None, max_length=200)
 
+
 class EventOut(BaseModel):
     id: PyObjectId = Field(alias="_id")
     circle_id: PyObjectId
@@ -402,13 +403,34 @@ class EventOut(BaseModel):
     location: Optional[str]
     attendee_count: int = 0
     is_attending: bool = False
+    model_config = ConfigDict(populate_by_name=True)
 
-    class Config:
-        json_encoders = {ObjectId: str}
-        allow_population_by_field_name = True
 
 class RsvpResponse(BaseModel):
     attendee_count: int
+
+
+class ChatMessageCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=2000)
+
+
+class ChatMessageOut(BaseModel):
+    id: PyObjectId = Field(alias="_id")
+    circle_id: PyObjectId
+    sender_id: PyObjectId
+    sender_username: str
+    content: str
+    timestamp: datetime
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ChatHistoryResponse(BaseModel):
+    messages: List[ChatMessageOut]
+    has_more: bool
+
+
+class PollFromTextRequest(BaseModel):
+    text: str = Field(..., min_length=10, max_length=500)
 
 # ==============================================================================
 # 3. HELPER & DEPENDENCY FUNCTIONS
@@ -532,30 +554,16 @@ def _get_posts_aggregation_pipeline(
 
     add_fields_stage = {
         "$addFields": {
-            "upvotes_count": {"$size": {"$ifNull": ["$upvotes", []]}},
-            "downvotes_count": {"$size": {"$ifNull": ["$downvotes", []]}},
+            "seen_by_count": {"$size": {"$ifNull": ["$seen_by", []]}},
         }
     }
     pipeline.append(add_fields_stage)
-    pipeline.append({"$addFields": {
-        "score": {"$subtract": ["$upvotes_count", "$downvotes_count"]}
-    }})
 
     if current_user:
         pipeline.append({
             "$addFields": {
-                "user_vote": {
-                    "$cond": {
-                        "if": {"$in": [current_user.id, {"$ifNull": ["$upvotes", []]}]},
-                        "then": 1,
-                        "else": {
-                            "$cond": {
-                                "if": {"$in": [current_user.id, {"$ifNull": ["$downvotes", []]}]},
-                                "then": -1,
-                                "else": 0
-                            }
-                        }
-                    }
+                "is_seen_by_user": {
+                    "$in": [current_user.id, {"$ifNull": ["$seen_by", []]}]
                 },
                 "poll_results": {
                     "$cond": {
@@ -596,130 +604,56 @@ def _get_posts_aggregation_pipeline(
                                     },
                                     True
                                 ]
-                            }
+                            },
+                            "is_expired": {
+                                "$gt": [datetime.now(timezone.utc), "$content.expires_at"]
+                            },
+                            "expires_at": "$content.expires_at"
                         },
                         "else": "$$REMOVE"
                     }
                 }
             }
         })
+    
+    pipeline.extend([
+        {
+            "$addFields": {
+                "seen_by_sample_ids": {"$slice": [{"$ifNull": ["$seen_by", []]}, 4]}
+            }
+        },
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "seen_by_sample_ids",
+                "foreignField": "_id",
+                "as": "seen_by_user_objects",
+                "pipeline": [{"$project": {"username": 1, "_id": 0}}]
+            }
+        }
+    ])
+
 
     pipeline.extend([
         sort_stage,
         {"$skip": skip},
-        {"$limit": limit}
+        {"$limit": limit},
+        # ================== FIX IS HERE ==================
+        # This projection removes the raw ObjectId arrays from the `content` field
+        # before sending the response, preventing the serialization error.
+        {"$project": {
+            "seen_by_sample_ids": 0,
+            "content.poll_data.options.votes": 0 
+        }}
     ])
     return pipeline
 
 # ==============================================================================
-# 4. WEBSOCKET & CHAT MANAGER
+# 4. API ENDPOINTS
 # ==============================================================================
-
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: dict[str, dict[str, WebSocket]] = {}
-
-    async def connect(self, websocket: WebSocket, circle_id: str, user: UserInDB):
-        await websocket.accept()
-        if circle_id not in self.active_connections:
-            self.active_connections[circle_id] = {}
-        join_msg = {"type": "user-joined", "user_id": str(user.id), "username": user.username}
-        await self.broadcast(json.dumps(join_msg), circle_id, exclude=websocket)
-        user_list = [
-            {"user_id": uid, "username": ws.scope["user"].username}
-            for uid, ws in self.active_connections[circle_id].items()
-        ]
-        await websocket.send_json({"type": "existing-users", "users": user_list})
-        history_cursor = chat_messages_collection.find({"circle_id": ObjectId(circle_id)}) \
-            .sort("timestamp", DESCENDING).limit(50)
-
-        def serialize_history(doc):
-            doc['_id'] = str(doc['_id'])
-            doc['circle_id'] = str(doc['circle_id'])
-            doc['sender_id'] = str(doc['sender_id'])
-            doc['timestamp'] = doc['timestamp'].isoformat()
-            return doc
-        history = [serialize_history(msg) for msg in history_cursor]
-        history.reverse()
-        await websocket.send_json({"type": "chat-history", "history": history})
-
-        self.active_connections[circle_id][str(user.id)] = websocket
-        websocket.scope["user"] = user
-
-    def disconnect(self, websocket: WebSocket, circle_id: str, user_id: str):
-        if circle_id in self.active_connections and user_id in self.active_connections[circle_id]:
-            del self.active_connections[circle_id][user_id]
-            if not self.active_connections[circle_id]:
-                del self.active_connections[circle_id]
-
-    async def broadcast(self, message: str, circle_id: str, exclude: Optional[WebSocket] = None):
-        if circle_id in self.active_connections:
-            for conn in self.active_connections[circle_id].values():
-                if conn != exclude:
-                    await conn.send_text(message)
-
-    async def send_personal_message(self, message: str, user_id: str, circle_id: str):
-        if circle_id in self.active_connections and user_id in self.active_connections[circle_id]:
-            await self.active_connections[circle_id][user_id].send_text(message)
-
-
-manager = ConnectionManager()
-
-
-@app.websocket("/ws/chat/{circle_id}")
-async def websocket_endpoint(websocket: WebSocket, circle_id: str, token: str = Query(...)):
-    user = await get_current_user_from_token(token)
-    if not user:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-    circle = await get_circle_or_404(circle_id)
-    if not any(m['user_id'] == user.id for m in circle.get('members', [])):
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-
-    user_id = str(user.id)
-    await manager.connect(websocket, circle_id, user)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            message = json.loads(data)
-            msg_type = message.get("type")
-            if msg_type in ["offer", "answer", "candidate"]:
-                recipient_id = message.get("to")
-                message["from"] = user_id
-                await manager.send_personal_message(json.dumps(message), recipient_id, circle_id)
-            elif msg_type == "media-state":
-                message["from"] = user_id
-                await manager.broadcast(json.dumps(message), circle_id, exclude=websocket)
-            elif msg_type == "chat":
-                chat_messages_collection.insert_one({
-                    "circle_id": ObjectId(circle_id), "sender_id": user.id, "sender_username": user.username,
-                    "content": message.get("content", ""), "timestamp": datetime.now(timezone.utc)
-                })
-                broadcast_msg = {
-                    "type": "chat", "sender_id": user_id, "sender_username": user.username,
-                    "content": message.get("content", ""), "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-                await manager.broadcast(json.dumps(broadcast_msg), circle_id)
-            else:
-                message["from"] = user_id
-                await manager.broadcast(json.dumps(message), circle_id, exclude=websocket)
-
-    except WebSocketDisconnect:
-        manager.disconnect(websocket, circle_id, user_id)
-        leave_msg = json.dumps({"type": "user-left", "user_id": user_id})
-        await manager.broadcast(leave_msg, circle_id)
-
-# ==============================================================================
-# 5. API ENDPOINTS
-# ==============================================================================
-
-# -- Utilities --
 
 @app.get("/utils/cloudinary-signature", tags=["Utilities"])
 async def get_cloudinary_signature(current_user: UserInDB = Depends(get_current_user)):
-    """Provides a signature for direct-from-browser uploads to Cloudinary."""
     if not all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
         raise HTTPException(status_code=503, detail="Cloudinary service is not configured on the server.")
     
@@ -739,24 +673,64 @@ async def get_cloudinary_signature(current_user: UserInDB = Depends(get_current_
 @app.get("/utils/extract-metadata", response_model=MetadataResponse, tags=["Utilities"])
 async def extract_metadata(url: AnyHttpUrl, current_user: UserInDB = Depends(get_current_user)):
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         resp = requests.get(str(url), headers=headers, timeout=5, allow_redirects=True)
         resp.raise_for_status()
+        
         soup = BeautifulSoup(resp.content, "lxml")
-        title = soup.find("meta", property="og:title") or soup.find("title")
-        description = soup.find("meta", property="og:description") or soup.find("meta", attrs={"name": "description"})
-        image = soup.find("meta", property="og:image")
+
+        title_tag = soup.find("meta", property="og:title") or soup.find("title")
+        description_tag = soup.find("meta", property="og:description") or soup.find("meta", attrs={"name": "description"})
+        image_tag = soup.find("meta", property="og:image")
+        
+        image_url = image_tag.get("content") if image_tag else None
+        if image_url and ('1x1' in image_url or 'trans.gif' in image_url):
+            image_url = None
+
         return MetadataResponse(
             url=str(url),
-            title=title.get("content", title.text) if title else "No title found",
-            description=description.get("content") if description else "No description available.",
-            image=image.get("content") if image else None
+            title=title_tag.get("content", title_tag.text).strip() if title_tag else "No title found",
+            description=description_tag.get("content").strip() if description_tag else "No description available.",
+            image=image_url
         )
     except requests.RequestException as e:
-        raise HTTPException(status_code=400, detail=f"Could not fetch URL: {e}")
+        raise HTTPException(status_code=400, detail=f"Could not fetch URL metadata: {e}")
 
-# -- AUTH --
+@app.post("/utils/generate-poll-from-text", response_model=PollData, tags=["Utilities"])
+async def generate_poll_from_text(request: PollFromTextRequest, current_user: UserInDB = Depends(get_current_user)):
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=503, detail="AI service is not configured on the server.")
 
+    system_prompt = """
+    You are an intelligent assistant that converts natural language text into a structured poll.
+    Analyze the user's text to identify a clear question and a list of distinct options.
+    You must respond ONLY with a JSON object in the following format:
+    {"question": "The extracted poll question", "options": [{"text": "Option 1"}, {"text": "Option 2"}, ...]}
+    Do not include any other text, explanations, or markdown.
+    """
+    
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": request.text}
+            ],
+            response_format={"type": "json_object"}
+        )
+        poll_json = json.loads(response.choices[0].message.content)
+        
+        if "question" not in poll_json or "options" not in poll_json or not isinstance(poll_json["options"], list):
+            raise ValueError("Invalid JSON structure from AI.")
+        
+        formatted_options = [{"text": opt["text"]} if isinstance(opt, dict) else {"text": str(opt)} for opt in poll_json["options"]]
+        if len(formatted_options) < 2:
+            raise ValueError("AI could not identify at least two poll options.")
+
+        return PollData(question=poll_json["question"], options=formatted_options)
+
+    except (openai.APIError, json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate poll from text: {e}")
 
 @app.post("/auth/register", response_model=UserOut, status_code=201, tags=["Authentication"])
 async def register_user(user_data: UserRegister):
@@ -799,16 +773,9 @@ async def refresh_access_token(body: TokenRefreshRequest):
     new_refresh_token = create_refresh_token(username)
     return TokenResponse(access_token=new_access_token, refresh_token=new_refresh_token)
 
-# -- User --
-
-
 @app.get("/users/me", response_model=UserMeOut, tags=["Users"])
 async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
-    # FIX: Use by_alias=True to ensure the dictionary key is "_id" for validation.
     return UserMeOut(**current_user.dict(by_alias=True))
-
-# -- Circles --
-
 
 @app.get("/circles/mine", response_model=List[CircleOut], tags=["Circles"])
 async def list_my_circles(current_user: UserInDB = Depends(get_current_user)):
@@ -938,7 +905,6 @@ async def update_circle_settings(circle_id: str, circle_data: CircleUpdate, curr
         {"_id": circle["_id"]},
         {"$set": update_doc}
     )
-    updated_circle = await get_circle_or_404(circle_id)
     return await get_circle_details(circle_id, current_user)
 
 
@@ -1012,9 +978,6 @@ async def kick_circle_member(circle_id: str, user_id: str, current_user: UserInD
     )
     return await get_circle_details(circle_id, current_user)
 
-# -- Feeds & Posts --
-
-
 @app.get("/circles/{circle_id}/feed", response_model=FeedResponse, tags=["Feeds"])
 async def get_circle_feed(
     circle_id: str, skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=50),
@@ -1027,13 +990,13 @@ async def get_circle_feed(
         if circle.get("password_hash"):
             raise HTTPException(status_code=401, detail="This circle is password protected. Please join to view.")
         raise HTTPException(status_code=403, detail="You must be a member to view this circle's feed.")
-    match_query = {"circle_id": circle["_id"]}
+    match_query = {"circle_id": ObjectId(circle_id)}
     if tags:
         tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()]
         if tag_list: match_query["content.tags"] = {"$all": tag_list}
     match_stage = {"$match": match_query}
     total_posts = posts_collection.count_documents(match_query)
-    sort_logic = {"score": DESCENDING, "created_at": DESCENDING} if sort_by == SortByEnum.top else {"created_at": DESCENDING}
+    sort_logic = {"created_at": DESCENDING}
     sort_stage = {"$sort": {"is_pinned": DESCENDING, **sort_logic}}
     pipeline = _get_posts_aggregation_pipeline(match_stage, sort_stage, skip, limit, current_user)
     cursor = posts_collection.aggregate(pipeline)
@@ -1046,7 +1009,6 @@ async def create_post_in_circle(
     post_data: PostCreate, circle: dict = Depends(check_circle_membership),
     current_user: UserInDB = Depends(get_current_user)
 ):
-    # Centralized logic to handle image URL uploads for both 'standard' and 'image' post types.
     is_standard_post_with_image_link = (
         post_data.post_type == PostTypeEnum.standard and
         post_data.link and
@@ -1060,9 +1022,7 @@ async def create_post_in_circle(
     if is_standard_post_with_image_link or is_image_post_with_link:
         if all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
             try:
-                # Upload the image to Cloudinary from the provided URL
                 upload_result = cloudinary.uploader.upload(post_data.link)
-                # Convert the post to a proper image post
                 post_data.post_type = PostTypeEnum.image
                 post_data.image_data = ImageData(
                     url=upload_result.get("secure_url"),
@@ -1070,10 +1030,8 @@ async def create_post_in_circle(
                     height=upload_result.get("height"),
                     width=upload_result.get("width")
                 )
-                # Clear the link as it's now stored in image_data
                 post_data.link = None
             except Exception as e:
-                # If upload fails, proceed as a standard post with a link
                 print(f"Cloudinary auto-upload failed: {e}")
                 post_data.post_type = PostTypeEnum.standard
 
@@ -1082,38 +1040,47 @@ async def create_post_in_circle(
     new_post_doc = {
         "circle_id": circle["_id"], "author_id": current_user.id, "author_username": current_user.username,
         "content": content_data, "created_at": datetime.now(timezone.utc),
-        "upvotes": [], "downvotes": [], "score": 0, "is_pinned": False
+        "seen_by": [], 
+        "is_pinned": False
     }
     if post_data.post_type == PostTypeEnum.poll and post_data.poll_data:
         for option in new_post_doc["content"]["poll_data"]["options"]: option["votes"] = []
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=post_data.poll_duration_hours)
+        new_post_doc["content"]["expires_at"] = expires_at
     result = posts_collection.insert_one(new_post_doc)
     created_post = posts_collection.find_one({"_id": result.inserted_id})
-    return PostOut(**created_post, circle_name=circle["name"])
+    return PostOut(**created_post, circle_name=circle["name"], is_seen_by_user=False)
 
 
-@app.post("/posts/{post_id}/vote", tags=["Posts"])
-async def vote_on_post(post_id: str, vote_data: VoteRequest, current_user: UserInDB = Depends(get_current_user)):
-    if not ObjectId.is_valid(post_id): raise HTTPException(status_code=400, detail="Invalid Post ID")
-    post_object_id = ObjectId(post_id)
+@app.post("/posts/{post_id}/seen", status_code=204, tags=["Posts"])
+async def mark_post_as_seen(post_id: str, current_user: UserInDB = Depends(get_current_user)):
+    post = await get_post_or_404(post_id)
+    await check_circle_membership(current_user, await get_circle_or_404(str(post["circle_id"])))
+    
     posts_collection.update_one(
-        {"_id": post_object_id}, {"$pull": {"upvotes": current_user.id, "downvotes": current_user.id}}
+        {"_id": post["_id"]},
+        {"$addToSet": {"seen_by": current_user.id}}
     )
-    direction = vote_data.direction
-    if direction not in [-1, 0, 1]: raise HTTPException(status_code=400, detail="Invalid vote direction.")
-    if direction != 0:
-        field_to_update = "upvotes" if direction == 1 else "downvotes"
-        posts_collection.update_one({"_id": post_object_id}, {"$addToSet": {field_to_update: current_user.id}})
-    pipeline = [
-        {"$match": {"_id": post_object_id}},
-        {"$project": {"score": {"$subtract": [
-            {"$size": {"$ifNull": ["$upvotes", []]}}, {"$size": {"$ifNull": ["$downvotes", []]}}
-        ]}}}
-    ]
-    result = list(posts_collection.aggregate(pipeline))
-    if not result: raise HTTPException(status_code=404, detail="Post not found after voting.")
-    new_score = result[0]["score"]
-    posts_collection.update_one({"_id": post_object_id}, {"$set": {"score": new_score}})
-    return {"status": "success", "new_score": new_score}
+    return Response(status_code=204)
+
+@app.get("/posts/{post_id}/seen-status", response_model=SeenStatusResponse, tags=["Posts"])
+async def get_post_seen_status(post_id: str, current_user: UserInDB = Depends(get_current_user)):
+    post = await get_post_or_404(post_id)
+    circle = await check_circle_membership(current_user, await get_circle_or_404(str(post["circle_id"])))
+
+    seen_user_ids = set(post.get("seen_by", []))
+    
+    seen_users = []
+    unseen_users = []
+
+    for member in circle.get("members", []):
+        member_info = SeenUser(user_id=member["user_id"], username=member["username"])
+        if member["user_id"] in seen_user_ids:
+            seen_users.append(member_info)
+        else:
+            unseen_users.append(member_info)
+            
+    return SeenStatusResponse(seen=seen_users, unseen=unseen_users)
 
 
 @app.post("/posts/{post_id}/poll-vote", tags=["Posts"])
@@ -1121,6 +1088,11 @@ async def vote_on_poll(post_id: str, vote_data: PollVoteRequest, current_user: U
     post = await get_post_or_404(post_id)
     if post.get("content", {}).get("post_type") != "poll":
         raise HTTPException(status_code=400, detail="This post is not a poll.")
+    
+    expires_at = post.get("content", {}).get("expires_at")
+    if expires_at and datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=403, detail="This poll has closed and is no longer accepting votes.")
+
     options = post["content"]["poll_data"]["options"]
     if not (0 <= vote_data.option_index < len(options)):
         raise HTTPException(status_code=400, detail="Invalid poll option index.")
@@ -1185,7 +1157,7 @@ async def get_my_feed(
         if tag_list: match_query["content.tags"] = {"$all": tag_list}
     match_stage = {"$match": match_query}
     total_posts = posts_collection.count_documents(match_query)
-    sort_logic = {"score": DESCENDING, "created_at": DESCENDING} if sort_by == SortByEnum.top else {"created_at": DESCENDING}
+    sort_logic = {"created_at": DESCENDING}
     sort_stage = {"$sort": {"is_pinned": DESCENDING, **sort_logic}}
     pipeline = _get_posts_aggregation_pipeline(match_stage, sort_stage, skip, limit, current_user)
     cursor = posts_collection.aggregate(pipeline)
@@ -1195,17 +1167,9 @@ async def get_my_feed(
     return FeedResponse(posts=posts_list, has_more=(skip + len(posts_list)) < total_posts)
 
 
-# -- Events --
-
 @app.post("/circles/{circle_id}/events", response_model=EventOut, status_code=201, tags=["Events"])
-async def create_event_in_circle(
-    event_data: EventCreate,
-    circle: dict = Depends(check_circle_membership),
-    current_user: UserInDB = Depends(get_current_user)
-):
-    if event_data.end_time and event_data.end_time < event_data.start_time:
-        raise HTTPException(status_code=400, detail="End time cannot be before start time.")
-
+async def create_event_in_circle(event_data: EventCreate, circle: dict = Depends(check_circle_membership), current_user: UserInDB = Depends(get_current_user)):
+    if event_data.end_time and event_data.end_time < event_data.start_time: raise HTTPException(status_code=400, detail="End time cannot be before start time.")
     new_event_doc = event_data.dict()
     new_event_doc.update({
         "circle_id": circle["_id"],
@@ -1302,6 +1266,49 @@ async def cancel_rsvp_to_event(
     return RsvpResponse(attendee_count=max(0, new_count))
 
 
+@app.post("/circles/{circle_id}/chat", response_model=ChatMessageOut, status_code=201, tags=["Chat"])
+async def send_chat_message(
+    message_data: ChatMessageCreate,
+    circle: dict = Depends(check_circle_membership),
+    current_user: UserInDB = Depends(get_current_user)
+):
+    new_message_doc = {
+        "circle_id": circle["_id"],
+        "sender_id": current_user.id,
+        "sender_username": current_user.username,
+        "content": message_data.content,
+        "timestamp": datetime.now(timezone.utc)
+    }
+    result = chat_messages_collection.insert_one(new_message_doc)
+    created_message = chat_messages_collection.find_one({"_id": result.inserted_id})
+    return ChatMessageOut(**created_message)
+
+@app.get("/circles/{circle_id}/chat", response_model=ChatHistoryResponse, tags=["Chat"])
+async def get_chat_history(
+    circle_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    circle: dict = Depends(check_circle_membership)
+):
+    circle_obj_id = ObjectId(circle_id)
+    query = {"circle_id": circle_obj_id}
+    
+    total_messages = chat_messages_collection.count_documents(query)
+    
+    messages_cursor = chat_messages_collection.find(query)\
+        .sort("timestamp", DESCENDING)\
+        .skip(skip)\
+        .limit(limit)
+
+    messages_list = [ChatMessageOut(**msg) for msg in messages_cursor]
+    messages_list.reverse()
+
+    return ChatHistoryResponse(
+        messages=messages_list,
+        has_more=(skip + len(messages_list)) < total_messages
+    )
+
+
 # ==============================================================================
 # 7. SERVER EXECUTION
 # ==============================================================================
@@ -1312,4 +1319,3 @@ if __name__ == "__main__":
 """
 uvicorn main:app --reload
 """
-

@@ -115,7 +115,6 @@
                 <label for="dashboardSortSelect" class="form-label mb-0 text-muted small">Sort by:</label>
                 <select id="dashboardSortSelect" class="form-select form-select-sm" style="width: auto;">
                   <option value="newest">Newest</option>
-                  <option value="top">Top Votes</option>
                 </select>
               </div>
             </div>
@@ -182,7 +181,12 @@
         <ul class="nav nav-tabs card-header-tabs" id="postTypeTabs">
           <li class="nav-item">
             <a class="nav-link active" data-bs-toggle="tab" href="#createTextPost" data-post-type="main">
-              <i class="bi bi-chat-left-text-fill"></i> Text & Link
+              <i class="bi bi-chat-left-text-fill"></i> Text
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#createWishlistPost" data-post-type="wishlist">
+                <i class="bi bi-gift-fill"></i> Wishlist
             </a>
           </li>
           <li class="nav-item">
@@ -208,19 +212,54 @@
         <div class="tab-content">
 
           <div class="tab-pane fade show active" id="createTextPost">
-            <textarea class="form-control post-main-input" rows="5" placeholder="What's on your mind? Paste a link to see the magic..."></textarea>
-            <div class="post-creator-preview-container mt-3"></div>
+            <textarea class="form-control post-main-input" rows="5" placeholder="What's on your mind?"></textarea>
+          </div>
+
+          <div class="tab-pane fade" id="createWishlistPost">
+              <input type="text" class="form-control wishlistTitleInput mb-2" placeholder="My Awesome Wishlist ✨">
+              <div class="input-group mb-3">
+                  <input type="url" id="wishlistLinkInput" class="form-control" placeholder="Paste a link to add an item...">
+                  <button class="btn btn-primary" id="addWishlistItemBtn" data-action="add-wishlist-item"><i class="bi bi-plus-lg"></i> Add</button>
+              </div>
+              <p class="text-muted small mb-1">Added Items:</p>
+              <div id="wishlistStagingArea" class="list-group" style="max-height: 250px; overflow-y: auto;">
+                  <div class="list-group-item text-muted small text-center">Your added items will appear here.</div>
+              </div>
           </div>
 
           <div class="tab-pane fade" id="createPollPost">
-            <input type="text" class="form-control pollQuestion mb-2" placeholder="What's your question?">
-            <div class="pollOptionsContainer">
-              <input type="text" class="form-control pollOptionInput mb-2" placeholder="Option 1">
-              <input type="text" class="form-control pollOptionInput mb-2" placeholder="Option 2">
+            <div class="p-3 rounded mb-3" style="background-color: var(--card-bg-translucent);">
+                <label for="poll-ai-prompt" class="form-label small text-muted">Get a head start with AI:</label>
+                <div class="input-group">
+                    <input type="text" class="form-control form-control-sm" id="poll-ai-prompt" placeholder="e.g., What movie genre should we watch tonight?">
+                    <button class="btn btn-primary btn-sm" data-action="generate-poll-from-text">
+                        <i class="bi bi-magic"></i> Suggest
+                    </button>
+                </div>
             </div>
-            <button class="btn btn-secondary btn-sm" data-action="add-poll-option">
-              <i class="bi bi-plus-square-dotted"></i> Add Option
+            
+            <div class="mb-3">
+                <label for="pollQuestionInput" class="form-label">Poll Question</label>
+                <input type="text" class="form-control" id="pollQuestionInput" placeholder="What's your question?">
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Options (min 2, max 5)</label>
+                <div id="pollOptionsContainer">
+                    </div>
+            </div>
+            <button class="btn btn-sm btn-outline-success" id="addPollOptionBtn" type="button" data-action="add-poll-option">
+                <i class="bi bi-plus-circle"></i> Add Option
             </button>
+            <hr>
+            <div>
+              <label for="pollDurationSelect" class="form-label small text-muted">Poll Duration:</label>
+              <select class="form-select form-select-sm" id="pollDurationSelect">
+                <option value="1">1 Hour</option>
+                <option value="8">8 Hours</option>
+                <option value="24" selected>1 Day</option>
+                <option value="168">7 Days</option>
+              </select>
+            </div>
           </div>
 
           <div class="tab-pane fade" id="createPlaylistPost">
@@ -243,7 +282,6 @@
                 <div id="imageUploadProgressBar" class="progress-bar" role="progressbar" style="width: 0%;"></div>
               </div>
             </div>
-
             <hr>
             <p class="text-muted small mb-2">Or, paste a direct image URL below:</p>
             <input type="text" class="form-control imageUrlInput" placeholder="Paste direct image URL..." />
@@ -314,29 +352,18 @@
 </div>
 
 <div class="modal fade" id="chatModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered modal-xl">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="chatModalTitle">Circle Chat</h5>
+        <h5 class="modal-title" id="chatModalTitle"><i class="bi bi-chat-dots-fill"></i> Circle Chat</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-body">
-        <div id="chat-sidebar">
-          <h5>Participants (<span id="participant-count">0</span>)</h5>
-          <div id="chat-participants-list" class="list-group list-group-flush"></div>
-          <div id="chat-controls" class="mt-auto pt-2 border-top border-secondary">
-            <button id="startCallBtn" class="btn btn-success btn-sm w-100"><i class="bi bi-telephone-fill"></i> Start Call</button>
+      <div class="modal-body d-flex flex-column" style="height: 70vh;">
+        <div id="chatMessages" class="flex-grow-1" style="overflow-y: auto;">
           </div>
-        </div>
-        <div id="chat-main">
-          <div id="chat-main-top">
-            <div id="videoGrid"></div>
-            <div id="chatMessages"></div>
-          </div>
-          <div id="chat-main-bottom" class="d-flex gap-2">
-            <input type="text" id="chatInput" class="form-control" placeholder="Type a message...">
-            <button id="chatSendBtn" class="btn btn-primary"><i class="bi bi-send"></i></button>
-          </div>
+        <div id="chat-main-bottom" class="d-flex gap-2 pt-3 border-top">
+          <input type="text" id="chatInput" class="form-control" placeholder="Type a message...">
+          <button id="chatSendBtn" class="btn btn-primary"><i class="bi bi-send"></i></button>
         </div>
       </div>
     </div>
@@ -434,6 +461,30 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
         <button id="saveCircleSettingsBtn" type="button" class="btn btn-primary"><i class="bi bi-save-fill"></i> Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="seenStatusModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-eye-fill"></i> Post View Status</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div>
+          <h5 class="mb-3"><i class="bi bi-check-circle-fill text-success"></i> Seen By</h5>
+          <ul id="seenUserList" class="list-group list-group-flush">
+            </ul>
+        </div>
+        <hr>
+        <div>
+          <h5 class="mb-3"><i class="bi bi-circle text-muted"></i> Not Yet Seen</h5>
+          <ul id="unseenUserList" class="list-group list-group-flush">
+            </ul>
+        </div>
       </div>
     </div>
   </div>

@@ -696,3 +696,64 @@ a:hover {
   padding-top: 1rem;  
   border-top: 1px solid var(--border-color);  
 }  
+
+/* styles.css */
+
+/* General Avatar Styles */
+.avatar {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    background-color: var(--border-color);
+    border: 2px solid var(--border-color);
+    object-fit: cover;
+}
+.avatar.avatar-lg {
+    width: 60px;
+    height: 60px;
+}
+.avatar-small {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background-color: var(--border-color);
+    border: 2px solid var(--glass-bg);
+    object-fit: cover;
+}
+
+/* Post Footer and Seen-By Container */
+.post-footer {
+    border-top: 1px solid var(--border-color);
+}
+.seen-by-container {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 20px;
+    transition: background-color 0.2s ease-in-out;
+}
+.seen-by-container:hover {
+    background-color: var(--border-color);
+}
+
+/* Avatar Stack for 'Seen By' */
+.avatar-stack {
+    display: flex;
+    margin-right: 8px;
+}
+.avatar-stack .avatar-small {
+    margin-left: -10px; /* This creates the overlap effect */
+}
+.avatar-stack .avatar-small:first-child {
+    margin-left: 0;
+}
+.seen-by-text {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+.seen-by-container.seen-by-user .seen-by-text {
+    color: var(--primary-color);
+    font-weight: bold;
+}
