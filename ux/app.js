@@ -1459,7 +1459,7 @@ function appendPosts(posts, container, circleName = null) {
  <img src="${generateAvatarUrl(post.author_username)}" class="avatar me-3">
  <div>
  <strong class="d-block">${post.author_username}</strong>
- <small class="text-muted">
+ <small>
  in <a href="#/circle/${post.circle_id}"
   class="text-reset fw-bold">
   ${displayCircleName}
