@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+gunicorn
+pymongo
+passlib[bcrypt]==1.7.4  
+bcrypt==3.2.2 
+PyJWT
+requests
+beautifulsoup4
+lxml
+python-dotenv
+cloudinary
+openai

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en"> <head>
+    <meta charset="UTF-8" />
+    <title>Install myCircles</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Exo+2:wght@300;400;500&display=swap" rel="stylesheet" />
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        /* --- Light Mode Variables (Default) --- */
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #6f42c1;
+            --background-color: #f4f7fc;
+            --card-background: rgba(255, 255, 255, 0.8);
+            --border-color: rgba(0, 0, 0, 0.15);
+            --text-color: #212529;
+            --heading-color: #000000;
+            --text-muted-color: #6c757d;
+            --primary-glow: rgba(0, 123, 255, 0.4);
+            --card-shadow: rgba(10, 4, 31, 0.2);
+            --card-hover-shadow: rgba(10, 4, 31, 0.3);
+            --step-bg: rgba(0, 0, 0, 0.05);
+            --step-border: rgba(0, 0, 0, 0.1);
+        }
+
+        /* --- Dark Mode Variable Overrides --- */
+        .dark {
+            --primary-color: #00dcff;
+            --secondary-color: #a27bff;
+            --background-color: #0a041f;
+            --card-background: rgba(26, 19, 52, 0.45);
+            --border-color: rgba(162, 123, 255, 0.3);
+            --text-color: #e0e0e0;
+            --heading-color: #ffffff;
+            --text-muted-color: #a0a0b0;
+            --primary-glow: rgba(0, 220, 255, 0.5);
+            --card-shadow: rgba(10, 4, 31, 0.37);
+            --card-hover-shadow: rgba(10, 4, 31, 0.5);
+            --step-bg: rgba(255, 255, 255, 0.1);
+            --step-border: rgba(255, 255, 255, 0.2);
+        }
+
+        /* --- Page Styling (uses variables for consistency) --- */
+        body {
+            font-family: 'Exo 2', sans-serif;
+            color: var(--text-color);
+            background-color: var(--background-color);
+            min-height: 100vh;
+            transition: color 0.3s, background-color 0.3s;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Orbitron', sans-serif;
+            color: var(--heading-color);
+        }
+
+        h1 {
+            text-shadow: 0 0 15px var(--primary-glow);
+        }
+        
+        p {
+            color: var(--text-muted-color);
+        }
+
+        .glass-card {
+            background: var(--card-background);
+            border-radius: 15px;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px 0 var(--card-shadow);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .glass-card:hover {
+             transform: translateY(-5px);
+             box-shadow: 0 12px 40px 0 var(--card-hover-shadow);
+        }
+
+        .step-number {
+             background-color: var(--step-bg);
+             border: 1px solid var(--step-border);
+             color: var(--heading-color);
+        }
+        
+        ol {
+            color: var(--text-color);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.6s ease-out forwards;
+            opacity: 0;
+        }
+        
+        /* Animation delays for staggered effect */
+        .delay-100 { animation-delay: 100ms; }
+        .delay-200 { animation-delay: 200ms; }
+        .delay-300 { animation-delay: 300ms; }
+    </style>
+</head>
+
+<body class="antialiased">
+    <button id="themeToggleBtn" class="fixed top-4 right-4 z-50 p-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white hover:bg-white/20 transition">
+        <i class="bi bi-moon-stars-fill"></i>
+    </button>
+  
+    <main class="max-w-screen-lg mx-auto py-16 px-4 sm:px-6 lg:px-8">
+        <div class="text-center fade-in">
+            <div class="flex justify-center items-center gap-4 mb-4">
+                <svg id="animated-logo-final" width="65" height="65" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <filter id="glow-filter-final"><feGaussianBlur stdDeviation="2" result="coloredBlur"></feGaussianBlur><feMerge><feMergeNode in="coloredBlur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter>
+                    </defs>
+                    <circle cx="50" cy="50" r="48" fill="none" stroke="var(--border-color)" stroke-width="0.5" stroke-dasharray="1 8" opacity="0.5"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="60s" repeatCount="indefinite"/></circle>
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="var(--secondary-color)" stroke-width="2" stroke-dasharray="80 200" stroke-linecap="round" opacity="0.8"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="-360 50 50" dur="10s" repeatCount="indefinite"/></circle>
+                    <circle cx="50" cy="50" r="34" fill="none" stroke="var(--primary-color)" stroke-width="2.5" stroke-dasharray="107 107" stroke-linecap="round" filter="url(#glow-filter-final)"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="4s" repeatCount="indefinite"/></circle>
+                    <circle cx="50" cy="50" r="26" fill="none" stroke="var(--primary-color)" stroke-width="2" stroke-dasharray="50 150" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="360 50 50" to="0 50 50" dur="7s" repeatCount="indefinite"/></circle>
+                    <circle cx="50" cy="50" r="18" fill="none" stroke="var(--secondary-color)" stroke-width="1" stroke-dasharray="20 15" opacity="0.7"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="-360 50 50" dur="3s" repeatCount="indefinite"/></circle>
+                    <circle cx="50" cy="50" r="5" fill="var(--primary-glow)"><animate attributeName="r" values="5;8;5" dur="2.2s" repeatCount="indefinite" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.45 0 0.55 1; 0.45 0 0.55 1"></animate><animate attributeName="opacity" values="1;0.5;1" dur="2.2s" repeatCount="indefinite"></animate></circle>
+                </svg>
+                <h1 class="text-5xl md:text-6xl font-extrabold">myCircles</h1>
+            </div>
+            <p class="mt-4 max-w-3xl mx-auto text-lg">
+                Install the myCircles app for one-tap access, a faster interface, and a clean, app-like feel—no App Store required.
+            </p>
+        </div>
+
+        <div class="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+            <div class="glass-card p-6 fade-in delay-100">
+                <div class="mx-auto w-16 h-16 flex items-center justify-center bg-blue-500/20 rounded-full border border-blue-500/30"><i class="bi bi-phone-fill text-3xl text-blue-300"></i></div>
+                <h3 class="mt-4 text-xl font-bold">Instant Access</h3>
+                <p class="mt-2 text-sm">Launch directly from your home screen just like a native app.</p>
+            </div>
+
+            <div class="glass-card p-6 fade-in delay-200">
+                <div class="mx-auto w-16 h-16 flex items-center justify-center bg-purple-500/20 rounded-full border border-purple-500/30"><i class="bi bi-speedometer2 text-3xl text-purple-300"></i></div>
+                <h3 class="mt-4 text-xl font-bold">Faster & Cleaner</h3>
+                <p class="mt-2 text-sm">Enjoy a quicker, more focused experience without browser tabs.</p>
+            </div>
+
+            <div class="glass-card p-6 fade-in delay-300">
+                <div class="mx-auto w-16 h-16 flex items-center justify-center bg-teal-500/20 rounded-full border border-teal-500/30"><i class="bi bi-hdd-stack-fill text-3xl text-teal-300"></i></div>
+                <h3 class="mt-4 text-xl font-bold">Saves Space</h3>
+                <p class="mt-2 text-sm">Takes up minimal storage on your device compared to a traditional app.</p>
+            </div>
+        </div>
+
+        <div class="mt-20">
+            <h2 class="text-3xl font-bold text-center">How to Install</h2>
+            <div class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+                
+                <div class="glass-card p-8">
+                    <h3 class="text-2xl font-bold">iPhone & iPad</h3>
+                    <p class="mt-2 text-sm">Open with the <span class="font-semibold text-blue-400">Safari</span> browser.</p>
+                    <ol class="mt-6 space-y-4">
+                        <li class="flex items-start"><span class="step-number flex-shrink-0 h-8 w-8 flex items-center justify-center font-bold rounded-full">1</span><span class="ml-4">Tap the <strong class="text-blue-400">Share</strong> button <i class="bi bi-box-arrow-up"></i>.</span></li>
+                        <li class="flex items-start"><span class="step-number flex-shrink-0 h-8 w-8 flex items-center justify-center font-bold rounded-full">2</span><span class="ml-4">Scroll down and tap <strong class="text-blue-400">"Add to Home Screen"</strong>.</span></li>
+                        <li class="flex items-start"><span class="step-number flex-shrink-0 h-8 w-8 flex items-center justify-center font-bold rounded-full">3</span><span class="ml-4">Confirm by tapping <strong class="text-blue-400">"Add"</strong>.</span></li>
+                    </ol>
+                </div>
+
+                <div class="glass-card p-8">
+                    <h3 class="text-2xl font-bold">Android</h3>
+                    <p class="mt-2 text-sm">Open with the <span class="font-semibold text-green-400">Chrome</span> browser.</p>
+                    <ol class="mt-6 space-y-4">
+                        <li class="flex items-start"><span class="step-number flex-shrink-0 h-8 w-8 flex items-center justify-center font-bold rounded-full">1</span><span class="ml-4">Tap the <strong class="text-green-400">three-dot menu (⋮)</strong>.</span></li>
+                        <li class="flex items-start"><span class="step-number flex-shrink-0 h-8 w-8 flex items-center justify-center font-bold rounded-full">2</span><span class="ml-4">Tap <strong class="text-green-400">"Install app"</strong> or <strong class="text-green-400">"Add to Home screen"</strong>.</span></li>
+                        <li class="flex items-start"><span class="step-number flex-shrink-0 h-8 w-8 flex items-center justify-center font-bold rounded-full">3</span><span class="ml-4">Follow the prompts to confirm.</span></li>
+                    </ol>
+                </div>
+                
+                <div class="glass-card p-8">
+                    <h3 class="text-2xl font-bold">Desktop Computer</h3>
+                    <p class="mt-2 text-sm">Use <span class="font-semibold text-red-400">Chrome</span> or <span class="font-semibold text-red-400">Edge</span>.</p>
+                    <ol class="mt-6 space-y-4">
+                        <li class="flex items-start"><span class="step-number flex-shrink-0 h-8 w-8 flex items-center justify-center font-bold rounded-full">1</span><span class="ml-4">Look for the <strong class="text-red-400">Install icon <i class="bi bi-display"></i></strong> in the address bar.</span></li>
+                        <li class="flex items-start"><span class="step-number flex-shrink-0 h-8 w-8 flex items-center justify-center font-bold rounded-full">2</span><span class="ml-4">Click it and then click <strong class="text-red-400">"Install"</strong>.</span></li>
+                        <li class="flex items-start"><span class="step-number flex-shrink-0 h-8 w-8 flex items-center justify-center font-bold rounded-full">3</span><span class="ml-4">The app will now be in your computer's app list.</span></li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+        
+        <div class="text-center mt-20">
+            <a href="/" class="text-blue-400 hover:text-white transition-colors duration-300">
+                &larr; Back to myCircles
+            </a>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const themeToggleBtn = document.getElementById('themeToggleBtn');
+            const sunIcon = '<i class="bi bi-sun-fill"></i>';
+            const moonIcon = '<i class="bi bi-moon-stars-fill"></i>';
+            const docElement = document.documentElement;
+
+            // Applies the saved or system-preferred theme on page load
+            const applyTheme = (theme) => {
+                if (theme === 'dark') {
+                    docElement.classList.add('dark');
+                    themeToggleBtn.innerHTML = sunIcon;
+                } else {
+                    docElement.classList.remove('dark');
+                    themeToggleBtn.innerHTML = moonIcon;
+                }
+            };
+
+            // Get theme from localStorage or system settings
+            const savedTheme = localStorage.getItem("theme") || 
+                              (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+            
+            applyTheme(savedTheme);
+
+            // Handle theme toggle button click
+            themeToggleBtn.addEventListener("click", () => {
+                const isDark = docElement.classList.contains('dark');
+                const newTheme = isDark ? 'light' : 'dark';
+                localStorage.setItem("theme", newTheme);
+                applyTheme(newTheme);
+            });
+        });
+    </script>
+</body>
+</html>
