@@ -237,9 +237,12 @@ a:hover {
   transition: background-color 0.2s ease, transform 0.2s ease, color 0.2s ease;  
 }  
 .list-group-item.clickable:hover {  
-  background-color: var(--list-item-hover-bg);  
   transform: translateX(5px);  
 }  
+/* This new rule has higher specificity to override Bootstrap's default hover on action links */
+#myCirclesContainer .list-group-item-action.clickable:hover {
+  background-color: transparent;
+}
 :root[data-theme="light"] a.list-group-item-action{  
   color: black !important;  
   font-weight: bold;  
