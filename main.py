@@ -86,6 +86,8 @@ invite_tokens_collection = db.get_collection("invite_tokens")
 invitations_collection = db.get_collection("invitations")
 notifications_collection = db.get_collection("notifications")
 comments_collection = db.get_collection("comments")
+# NEW: Collection to track specific activity events for notifications
+activity_events_collection = db.get_collection("activity_events")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -109,6 +111,10 @@ async def lifespan(app: FastAPI):
     notifications_collection.create_index([("user_id", ASCENDING), ("created_at", DESCENDING)])
     comments_collection.create_index([("post_id", ASCENDING)])
     comments_collection.create_index([("thread_user_id", ASCENDING)])
+    # NEW: Indexes for the new activity events collection
+    activity_events_collection.create_index([("notified_user_ids", ASCENDING)])
+    activity_events_collection.create_index([("timestamp", DESCENDING)])
+
 
     print("Database indexes ensured.")
     yield
@@ -116,8 +122,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Circles Social API",
-    description="A complete API with user auth, circles, posts, and real-time features (password-based circles removed).",
-    version="6.5.0",
+    description="A complete API with user auth, circles, posts, and real-time features.",
+    version="7.0.0",
     lifespan=lifespan,
 )
 
@@ -177,6 +183,10 @@ class NotificationTypeEnum(str, Enum):
     invite_received = "invite_received"
     invite_accepted = "invite_accepted"
     invite_rejected = "invite_rejected"
+    new_comment = "new_comment"
+
+class ActivityEventTypeEnum(str, Enum):
+    new_post = "new_post"
     new_comment = "new_comment"
 
 class SortByEnum(str, Enum):
@@ -242,7 +252,6 @@ class CircleOut(BaseModel):
     owner_id: PyObjectId
     member_count: int
     user_role: Optional[RoleEnum] = None
-    last_activity_at: Optional[datetime] = None
     model_config = ConfigDict(populate_by_name=True)
 
 class CircleManagementOut(CircleOut):
@@ -280,6 +289,17 @@ class NotificationOut(BaseModel):
     content: NotificationContent
     is_read: bool
     created_at: datetime
+    model_config = ConfigDict(populate_by_name=True)
+
+# NEW: Model for the activity feed response
+class ActivityEventOut(BaseModel):
+    id: PyObjectId = Field(alias="_id")
+    circle_id: PyObjectId
+    post_id: Optional[PyObjectId] = None
+    actor_id: PyObjectId
+    actor_username: str
+    event_type: ActivityEventTypeEnum
+    timestamp: datetime
     model_config = ConfigDict(populate_by_name=True)
 
 class JoinByTokenRequest(BaseModel):
@@ -424,17 +444,6 @@ class UserActivityStatusResponse(BaseModel):
     new_comment_activity: List[PostActivityInfo]
     new_invites_count: int
     new_notifications_count: int
-
-class CircleActivityRequest(BaseModel):
-    circle_timestamps: Dict[str, datetime]
-
-class CircleActivityInfo(BaseModel):
-    circle_id: PyObjectId
-    circle_name: str
-    last_activity_at: datetime
-
-class CircleActivityResponse(BaseModel):
-    updated_circles: List[CircleActivityInfo]
 
 class SpotifyURLRequest(BaseModel):
     url: AnyHttpUrl
@@ -915,100 +924,26 @@ async def mark_all_notifications_as_read(current_user: UserInDB = Depends(get_cu
     notifications_collection.update_many({"user_id": current_user.id, "is_read": False}, {"$set": {"is_read": True}})
     return Response(status_code=204)
 
-@app.get("/users/me/activity-status", response_model=UserActivityStatusResponse, tags=["Users"])
-async def get_user_activity_status(
-    since: Optional[datetime] = Query(None),
-    current_user: UserInDB = Depends(get_current_user)
-):
-    now = datetime.now(timezone.utc)
-    new_comment_activity_map = {}
+# NEW: The new, smarter activity feed endpoint
+@app.get("/users/me/activity-feed", response_model=List[ActivityEventOut], tags=["Users"])
+async def get_user_activity_feed(current_user: UserInDB = Depends(get_current_user)):
+    # Find events where the current user is in the list of users to be notified
+    events_cursor = activity_events_collection.find(
+        {"notified_user_ids": current_user.id}
+    ).sort("timestamp", DESCENDING)
 
-    if since:
-        my_post_ids = [p["_id"] for p in posts_collection.find({"author_id": current_user.id}, {"_id": 1})]
-        if my_post_ids:
-            pipeline_my_posts = [
-                {"$match": {
-                    "post_id": {"$in": my_post_ids},
-                    "commenter_id": {"$ne": current_user.id},
-                    "created_at": {"$gt": since}
-                }},
-                {"$group": {"_id": "$post_id", "count": {"$sum": 1}}}
-            ]
-            activity_on_my_posts = comments_collection.aggregate(pipeline_my_posts)
-            for item in activity_on_my_posts:
-                post_id = item['_id']
-                if post_id not in new_comment_activity_map:
-                    new_comment_activity_map[post_id] = 0
-                new_comment_activity_map[post_id] += item['count']
+    events = list(events_cursor)
+    event_ids = [event["_id"] for event in events]
 
-        participated_posts_cursor = comments_collection.distinct(
-            "post_id",
-            {"commenter_id": current_user.id, "post_author_id": {"$ne": current_user.id}}
+    # If we found events, remove the current user from the notification list
+    # This marks the event as "delivered" to this user.
+    if event_ids:
+        activity_events_collection.update_many(
+            {"_id": {"$in": event_ids}},
+            {"$pull": {"notified_user_ids": current_user.id}}
         )
-        participated_post_ids = list(participated_posts_cursor)
-
-        if participated_post_ids:
-            pipeline_replies = [
-                {"$match": {
-                    "post_id": {"$in": participated_post_ids},
-                    "commenter_id": {"$ne": current_user.id},
-                    "created_at": {"$gt": since}
-                }},
-                {"$group": {"_id": "$post_id", "count": {"$sum": 1}}}
-            ]
-            activity_in_my_threads = comments_collection.aggregate(pipeline_replies)
-            for item in activity_in_my_threads:
-                post_id = item['_id']
-                if post_id not in new_comment_activity_map:
-                    new_comment_activity_map[post_id] = 0
-                new_comment_activity_map[post_id] += item['count']
-
-    final_comment_activity = [
-        PostActivityInfo(post_id=pid, new_comment_count=count)
-        for pid, count in new_comment_activity_map.items()
-    ]
-
-    invites_count = invitations_collection.count_documents({
-        "invitee_id": current_user.id,
-        "status": InvitationStatusEnum.pending.value
-    })
-    notifications_count = notifications_collection.count_documents({
-        "user_id": current_user.id,
-        "is_read": False
-    })
-
-    return UserActivityStatusResponse(
-        new_server_timestamp=now,
-        new_comment_activity=final_comment_activity,
-        new_invites_count=invites_count,
-        new_notifications_count=notifications_count
-    )
-
-@app.post("/users/me/circles-activity", response_model=CircleActivityResponse, tags=["Users"])
-async def get_circles_activity(
-    body: CircleActivityRequest,
-    current_user: UserInDB = Depends(get_current_user)
-):
-    user_circles_cursor = circles_collection.find(
-        {"members.user_id": current_user.id},
-        {"_id": 1, "name": 1, "last_activity_at": 1}
-    )
     
-    updated_circles = []
-    for circle in user_circles_cursor:
-        circle_id_str = str(circle["_id"])
-        last_known_activity = body.circle_timestamps.get(circle_id_str)
-        current_activity = circle.get("last_activity_at")
-
-        if current_activity:
-            if not last_known_activity or current_activity > last_known_activity:
-                updated_circles.append(CircleActivityInfo(
-                    circle_id=circle["_id"],
-                    circle_name=circle["name"],
-                    last_activity_at=current_activity
-                ))
-                
-    return CircleActivityResponse(updated_circles=updated_circles)
+    return [ActivityEventOut(**event) for event in events]
     
 # ----------------------------------
 # Circles
@@ -1033,7 +968,7 @@ async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depe
     now = datetime.now(timezone.utc)
     new_circle_doc = {
         "name": circle_data.name, "description": circle_data.description, "owner_id": current_user.id,
-        "members": [first_member_doc], "created_at": now, "last_activity_at": now
+        "members": [first_member_doc], "created_at": now
     }
     result = circles_collection.insert_one(new_circle_doc)
     created_circle = circles_collection.find_one({"_id": result.inserted_id})
@@ -1120,10 +1055,7 @@ async def join_circle_by_token(body: JoinByTokenRequest, current_user: UserInDB 
     
     circles_collection.update_one(
         {"_id": circle["_id"]},
-        {
-            "$addToSet": {"members": new_member_doc},
-            "$set": {"last_activity_at": datetime.now(timezone.utc)}
-        }
+        {"$addToSet": {"members": new_member_doc}}
     )
     return JoinByTokenResponse(circle_id=str(circle["_id"]), circle_name=circle["name"])
 
@@ -1226,10 +1158,7 @@ async def accept_invitation(invitation_id: str, current_user: UserInDB = Depends
     
     circles_collection.update_one(
         {"_id": circle["_id"]},
-        {
-            "$addToSet": {"members": new_member_doc},
-            "$set": {"last_activity_at": datetime.now(timezone.utc)}
-        }
+        {"$addToSet": {"members": new_member_doc}}
     )
     invitations_collection.update_one({"_id": invitation["_id"]}, {"$set": {"status": InvitationStatusEnum.accepted.value}})
 
@@ -1372,7 +1301,23 @@ async def create_post_in_circle(circle_id: str, post_data: PostCreate, current_u
         new_post_doc["content"]["expires_at"] = expires_at
     
     result = posts_collection.insert_one(new_post_doc)
-    circles_collection.update_one({"_id": circle["_id"]}, {"$set": {"last_activity_at": now}})
+    
+    # MODIFIED: Create a specific activity event instead of just updating a timestamp
+    other_member_ids = [
+        member['user_id'] for member in circle.get('members', [])
+        if member['user_id'] != current_user.id
+    ]
+    if other_member_ids:
+        activity_event = {
+            "circle_id": circle["_id"],
+            "post_id": result.inserted_id,
+            "actor_id": current_user.id,
+            "actor_username": current_user.username,
+            "event_type": ActivityEventTypeEnum.new_post,
+            "timestamp": now,
+            "notified_user_ids": other_member_ids
+        }
+        activity_events_collection.insert_one(activity_event)
     
     created_post = posts_collection.find_one({"_id": result.inserted_id})
     return PostOut(**created_post, circle_name=circle["name"], is_seen_by_user=False)
@@ -1464,7 +1409,24 @@ async def create_comment_on_post(post_id: str, comment_data: CommentCreate, curr
     }
     result = comments_collection.insert_one(new_comment_doc)
     posts_collection.update_one({"_id": post["_id"]}, {"$inc": {"comment_count": 1}, "$pull": {"seen_by_details": {"user_id": post["author_id"]}}})
-    circles_collection.update_one({"_id": post["circle_id"]}, {"$set": {"last_activity_at": now}})
+    
+    # MODIFIED: Create a specific activity event for the new comment
+    other_member_ids = [
+        member['user_id'] for member in circle.get('members', [])
+        if member['user_id'] != current_user.id
+    ]
+    if other_member_ids:
+        activity_event = {
+            "circle_id": circle["_id"],
+            "post_id": post["_id"],
+            "actor_id": current_user.id,
+            "actor_username": current_user.username,
+            "event_type": ActivityEventTypeEnum.new_comment,
+            "timestamp": now,
+            "notified_user_ids": other_member_ids
+        }
+        activity_events_collection.insert_one(activity_event)
+
     created_comment = await get_comment_or_404(str(result.inserted_id))
 
     if not is_author:
