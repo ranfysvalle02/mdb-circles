@@ -1228,8 +1228,9 @@ function appendPosts(posts, container, circleName = null) {
               playlist.videos[0].imageSrc :
               'https://via.placeholder.com/400x225.png?text=Playlist';
             const playlistDataString = JSON.stringify(playlist)
-              .replace(/'/g, "'")
-              .replace(/"/g, """);
+  .replace(/'/g, "&apos;")  // Safely handle single quotes
+  .replace(/"/g, '&quot;'); // Safely handle double quotes (this fixes the error)
+
             contentHtml = `
 <div class="card mt-3 playlist-card"
 style="background-color: var(--form-input-bg); border-color: var(--border-color); position: relative;">
