@@ -5,7 +5,7 @@ import json
 import time
 import base64
 from datetime import datetime, timedelta, timezone
-from typing import Any, List, Optional, Union, Callable, Literal
+from typing import Any, List, Optional, Union, Callable, Literal, Dict
 from contextlib import asynccontextmanager
 from enum import Enum
 from urllib.parse import urlparse
@@ -95,6 +95,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 async def lifespan(app: FastAPI):
     users_collection.create_index([("username", ASCENDING)], unique=True)
     circles_collection.create_index([("name", ASCENDING)])
+    circles_collection.create_index([("members.user_id", ASCENDING)])
     posts_collection.create_index([("circle_id", ASCENDING)])
     posts_collection.create_index([("created_at", DESCENDING)])
     posts_collection.create_index([("content.tags", ASCENDING)])
@@ -241,6 +242,7 @@ class CircleOut(BaseModel):
     owner_id: PyObjectId
     member_count: int
     user_role: Optional[RoleEnum] = None
+    last_activity_at: Optional[datetime] = None
     model_config = ConfigDict(populate_by_name=True)
 
 class CircleManagementOut(CircleOut):
@@ -422,6 +424,17 @@ class UserActivityStatusResponse(BaseModel):
     new_comment_activity: List[PostActivityInfo]
     new_invites_count: int
     new_notifications_count: int
+
+class CircleActivityRequest(BaseModel):
+    circle_timestamps: Dict[str, datetime]
+
+class CircleActivityInfo(BaseModel):
+    circle_id: PyObjectId
+    circle_name: str
+    last_activity_at: datetime
+
+class CircleActivityResponse(BaseModel):
+    updated_circles: List[CircleActivityInfo]
 
 class SpotifyURLRequest(BaseModel):
     url: AnyHttpUrl
@@ -970,6 +983,32 @@ async def get_user_activity_status(
         new_invites_count=invites_count,
         new_notifications_count=notifications_count
     )
+
+@app.post("/users/me/circles-activity", response_model=CircleActivityResponse, tags=["Users"])
+async def get_circles_activity(
+    body: CircleActivityRequest,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    user_circles_cursor = circles_collection.find(
+        {"members.user_id": current_user.id},
+        {"_id": 1, "name": 1, "last_activity_at": 1}
+    )
+    
+    updated_circles = []
+    for circle in user_circles_cursor:
+        circle_id_str = str(circle["_id"])
+        last_known_activity = body.circle_timestamps.get(circle_id_str)
+        current_activity = circle.get("last_activity_at")
+
+        if current_activity:
+            if not last_known_activity or current_activity > last_known_activity:
+                updated_circles.append(CircleActivityInfo(
+                    circle_id=circle["_id"],
+                    circle_name=circle["name"],
+                    last_activity_at=current_activity
+                ))
+                
+    return CircleActivityResponse(updated_circles=updated_circles)
     
 # ----------------------------------
 # Circles
@@ -991,9 +1030,10 @@ async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depe
         "username": current_user.username,
         "role": RoleEnum.admin.value
     }
+    now = datetime.now(timezone.utc)
     new_circle_doc = {
         "name": circle_data.name, "description": circle_data.description, "owner_id": current_user.id,
-        "members": [first_member_doc], "created_at": datetime.now(timezone.utc)
+        "members": [first_member_doc], "created_at": now, "last_activity_at": now
     }
     result = circles_collection.insert_one(new_circle_doc)
     created_circle = circles_collection.find_one({"_id": result.inserted_id})
@@ -1080,7 +1120,10 @@ async def join_circle_by_token(body: JoinByTokenRequest, current_user: UserInDB 
     
     circles_collection.update_one(
         {"_id": circle["_id"]},
-        {"$addToSet": {"members": new_member_doc}}
+        {
+            "$addToSet": {"members": new_member_doc},
+            "$set": {"last_activity_at": datetime.now(timezone.utc)}
+        }
     )
     return JoinByTokenResponse(circle_id=str(circle["_id"]), circle_name=circle["name"])
 
@@ -1183,7 +1226,10 @@ async def accept_invitation(invitation_id: str, current_user: UserInDB = Depends
     
     circles_collection.update_one(
         {"_id": circle["_id"]},
-        {"$addToSet": {"members": new_member_doc}}
+        {
+            "$addToSet": {"members": new_member_doc},
+            "$set": {"last_activity_at": datetime.now(timezone.utc)}
+        }
     )
     invitations_collection.update_one({"_id": invitation["_id"]}, {"$set": {"status": InvitationStatusEnum.accepted.value}})
 
@@ -1314,16 +1360,20 @@ async def create_post_in_circle(circle_id: str, post_data: PostCreate, current_u
                 post_data.post_type = PostTypeEnum.standard
     post_data.validate_post_content()
     content_data = jsonable_encoder(post_data)
+    now = datetime.now(timezone.utc)
     new_post_doc = {
         "circle_id": circle["_id"], "author_id": current_user.id, "author_username": current_user.username,
-        "content": content_data, "created_at": datetime.now(timezone.utc), "seen_by_details": [], "comment_count": 0,
+        "content": content_data, "created_at": now, "seen_by_details": [], "comment_count": 0,
     }
     if post_data.post_type == PostTypeEnum.poll and post_data.poll_data:
         for option in new_post_doc["content"]["poll_data"]["options"]:
             option["votes"] = []
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=post_data.poll_duration_hours)
+        expires_at = now + timedelta(hours=post_data.poll_duration_hours)
         new_post_doc["content"]["expires_at"] = expires_at
+    
     result = posts_collection.insert_one(new_post_doc)
+    circles_collection.update_one({"_id": circle["_id"]}, {"$set": {"last_activity_at": now}})
+    
     created_post = posts_collection.find_one({"_id": result.inserted_id})
     return PostOut(**created_post, circle_name=circle["name"], is_seen_by_user=False)
 
@@ -1406,13 +1456,15 @@ async def create_comment_on_post(post_id: str, comment_data: CommentCreate, curr
         thread_id = comment_data.thread_user_id
     else:
         thread_id = current_user.id
+    now = datetime.now(timezone.utc)
     new_comment_doc = {
         "post_id": post["_id"], "post_author_id": post["author_id"], "commenter_id": current_user.id,
         "commenter_username": current_user.username, "content": comment_data.content,
-        "created_at": datetime.now(timezone.utc), "thread_user_id": thread_id
+        "created_at": now, "thread_user_id": thread_id
     }
     result = comments_collection.insert_one(new_comment_doc)
     posts_collection.update_one({"_id": post["_id"]}, {"$inc": {"comment_count": 1}, "$pull": {"seen_by_details": {"user_id": post["author_id"]}}})
+    circles_collection.update_one({"_id": post["circle_id"]}, {"$set": {"last_activity_at": now}})
     created_comment = await get_comment_or_404(str(result.inserted_id))
 
     if not is_author:
