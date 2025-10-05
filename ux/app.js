@@ -1847,11 +1847,6 @@ async function handleCreatePost(btn) {
     });
     showStatus('Post created!', 'success');
 
-        // **FIX:** Prevent self-notification by updating local state immediately.
-        if (state.myCircles.find(c => c._id === circle_id)) {
-            state.circleActivityTimestamps[circle_id] = new Date().toISOString();
-        }
-
     const createPostModal = bootstrap.Modal.getInstance('#createPostModal');
     if (createPostModal) {
       createPostModal.hide();
@@ -2697,18 +2692,7 @@ document.getElementById('commentForm').addEventListener('submit', async (e) => {
  });
  input.value = '';
 
-    // **FIX:** Prevent self-notification by updating local state immediately.
-    const postCard = document.querySelector(`.post-card-wrapper[data-post-id="${postId}"]`);
-    if(postCard) {
-        const circleLink = postCard.querySelector('a[href*="#/circle/"]');
-        if (circleLink) {
-            const circleId = circleLink.href.split('/').pop();
-            if (state.myCircles.find(c => c._id === circleId)) {
-                state.circleActivityTimestamps[circleId] = new Date().toISOString();
-            }
-        }
-    }
-
+ const postCard = document.querySelector(`.post-card-wrapper[data-post-id="${postId}"]`);
  const commentButton = postCard?.querySelector(`[data-action="open-comments"]`);
  if (commentButton) {
   const currentCount = parseInt(commentButton.textContent.trim().split(' ')[1] || '0', 10);
