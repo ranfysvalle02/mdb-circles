@@ -211,7 +211,7 @@ accessToken: localStorage.getItem('accessToken') || null,
 refreshToken: localStorage.getItem('refreshToken') || null,
 currentUser: null,
 myCircles: [],
-circleActivityTimestamps: {},
+  newActivityPostIds: new Set(),
 dashboardFeed: {
  filter: {
  circle_id: null,
@@ -329,11 +329,10 @@ failedQueue.forEach(prom => {
 failedQueue = [];
 };
 
-// ----------------- Efficient Activity Polling -----------------
+// ----------------- Smart Activity Polling -----------------
 
 class ActivityPoller {
   constructor(interval = 15000) {
-    this.lastCheckedTimestamp = null;
     this.intervalId = null;
     this.pollInterval = interval;
   }
@@ -349,7 +348,6 @@ class ActivityPoller {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
-      this.lastCheckedTimestamp = null;
       console.log("Activity poller stopped.");
     }
   }
@@ -359,28 +357,18 @@ class ActivityPoller {
       this.stop();
       return;
     }
-
     try {
-        // --- Poll for personal activity (invites, notifications, comments on my posts) ---
-        let personalEndpoint = '/users/me/activity-status';
-        if (this.lastCheckedTimestamp) {
-            personalEndpoint += `?since=${encodeURIComponent(this.lastCheckedTimestamp)}`;
-        }
-        const personalData = await apiFetch(personalEndpoint);
-        this.lastCheckedTimestamp = personalData.new_server_timestamp;
-        this.updateFab(personalData.new_invites_count, personalData.new_notifications_count);
-        if (personalData.new_comment_activity && personalData.new_comment_activity.length > 0) {
-            this.handleNewCommentActivity(personalData.new_comment_activity);
-        }
+        // Fetch personal invites and notifications for the FAB
+        const [invites, notifications, activityEvents] = await Promise.all([
+            apiFetch('/users/me/invitations'),
+            apiFetch('/users/me/notifications?unread_only=true'),
+            apiFetch('/users/me/activity-feed') // New endpoint for circle/post activity
+        ]);
 
-        // --- Poll for circle-wide activity ---
-        const circleData = await apiFetch('/users/me/circles-activity', {
-            method: 'POST',
-            body: JSON.stringify({ circle_timestamps: state.circleActivityTimestamps })
-        });
-
-        if (circleData.updated_circles && circleData.updated_circles.length > 0) {
-            this.handleNewCircleActivity(circleData.updated_circles);
+        this.updateFab(invites.length, notifications.length);
+        
+        if (activityEvents && activityEvents.length > 0) {
+            this.handleNewActivityEvents(activityEvents);
         }
 
     } catch (error) {
@@ -403,67 +391,57 @@ class ActivityPoller {
     }
   }
 
-  handleNewCircleActivity(updatedCircles) {
-    updatedCircles.forEach(circle => {
-        // Update local state with the latest timestamp from the server
-        state.circleActivityTimestamps[circle.circle_id] = circle.last_activity_at;
+  handleNewActivityEvents(events) {
+    const circleActivity = new Map();
+    const postActivity = new Map();
 
-        // Find the circle in the sidebar and highlight it
-        const circleLink = document.querySelector(`#myCirclesContainer a[data-circle-id="${circle.circle_id}"]`);
-        if (circleLink) {
-            // **FIX:** Apply the class to the parent .list-group-item element
-            const listItem = circleLink.closest('.list-group-item');
-            if (listItem) {
-                listItem.classList.add('new-activity-highlight');
+    events.forEach(event => {
+        // Group activity by circle
+        if (!circleActivity.has(event.circle_id)) {
+            const circle = state.myCircles.find(c => c._id === event.circle_id);
+            if(circle) circleActivity.set(event.circle_id, { name: circle.name, actors: new Set() });
+        }
+        if(circleActivity.has(event.circle_id)) {
+            circleActivity.get(event.circle_id).actors.add(event.actor_username);
+        }
+
+        // Track new comment activity on specific posts
+        if (event.event_type === 'new_comment' && event.post_id) {
+            state.newActivityPostIds.add(event.post_id);
+            const postCard = document.querySelector(`.post-card[data-post-id="${event.post_id}"]`);
+            if (postCard) {
+                postCard.classList.add('has-new-activity');
             }
         }
     });
 
-    // **IMPROVEMENT:** Show a more detailed, consolidated toast notification
-    let message;
-    if (updatedCircles.length === 1) {
-        message = `New activity in <strong>${updatedCircles[0].circle_name}</strong>.`;
-    } else if (updatedCircles.length === 2) {
-        message = `New activity in <strong>${updatedCircles[0].circle_name}</strong> and <strong>${updatedCircles[1].circle_name}</strong>.`;
-    } else {
-        const otherCount = updatedCircles.length - 2;
-        message = `New activity in <strong>${updatedCircles[0].circle_name}</strong>, <strong>${updatedCircles[1].circle_name}</strong>, and ${otherCount} other(s).`;
+    // Add highlights to circle list
+    for (const circleId of circleActivity.keys()) {
+        const circleLink = document.querySelector(`#myCirclesContainer a[data-circle-id="${circleId}"]`);
+        if (circleLink) {
+            const listItem = circleLink.closest('.list-group-item');
+            if (listItem) listItem.classList.add('new-activity-highlight');
+        }
     }
-    showStatus(message, 'info');
-  }
 
-  handleNewCommentActivity(activity) {
-    let totalNewComments = 0;
-    activity.forEach(item => {
-      totalNewComments += item.new_comment_count;
-      const postWrapper = document.querySelector(`.post-card-wrapper[data-post-id="${item.post_id}"]`);
-      
-      if (postWrapper) {
-        const postCard = postWrapper.querySelector('.post-card');
-        if (postCard) {
-          postCard.classList.add('new-activity-highlight');
-          postCard.addEventListener('click', () => {
-           postCard.classList.remove('new-activity-highlight');
-          }, { once: true });
+    // Generate and show a single, detailed toast
+    if (circleActivity.size > 0) {
+        const [firstCircleId, firstCircleData] = circleActivity.entries().next().value;
+        const actors = Array.from(firstCircleData.actors);
+        let message = '';
+
+        if (actors.length === 1) {
+            message = `New activity from <strong>${actors[0]}</strong>`;
+        } else {
+            message = `New activity from <strong>${actors[0]}</strong> and ${actors.length - 1} other(s)`;
         }
 
-        const commentButton = postWrapper.querySelector(`[data-action="open-comments"]`);
-        if (commentButton) {
-          const currentCount = parseInt(commentButton.textContent.trim().split(' ').pop() || '0', 10);
-          const newCount = currentCount + item.new_comment_count;
-          commentButton.innerHTML = `<i class="bi bi-chat-left-text"></i> ${newCount}`;
-          
-          commentButton.classList.add('new-comment-pulse');
-          setTimeout(() => commentButton.classList.remove('new-comment-pulse'), 2000);
+        if (circleActivity.size === 1) {
+            message += ` in <strong>${firstCircleData.name}</strong>.`;
+        } else {
+            message += ` in <strong>${firstCircleData.name}</strong> and ${circleActivity.size - 1} other circle(s).`;
         }
-      }
-    });
-
-    if (totalNewComments > 0) {
-      const message = totalNewComments === 1
-       ? `You have 1 new comment.`
-       : `You have ${totalNewComments} new comments across your posts.`;
-      showStatus(message, 'info');
+        showStatus(message, 'info');
     }
   }
 }
@@ -621,31 +599,14 @@ style.textContent = `
  display: block;
  margin-bottom: 0.5rem;
  }
- .post-card.new-activity-highlight {
-  box-shadow: 0 0 0 3px var(--primary-color-translucent, rgba(0, 123, 255, 0.4));
-  border-color: var(--primary-color);
-  transition: box-shadow 0.5s ease-in-out, border-color 0.5s ease-in-out;
- }
 
- @keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-  100% { transform: scale(1); }
- }
-
- .post-action-btn.new-comment-pulse {
-  animation: pulse 1s ease-in-out;
-  color: var(--primary-color) !important;
-  font-weight: bold;
- }
-  
-  /* --- NEW: Circle Activity Highlight --- */
+  /* --- Circle & Post Activity Highlights --- */
   .list-group-item.new-activity-highlight {
     position: relative;
     font-weight: 500;
   }
   .list-group-item.new-activity-highlight > a {
-    padding-left: 2rem !important; /* Make space for the dot */
+    padding-left: 2rem !important;
   }
   .list-group-item.new-activity-highlight::before {
     content: '';
@@ -664,6 +625,30 @@ style.textContent = `
     0% { box-shadow: 0 0 0 0 var(--primary-color-translucent); }
     70% { box-shadow: 0 0 0 6px rgba(0, 123, 255, 0); }
     100% { box-shadow: 0 0 0 0 rgba(0, 123, 255, 0); }
+  }
+
+  .post-card.has-new-activity {
+    position: relative;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 1px var(--primary-color);
+  }
+  .post-card.has-new-activity::after {
+    content: 'New Activity';
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    background-color: var(--primary-color);
+    color: white;
+    padding: 3px 10px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    border-top-right-radius: var(--card-border-radius);
+    border-bottom-left-radius: var(--card-border-radius);
+    animation: bounce-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  @keyframes bounce-in {
+    0% { transform: scale(0.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
   }
 `;
 document.head.appendChild(style);
@@ -885,7 +870,7 @@ return true;
 
 async function fetchAndRenderAll() {
 await fetchCurrentUser();
-renderAllSidebarComponents();
+await renderAllSidebarComponents();
 }
 
 async function fetchCurrentUser() {
@@ -904,6 +889,7 @@ async function handleRoute() {
 await fetchCurrentUser();
 
 if (state.currentUser) {
+  await renderAllSidebarComponents();
  activityPoller.start();
 } else {
  activityPoller.stop(); 
@@ -946,7 +932,7 @@ if (state.currentUser) {
 }
 
 async function showCircleView(circleId) {
- // **FIX:** When a user views a circle, find the parent item and remove its activity highlight
+ // When a user views a circle, find the parent item and remove its activity highlight
  const circleLink = document.querySelector(`#myCirclesContainer a[data-circle-id="${circleId}"]`);
  if (circleLink) {
     const listItem = circleLink.closest('.list-group-item');
@@ -966,7 +952,7 @@ await resetAndRenderCircleFeed(circleId);
 }
 
 async function renderDashboard() {
-renderAllSidebarComponents();
+renderMyCircles(state.myCircles);
 try {
  await resetAndRenderDashboardFeed();
 } catch (error) {
@@ -979,15 +965,6 @@ if (!state.currentUser) return;
 try {
  const myCircles = await apiFetch('/circles/mine');
  state.myCircles = myCircles;
-
-  // Initialize the activity timestamps for the poller
-  state.circleActivityTimestamps = myCircles.reduce((acc, circle) => {
-    if (circle.last_activity_at) {
-        acc[circle._id] = circle.last_activity_at;
-    }
-    return acc;
-  }, {});
-
  renderMyCircles(myCircles);
 } catch (error) {
  console.error("Failed to load sidebar components", error);
@@ -1236,6 +1213,7 @@ function appendPosts(posts, container, circleName = null) {
       let contentHtml = '';
       const postType = post.content.post_type || 'standard';
       const postId = post.id || post._id;
+            const hasNewActivity = state.newActivityPostIds.has(postId);
 
       switch (postType) {
         case 'yt-playlist':
@@ -1536,7 +1514,7 @@ Delete Post
 <div class="post-card-wrapper"
 data-post-id="${postId}"
 data-post-wrapper-id="${postId}">
-<div class="glass-card post-card">
+<div class="glass-card post-card ${hasNewActivity ? 'has-new-activity' : ''}" data-post-id="${postId}">
 <div class="post-card-body">
 <div class="d-flex justify-content-between align-items-start">
 <div class="d-flex align-items-center">
@@ -1651,9 +1629,7 @@ try {
  bootstrap.Modal.getInstance('#createCircleModal').hide();
  document.getElementById('createCircleForm').reset();
 
- state.myCircles.push(newCircle);
- state.myCircles.sort((a, b) => a.name.localeCompare(b.name));
- renderMyCircles(state.myCircles);
+ await renderAllSidebarComponents();
 
  window.location.hash = `#/circle/${newCircle._id}`;
 } catch (error) {
@@ -1870,6 +1846,12 @@ async function handleCreatePost(btn) {
       body: JSON.stringify(payload)
     });
     showStatus('Post created!', 'success');
+
+        // **FIX:** Prevent self-notification by updating local state immediately.
+        if (state.myCircles.find(c => c._id === circle_id)) {
+            state.circleActivityTimestamps[circle_id] = new Date().toISOString();
+        }
+
     const createPostModal = bootstrap.Modal.getInstance('#createPostModal');
     if (createPostModal) {
       createPostModal.hide();
@@ -1996,6 +1978,15 @@ try {
 // -----------------------------------------------
 // Comments & Poll Voting
 async function handleOpenCommentsModal(postId, postAuthorUsername) {
+  // **FIX:** When opening comments, clear the "new activity" state for this post
+  if (state.newActivityPostIds.has(postId)) {
+    state.newActivityPostIds.delete(postId);
+    const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
+    if (postCard) {
+        postCard.classList.remove('has-new-activity');
+    }
+  }
+
 const modal = bootstrap.Modal.getOrCreateInstance('#commentsModal');
 const originalPostContainer = document.getElementById('originalPostContainer');
 const commentsContainer = document.getElementById('commentsContainer');
@@ -2169,7 +2160,7 @@ try {
 }
 
 // -----------------------------------------------
-// YouTube Playlist Player logic:
+// YouTube Playlist Player logic (unchanged):
 let ytPlaylistPlayer = null;
 
 function openPlaylistPlayerModal(playlist) {
@@ -2474,9 +2465,7 @@ try {
  showStatus('Circle settings updated successfully!', 'success');
  bootstrap.Modal.getInstance('#manageCircleModal').hide();
  await resetAndRenderCircleFeed(circleId);
- const myCircles = await apiFetch('/circles/mine');
- state.myCircles = myCircles;
- renderMyCircles(myCircles);
+ await renderAllSidebarComponents();
 } catch (e) {
  showStatus(e.message, 'danger');
 } finally {
@@ -2531,7 +2520,7 @@ try {
  showStatus('Circle has been permanently deleted.', 'success');
  bootstrap.Modal.getInstance('#manageCircleModal').hide();
  window.location.hash = '';
- handleRoute();
+ await handleRoute();
 } catch (e) {
  showStatus(e.message, 'danger');
 } finally {
@@ -2540,7 +2529,7 @@ try {
 }
 
 // -----------------------------------------------
-// Wishlist staging area:
+// Wishlist staging area (unchanged):
 const renderWishlistStagingArea = () => {
 const container = document.getElementById('wishlistStagingArea');
 if (!container) {
@@ -2708,7 +2697,18 @@ document.getElementById('commentForm').addEventListener('submit', async (e) => {
  });
  input.value = '';
 
- const postCard = document.querySelector(`.post-card-wrapper[data-post-id="${postId}"]`);
+    // **FIX:** Prevent self-notification by updating local state immediately.
+    const postCard = document.querySelector(`.post-card-wrapper[data-post-id="${postId}"]`);
+    if(postCard) {
+        const circleLink = postCard.querySelector('a[href*="#/circle/"]');
+        if (circleLink) {
+            const circleId = circleLink.href.split('/').pop();
+            if (state.myCircles.find(c => c._id === circleId)) {
+                state.circleActivityTimestamps[circleId] = new Date().toISOString();
+            }
+        }
+    }
+
  const commentButton = postCard?.querySelector(`[data-action="open-comments"]`);
  if (commentButton) {
   const currentCount = parseInt(commentButton.textContent.trim().split(' ')[1] || '0', 10);
@@ -3155,8 +3155,8 @@ document.body.addEventListener('click', async e => {
  case 'play-playlist':
   try {
   const playlistDataString = data.playlist
-   .replace(/&apos;/g, "'")
-   .replace(/&quot;/g, '"');
+   .replace(/'/g, "'")
+   .replace(/"/g, '"');
   const playlist = JSON.parse(playlistDataString);
   openPlaylistPlayerModal(playlist);
   } catch (err) {
