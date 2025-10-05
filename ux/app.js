@@ -1168,28 +1168,30 @@ async function markPostAsSeen(postId) {
   if (postWrapper) postWrapper.dataset.seenSent = 'false';
  }
 }
+
+
 function appendPosts(posts, container, circleName = null) {
-const canModify = (post) =>
- state.currentUser && post.author_username === state.currentUser.username;
+    const canModify = (post) =>
+        state.currentUser && post.author_username === state.currentUser.username;
 
-const postsHtml = posts
- .filter(post => post && (post.id || post._id))
- .map(post => {
-  let contentHtml = '';
-  const postType = post.content.post_type || 'standard';
-  const postId = post.id || post._id;
+    const postsHtml = posts
+        .filter(post => post && (post.id || post._id))
+        .map(post => {
+            let contentHtml = '';
+            const postType = post.content.post_type || 'standard';
+            const postId = post.id || post._id;
 
-  switch (postType) {
-  case 'yt-playlist':
-   {
-   const playlist = post.content.playlist_data;
-   const coverImage = playlist.videos.length > 0 ?
-    playlist.videos[0].imageSrc :
-    'https://via.placeholder.com/400x225.png?text=Playlist';
-   const playlistDataString = JSON.stringify(playlist)
-    .replace(/'/g, "&apos;")
-    .replace(/"/g, "&quot;");
-   contentHtml = `
+            switch (postType) {
+                case 'yt-playlist':
+                    {
+                        const playlist = post.content.playlist_data;
+                        const coverImage = playlist.videos.length > 0 ?
+                            playlist.videos[0].imageSrc :
+                            'https://via.placeholder.com/400x225.png?text=Playlist';
+                        const playlistDataString = JSON.stringify(playlist)
+                            .replace(/'/g, "&apos;")
+                            .replace(/"/g, "&quot;");
+                        contentHtml = `
 <div class="card mt-3 playlist-card"
 style="background-color: var(--form-input-bg); border-color: var(--border-color); position: relative;">
 <img src="${coverImage}" class="card-img-top" alt="Playlist Cover">
@@ -1204,23 +1206,23 @@ data-playlist='${playlistDataString}'>
 </div>
 </div>
 `;
-   break;
-   }
-  case 'poll':
-   {
-   const poll = post.content.poll_data;
-   const results = post.poll_results;
-   const isPollActive = results && !results.is_expired;
-   const totalVotes = results ? results.total_votes : 0;
-   const userVotedIndex = results ? results.user_voted_index : -1;
+                        break;
+                    }
+                case 'poll':
+                    {
+                        const poll = post.content.poll_data;
+                        const results = post.poll_results;
+                        const isPollActive = results && !results.is_expired;
+                        const totalVotes = results ? results.total_votes : 0;
+                        const userVotedIndex = results ? results.user_voted_index : -1;
 
-   const pollOptionsHtml = results.options.map((option, index) => {
-    const percentage = totalVotes > 0 ? (option.votes / totalVotes) * 100 : 0;
-    const isVotedByUser = userVotedIndex === index;
-    const voteAction = isPollActive ?
-    `data-action="vote-poll" data-post-id="${postId}" data-option-index="${index}"` :
-    '';
-    return `
+                        const pollOptionsHtml = results.options.map((option, index) => {
+                            const percentage = totalVotes > 0 ? (option.votes / totalVotes) * 100 : 0;
+                            const isVotedByUser = userVotedIndex === index;
+                            const voteAction = isPollActive ?
+                                `data-action="vote-poll" data-post-id="${postId}" data-option-index="${index}"` :
+                                '';
+                            return `
 <div class="poll-option ${isVotedByUser ? 'voted-by-user' : ''} ${!isPollActive ? 'poll-disabled' : ''}"
 ${voteAction}>
 <div class="progress" style="width: ${percentage}%;"></div>
@@ -1230,76 +1232,76 @@ ${voteAction}>
 </div>
 </div>
 `;
-   }).join('');
+                        }).join('');
 
-   let pollFooterHtml = '';
-   if (results && results.expires_at) {
-    const expiresDate = new Date(results.expires_at);
-    if (isPollActive) {
-    const now = new Date();
-    const diffMs = expiresDate - now;
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffMins = Math.round((diffMs % 3600000) / 60000);
-    let timeRemaining = 'Closing soon';
-    if (diffHours > 24) {
-     timeRemaining = `${Math.floor(diffHours / 24)}d left`;
-    } else if (diffHours > 0) {
-     timeRemaining = `${diffHours}h left`;
-    } else if (diffMins > 0) {
-     timeRemaining = `${diffMins}m left`;
-    }
-    pollFooterHtml = `
+                        let pollFooterHtml = '';
+                        if (results && results.expires_at) {
+                            const expiresDate = new Date(results.expires_at);
+                            if (isPollActive) {
+                                const now = new Date();
+                                const diffMs = expiresDate - now;
+                                const diffHours = Math.floor(diffMs / 3600000);
+                                const diffMins = Math.round((diffMs % 3600000) / 60000);
+                                let timeRemaining = 'Closing soon';
+                                if (diffHours > 24) {
+                                    timeRemaining = `${Math.floor(diffHours / 24)}d left`;
+                                } else if (diffHours > 0) {
+                                    timeRemaining = `${diffHours}h left`;
+                                } else if (diffMins > 0) {
+                                    timeRemaining = `${diffMins}m left`;
+                                }
+                                pollFooterHtml = `
 <small class="text-muted">
 Total votes: ${totalVotes} &bull; <i class="bi bi-clock"></i> ${timeRemaining}
 </small>
 `;
-    } else {
-    pollFooterHtml = `
+                            } else {
+                                pollFooterHtml = `
 <small class="text-muted">
 <strong><i class="bi bi-lock-fill"></i> Poll closed on ${expiresDate.toLocaleDateString()}</strong>
 &bull; ${totalVotes} votes
 </small>
 `;
-    }
-   } else {
-    pollFooterHtml = `<small class="text-muted">Total votes: ${totalVotes}</small>`;
-   }
+                            }
+                        } else {
+                            pollFooterHtml = `<small class="text-muted">Total votes: ${totalVotes}</small>`;
+                        }
 
-   contentHtml = `
+                        contentHtml = `
 <h5 class="card-title">${poll.question}</h5>
 <div class="poll-container">${pollOptionsHtml}</div>
 ${pollFooterHtml}
 `;
-   break;
-   }
-  case 'wishlist':
-   {
-   const rawWishlistData = post.content.wishlist_data;
-   const wishlistItems = Array.isArray(rawWishlistData) ? rawWishlistData : [];
+                        break;
+                    }
+                case 'wishlist':
+                    {
+                        const rawWishlistData = post.content.wishlist_data;
+                        const wishlistItems = Array.isArray(rawWishlistData) ? rawWishlistData : [];
 
-   if (post.content.text) {
-    contentHtml += `<p class="card-text" style="white-space: pre-wrap;">${post.content.text}</p>`;
-   }
+                        if (post.content.text) {
+                            contentHtml += `<p class="card-text" style="white-space: pre-wrap;">${post.content.text}</p>`;
+                        }
 
-   let itemsHtml = '<div class="list-group list-group-flush mt-3">';
+                        let itemsHtml = '<div class="list-group list-group-flush mt-3">';
 
-   wishlistItems.forEach(item => {
-    if (!item || !item.url) return;
+                        wishlistItems.forEach(item => {
+                            if (!item || !item.url) return;
 
-    let imageHtml = '';
+                            let imageHtml = '';
 
-    if (item.image && !item.image.includes('transparent-pixel')) {
-    imageHtml = `<img src="${item.image}" class="wishlist-item-image me-3" alt="${item.title || 'Wishlist item'}">`;
-    } else {
-    try {
-     const domain = new URL(item.url).hostname;
-     imageHtml = `<img src="https://www.google.com/s2/favicons?domain=${domain}&sz=32" class="favicon me-2" alt="${domain} favicon">`;
-    } catch (e) {
-     imageHtml = `<i class="bi bi-link-45deg me-2"></i>`;
-    }
-    }
+                            if (item.image && !item.image.includes('transparent-pixel')) {
+                                imageHtml = `<img src="${item.image}" class="wishlist-item-image me-3" alt="${item.title || 'Wishlist item'}">`;
+                            } else {
+                                try {
+                                    const domain = new URL(item.url).hostname;
+                                    imageHtml = `<img src="https://www.google.com/s2/favicons?domain=${domain}&sz=32" class="favicon me-2" alt="${domain} favicon">`;
+                                } catch (e) {
+                                    imageHtml = `<i class="bi bi-link-45deg me-2"></i>`;
+                                }
+                            }
 
-    itemsHtml += `
+                            itemsHtml += `
 <a href="${item.url}" target="_blank" rel="noopener noreferrer"
 class="list-group-item list-group-item-action d-flex align-items-center">
 ${imageHtml}
@@ -1310,37 +1312,63 @@ ${imageHtml}
 <i class="bi bi-box-arrow-up-right ms-auto text-muted"></i>
 </a>
 `;
-   });
+                        });
 
-   itemsHtml += '</div>';
-   contentHtml += itemsHtml;
+                        itemsHtml += '</div>';
+                        contentHtml += itemsHtml;
 
-   break;
-   }
-  case 'image':
-   {
-   const img = post.content.image_data;
-   if (img && img.url) {
-    contentHtml = `
+                        break;
+                    }
+                case 'image':
+                    {
+                        const img = post.content.image_data;
+                        if (img && img.url) {
+                            contentHtml = `
 <div class="card mt-3"
 style="background-color: var(--form-input-bg); border-color: var(--border-color);">
 <img src="${img.url}" class="card-img-top" alt="User's posted image">
 </div>
 `;
-   } else {
-    contentHtml = `<p class="text-muted">No image data found.</p>`;
-   }
-   break;
-   }
-  default:
-   {
-   if (post.content.text) {
-    contentHtml += `<p class="card-text" style="white-space: pre-wrap;">${post.content.text}</p>`;
-   }
-   if (post.content.link) {
-    const videoId = getYouTubeID(post.content.link);
-    if (videoId) {
-    contentHtml += `
+                        } else {
+                            contentHtml = `<p class="text-muted">No image data found.</p>`;
+                        }
+                        break;
+                    }
+                case 'spotify_playlist':
+                    {
+                        const spotifyData = post.content.spotify_playlist_data;
+                        if (spotifyData && spotifyData.embed_url) {
+                            if (post.content.text) { // Allow optional text above the embed
+                                contentHtml += `<p class="card-text" style="white-space: pre-wrap;">${post.content.text}</p>`;
+                            }
+                            contentHtml += `
+            <div class="mt-3">
+              <iframe
+                style="border-radius:12px"
+                src="${spotifyData.embed_url}"
+                width="100%"
+                height="352"
+                frameBorder="0"
+                allowfullscreen=""
+                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                loading="lazy">
+              </iframe>
+            </div>
+          `;
+                        } else {
+                            contentHtml = `<p class="text-muted">Could not load Spotify playlist.</p>`;
+                        }
+                        break;
+                    }
+                default:
+                    {
+                        if (post.content.text) {
+                            contentHtml += `<p class="card-text" style="white-space: pre-wrap;">${post.content.text}</p>`;
+                        }
+                        if (post.content.link) {
+                            const videoId = getYouTubeID(post.content.link);
+                            if (videoId) {
+                                contentHtml += `
 <div class="video-container my-2">
 <iframe
 src="https://www.youtube.com/embed/${videoId}"
@@ -1350,27 +1378,27 @@ gyroscope; picture-in-picture" allowfullscreen>
 </iframe>
 </div>
 `;
-    } else {
-    try {
-     const host = new URL(post.content.link).hostname;
-     contentHtml += `
+                            } else {
+                                try {
+                                    const host = new URL(post.content.link).hostname;
+                                    contentHtml += `
 <a href="${post.content.link}" target="_blank" rel="noopener noreferrer"
 class="link-preview d-block text-decoration-none">
 <strong class="link-preview-title d-block">${post.content.link}</strong>
 <span class="link-preview-host">${host}</span>
 </a>
 `;
-    } catch (e) {
-     contentHtml += `<p class="text-muted">Invalid link: ${post.content.link}</p>`;
-    }
-    }
-   }
-   break;
-   }
-  }
+                                } catch (e) {
+                                    contentHtml += `<p class="text-muted">Invalid link: ${post.content.link}</p>`;
+                                }
+                            }
+                        }
+                        break;
+                    }
+            }
 
-  if (post.content.tags && post.content.tags.length > 0) {
-  contentHtml += `
+            if (post.content.tags && post.content.tags.length > 0) {
+                contentHtml += `
 <div class="mt-3 post-tags">
 ${post.content.tags.map(tag => `
 <span class="badge rounded-pill bg-secondary me-1"
@@ -1380,22 +1408,22 @@ ${tag}
 `).join(' ')}
 </div>
 `;
-  }
+            }
 
-  const seenByUsers = post.seen_by_user_objects || [];
-  const seenCount = post.seen_by_count;
-  let seenByText;
-  if (seenCount === 0) {
-  seenByText = 'Be the first to see this!';
-  } else if (seenCount === 1) {
-  seenByText = `Seen by ${seenByUsers[0]?.username || '1 person'}`;
-  } else if (seenCount === 2 && seenByUsers.length === 2) {
-  seenByText = `Seen by ${seenByUsers[0].username} and ${seenByUsers[1].username}`;
-  } else {
-  seenByText = `Seen by ${seenByUsers[0]?.username || ''} and ${seenCount - 1} others`;
-  }
+            const seenByUsers = post.seen_by_user_objects || [];
+            const seenCount = post.seen_by_count;
+            let seenByText;
+            if (seenCount === 0) {
+                seenByText = 'Be the first to see this!';
+            } else if (seenCount === 1) {
+                seenByText = `Seen by ${seenByUsers[0]?.username || '1 person'}`;
+            } else if (seenCount === 2 && seenByUsers.length === 2) {
+                seenByText = `Seen by ${seenByUsers[0].username} and ${seenByUsers[1].username}`;
+            } else {
+                seenByText = `Seen by ${seenByUsers[0]?.username || ''} and ${seenCount - 1} others`;
+            }
 
-  const postFooter = `
+            const postFooter = `
 <div class="post-footer mt-3 pt-3 d-flex justify-content-between align-items-center">
 <div class="seen-by-container ${post.is_seen_by_user ? 'seen-by-user' : ''}"
 data-action="show-seen-status" data-post-id="${postId}"
@@ -1424,8 +1452,8 @@ title="Open Comments">
 </div>
 `;
 
-  const displayCircleName = circleName || post.circle_name;
-  const dropdownMenu = `
+            const displayCircleName = circleName || post.circle_name;
+            const dropdownMenu = `
 <div class="dropdown">
 <button class="btn btn-sm py-0 px-2" type="button"
 data-bs-toggle="dropdown"
@@ -1448,7 +1476,7 @@ Delete Post
 </div>
 `;
 
-  return `
+            return `
 <div class="post-card-wrapper"
 data-post-id="${postId}"
 data-post-wrapper-id="${postId}">
@@ -1475,17 +1503,20 @@ ${postFooter}
 </div>
 </div>
 `;
- }).join('');
+        }).join('');
 
- container.insertAdjacentHTML('beforeend', postsHtml);
+    container.insertAdjacentHTML('beforeend', postsHtml);
 
- const newPostElements = container.querySelectorAll(`.post-card-wrapper:not([data-observed="true"])`);
- newPostElements.forEach(el => {
- el.dataset.observed = "true";
- postObserver.observe(el);
- });
- initTooltips();
+    const newPostElements = container.querySelectorAll(`.post-card-wrapper:not([data-observed="true"])`);
+    newPostElements.forEach(el => {
+        el.dataset.observed = "true";
+        postObserver.observe(el);
+    });
+    initTooltips();
 }
+
+
+
 
 const observer = new IntersectionObserver((entries) => {
  if (entries[0].isIntersecting) {
@@ -1635,157 +1666,170 @@ async function handleImageUpload(file) {
  }
 }
 
+
 async function handleCreatePost(btn) {
- const creator = btn.closest('.modal-content, .post-creator');
- if (!creator) {
-  showStatus('Could not find post creation form.', 'danger');
-  return;
- }
- let circle_id;
- const hiddenInput = creator.querySelector('.circleIdInput');
- const select = creator.querySelector('.circleSelect');
- if (hiddenInput) {
-  circle_id = hiddenInput.value;
- } else if (select) {
-  circle_id = select.value;
- }
- if (!circle_id) {
-  showStatus('You must select a circle to post in.', 'warning');
-  return;
- }
-
- const postType = state.postCreation.type;
- const tags = creator.querySelector('.postTags').value
-  .split(',')
-  .map(t => t.trim())
-  .filter(Boolean);
- let payload = {
-  tags
- };
- let postTypeForApi;
-
- try {
-  switch (postType) {
-   case 'main':
-    {
-     const text = creator.querySelector('.post-main-input').value.trim();
-     if (!text) throw new Error('Post content cannot be empty.');
-     postTypeForApi = 'standard';
-     payload.text = text;
-     break;
+    const creator = btn.closest('.modal-content, .post-creator');
+    if (!creator) {
+        showStatus('Could not find post creation form.', 'danger');
+        return;
     }
-   case 'wishlist':
-    {
-     postTypeForApi = 'wishlist';
-     const title = creator.querySelector('.wishlistTitleInput').value.trim();
-     if (!title) throw new Error('A title for your wishlist is required.');
-
-     const urls = state.postCreation.wishlist.urls;
-     if (urls.length === 0) throw new Error('Please add at least one link to your wishlist.');
-
-     payload.text = title;
-     payload.wishlist_data = urls.map(url => {
-      let hostname = 'link';
-      try {
-       hostname = new URL(url).hostname;
-      } catch {}
-      return {
-       url,
-       title: hostname
-      };
-     });
-     break;
+    let circle_id;
+    const hiddenInput = creator.querySelector('.circleIdInput');
+    const select = creator.querySelector('.circleSelect');
+    if (hiddenInput) {
+        circle_id = hiddenInput.value;
+    } else if (select) {
+        circle_id = select.value;
     }
-   case 'playlist':
-    {
-     postTypeForApi = 'yt-playlist';
-     const playlistName = creator.querySelector('.playlistNameInput').value.trim();
-     if (!playlistName) throw new Error('Playlist name is required.');
-     const selectedVideos = state.postCreation.playlist.videos;
-     if (selectedVideos.length === 0) throw new Error('Playlist must have at least one video.');
-     payload.playlist_data = {
-      name: playlistName,
-      videos: selectedVideos
-     };
-     break;
+    if (!circle_id) {
+        showStatus('You must select a circle to post in.', 'warning');
+        return;
     }
-   case 'poll':
-    {
-     postTypeForApi = 'poll';
-     const question = state.postCreation.pollData.question.trim();
-     const options = state.postCreation.pollData.options
-      .map(opt => opt.trim())
-      .filter(Boolean);
 
-     if (!question) {
-      throw new Error('Please enter a poll question.');
-     }
-     if (options.length < 2) {
-      throw new Error('Please provide at least two poll options.');
-     }
+    const postType = state.postCreation.type;
+    const tags = creator.querySelector('.postTags').value
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean);
 
-     const durationHours = parseInt(
-      creator.querySelector('#pollDurationSelect').value,
-      10
-     );
-     if (!durationHours || durationHours <= 0) {
-      throw new Error('Please select a valid poll duration.');
-     }
+    let payload = {
+        tags
+    };
+    let postTypeForApi;
 
-     payload.poll_data = {
-      question: question,
-      options: options.map(opt => ({
-       text: opt
-      }))
-     };
-     payload.poll_duration_hours = durationHours;
-     break;
+    try {
+        switch (postType) {
+            case 'main':
+                {
+                    const text = creator.querySelector('.post-main-input').value.trim();
+                    if (!text) throw new Error('Post content cannot be empty.');
+                    postTypeForApi = 'standard';
+                    payload.text = text;
+                    break;
+                }
+            case 'wishlist':
+                {
+                    postTypeForApi = 'wishlist';
+                    const title = creator.querySelector('.wishlistTitleInput').value.trim();
+                    if (!title) throw new Error('A title for your wishlist is required.');
+
+                    const urls = state.postCreation.wishlist.urls;
+                    if (urls.length === 0) throw new Error('Please add at least one link to your wishlist.');
+
+                    payload.text = title;
+                    payload.wishlist_data = urls.map(url => {
+                        let hostname = 'link';
+                        try {
+                            hostname = new URL(url).hostname;
+                        } catch {}
+                        return {
+                            url,
+                            title: hostname
+                        };
+                    });
+                    break;
+                }
+            case 'playlist':
+                {
+                    postTypeForApi = 'yt-playlist';
+                    const playlistName = creator.querySelector('.playlistNameInput').value.trim();
+                    if (!playlistName) throw new Error('Playlist name is required.');
+                    const selectedVideos = state.postCreation.playlist.videos;
+                    if (selectedVideos.length === 0) throw new Error('Playlist must have at least one video.');
+                    payload.playlist_data = {
+                        name: playlistName,
+                        videos: selectedVideos
+                    };
+                    break;
+                }
+            case 'poll':
+                {
+                    postTypeForApi = 'poll';
+                    const question = state.postCreation.pollData.question.trim();
+                    const options = state.postCreation.pollData.options
+                        .map(opt => opt.trim())
+                        .filter(Boolean);
+
+                    if (!question) {
+                        throw new Error('Please enter a poll question.');
+                    }
+                    if (options.length < 2) {
+                        throw new Error('Please provide at least two poll options.');
+                    }
+
+                    const durationHours = parseInt(
+                        creator.querySelector('#pollDurationSelect').value,
+                        10
+                    );
+                    if (!durationHours || durationHours <= 0) {
+                        throw new Error('Please select a valid poll duration.');
+                    }
+
+                    payload.poll_data = {
+                        question: question,
+                        options: options.map(opt => ({
+                            text: opt
+                        }))
+                    };
+                    payload.poll_duration_hours = durationHours;
+                    break;
+                }
+            case 'image':
+                {
+                    postTypeForApi = 'image';
+                    if (state.postCreation.imageData && state.postCreation.imageData.url) {
+                        payload.image_data = state.postCreation.imageData;
+                    } else {
+                        const urlInput = creator.querySelector('.imageUrlInput');
+                        const imageUrl = urlInput.value.trim();
+                        if (!imageUrl) {
+                            throw new Error('Please upload an image or provide a valid image URL.');
+                        }
+                        payload.link = imageUrl;
+                    }
+                    break;
+                }
+            case 'spotify_playlist':
+                {
+                    postTypeForApi = 'spotify_playlist';
+                    const url = creator.querySelector('#spotifyUrlInput').value.trim();
+                    if (!url.includes('spotify.com/playlist/')) {
+                        throw new Error('Please enter a valid Spotify playlist URL.');
+                    }
+                    payload.link = url; // The backend will process this link
+                    break;
+                }
+        }
+    } catch (err) {
+        showStatus(err.message, 'warning');
+        return;
     }
-   case 'image':
-    {
-     postTypeForApi = 'image';
-     if (state.postCreation.imageData && state.postCreation.imageData.url) {
-      payload.image_data = state.postCreation.imageData;
-     } else {
-      const urlInput = creator.querySelector('.imageUrlInput');
-      const imageUrl = urlInput.value.trim();
-      if (!imageUrl) {
-       throw new Error('Please upload an image or provide a valid image URL.');
-      }
-      payload.link = imageUrl;
-     }
-     break;
+
+    payload.post_type = postTypeForApi;
+    setButtonLoading(btn, true);
+
+    try {
+        await apiFetch(`/circles/${circle_id}/posts`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        showStatus('Post created!', 'success');
+        const createPostModal = bootstrap.Modal.getInstance('#createPostModal');
+        if (createPostModal) {
+            createPostModal.hide();
+        }
+        if (state.circleView.currentCircle && state.circleView.currentCircle._id === circle_id) {
+            await resetAndRenderCircleFeed(circle_id);
+        } else {
+            await resetAndRenderDashboardFeed();
+        }
+    } catch (error) {
+        showStatus(error.message, 'danger');
+    } finally {
+        setButtonLoading(btn, false);
     }
-  }
- } catch (err) {
-  showStatus(err.message, 'warning');
-  return;
- }
-
- payload.post_type = postTypeForApi;
- setButtonLoading(btn, true);
-
- try {
-  await apiFetch(`/circles/${circle_id}/posts`, {
-   method: 'POST',
-   body: JSON.stringify(payload)
-  });
-  showStatus('Post created!', 'success');
-  const createPostModal = bootstrap.Modal.getInstance('#createPostModal');
-  if (createPostModal) {
-   createPostModal.hide();
-  }
-  if (state.circleView.currentCircle && state.circleView.currentCircle._id === circle_id) {
-   await resetAndRenderCircleFeed(circle_id);
-  } else {
-   await resetAndRenderDashboardFeed();
-  }
- } catch (error) {
-  showStatus(error.message, 'danger');
- } finally {
-  setButtonLoading(btn, false);
- }
 }
+
 
 async function handleDeletePost(postId, circleId) {
  if (!confirm('Are you sure you want to permanently delete this post?')) return;

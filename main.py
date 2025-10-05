@@ -3,6 +3,7 @@ import re
 import secrets
 import json
 import time
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Optional, Union, Callable, Literal
 from contextlib import asynccontextmanager
@@ -63,6 +64,13 @@ if all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
     print("Cloudinary configured.")
 else:
     print("Warning: Cloudinary credentials not found. Image uploads will be disabled.")
+
+SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
+SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+if all([SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET]):
+    print("Spotify credentials configured.")
+else:
+    print("Warning: Spotify credentials not found. Spotify features will be disabled.")
 
 MONGO_DETAILS = os.getenv(
     "MONGO_URI",
@@ -179,6 +187,7 @@ class PostTypeEnum(str, Enum):
     poll = "poll"
     wishlist = "wishlist"
     image = "image"
+    spotify_playlist = "spotify_playlist"
 
 class UserRegister(BaseModel):
     username: str = Field(...)
@@ -306,6 +315,12 @@ class WishlistItem(BaseModel):
     description: Optional[str] = None
     image: Optional[AnyHttpUrl] = None
 
+class SpotifyPlaylistData(BaseModel):
+    playlist_name: str
+    embed_url: str
+    spotify_url: AnyHttpUrl
+    playlist_art_url: Optional[AnyHttpUrl] = None
+
 class PostCreate(BaseModel):
     post_type: PostTypeEnum = PostTypeEnum.standard
     text: Optional[str] = Field(None, max_length=10000)
@@ -316,6 +331,7 @@ class PostCreate(BaseModel):
     wishlist_data: Optional[List[WishlistItem]] = None
     image_data: Optional[ImageData] = None
     poll_duration_hours: Optional[int] = None
+    spotify_playlist_data: Optional[SpotifyPlaylistData] = None
 
     def validate_post_content(self):
         if self.post_type == PostTypeEnum.standard and not self.text and not self.link:
@@ -332,6 +348,8 @@ class PostCreate(BaseModel):
             raise ValueError('A wishlist post must contain at least one item.')
         if self.post_type == PostTypeEnum.image and not self.image_data and not self.link:
             raise ValueError('An image post must contain image_data from an upload or a direct link.')
+        if self.post_type == PostTypeEnum.spotify_playlist and not self.link and not self.spotify_playlist_data:
+             raise ValueError('A Spotify playlist post must contain a link.')
         self.tags = sorted(set(tag.strip().lower() for tag in self.tags if tag.strip()))
         return self
 
@@ -394,8 +412,7 @@ class CommenterInfo(BaseModel):
     username: str
     comment_count: int
     has_unread: bool
-    
-# --- Models for Intelligent Polling ---
+
 class PostActivityInfo(BaseModel):
     post_id: PyObjectId
     new_comment_count: int
@@ -405,6 +422,28 @@ class UserActivityStatusResponse(BaseModel):
     new_comment_activity: List[PostActivityInfo]
     new_invites_count: int
     new_notifications_count: int
+
+class SpotifyURLRequest(BaseModel):
+    url: AnyHttpUrl
+
+class SpotifyTrack(BaseModel):
+    track_name: str
+    artist_names: List[str]
+    album_name: str
+    album_art_url: Optional[AnyHttpUrl] = None
+    spotify_url: AnyHttpUrl
+
+class SpotifyPlaylist(BaseModel):
+    playlist_name: str
+    description: Optional[str] = None
+    owner_name: str
+    playlist_art_url: Optional[AnyHttpUrl] = None
+    spotify_url: AnyHttpUrl
+    tracks: List[SpotifyTrack]
+
+class SpotifyMetadataResponse(BaseModel):
+    type: Literal["track", "playlist"]
+    data: Union[SpotifyTrack, SpotifyPlaylist]
 
 # --------------------------------------------------------
 # Helpers
@@ -545,7 +584,6 @@ async def check_circle_membership(
     if circle.get('owner_id') == current_user.id:
         is_in_members = any(m['user_id'] == current_user.id for m in circle.get('members', []))
         if not is_in_members:
-            # FIXED: Manually create the dict to preserve ObjectId type for user_id
             new_member_dict = {
                 "user_id": current_user.id,
                 "username": current_user.username,
@@ -555,7 +593,6 @@ async def check_circle_membership(
                 {"_id": circle["_id"]},
                 {"$addToSet": {"members": new_member_dict}}
             )
-            # Ensure the local circle object is also updated for the current request
             if "members" not in circle:
                 circle["members"] = []
             circle["members"].append(new_member_dict)
@@ -574,7 +611,7 @@ async def get_circle_and_user_role(circle_id: str, current_user: UserInDB) -> tu
 async def get_post_and_check_membership(post_id: str, current_user: UserInDB) -> dict:
     post = await get_post_or_404(post_id)
     circle = await get_circle_or_404(str(post["circle_id"]))
-    await check_circle_membership(current_user, circle) # Changed to await
+    await check_circle_membership(current_user, circle)
     return post
 
 def _get_posts_aggregation_pipeline(
@@ -618,6 +655,46 @@ def _get_posts_aggregation_pipeline(
         {"$project": {"seen_by_sample_ids": 0, "content.poll_data.options.votes": 0, "seen_by_details": 0}}
     ])
     return pipeline
+
+SPOTIFY_ACCESS_TOKEN = None
+SPOTIFY_TOKEN_EXPIRES_AT = None
+
+async def get_spotify_access_token() -> str:
+    """Obtains and caches a Spotify Application Access Token."""
+    global SPOTIFY_ACCESS_TOKEN, SPOTIFY_TOKEN_EXPIRES_AT
+
+    now = datetime.now(timezone.utc)
+    if SPOTIFY_ACCESS_TOKEN and SPOTIFY_TOKEN_EXPIRES_AT and now < SPOTIFY_TOKEN_EXPIRES_AT - timedelta(seconds=60):
+        return SPOTIFY_ACCESS_TOKEN
+
+    if not all([SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET]):
+        raise HTTPException(status_code=503, detail="Spotify service is not configured on the server.")
+
+    auth_url = 'https://accounts.spotify.com/api/token'
+    auth_string = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
+    auth_header_val = base64.b64encode(auth_string.encode('utf-8')).decode('utf-8')
+
+    try:
+        response = requests.post(
+            auth_url,
+            headers={'Authorization': f'Basic {auth_header_val}', 'Content-Type': 'application/x-www-form-urlencoded'},
+            data={'grant_type': 'client_credentials'}
+        )
+        response.raise_for_status()
+        token_data = response.json()
+        
+        access_token = token_data.get('access_token')
+        expires_in = token_data.get('expires_in', 3600)
+        
+        if not access_token:
+            raise HTTPException(status_code=502, detail="Failed to retrieve access token from Spotify.")
+
+        SPOTIFY_ACCESS_TOKEN = access_token
+        SPOTIFY_TOKEN_EXPIRES_AT = now + timedelta(seconds=expires_in)
+        return SPOTIFY_ACCESS_TOKEN
+
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Could not connect to Spotify authentication service: {e}")
 
 # --------------------------------------------------------
 # Endpoints
@@ -672,6 +749,69 @@ async def generate_poll_from_text(request: PollFromTextRequest, current_user: Us
         return {"question": poll_json["question"], "options": formatted_options}
     except (openai.APIError, json.JSONDecodeError, ValueError) as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate poll from text: {e}")
+
+@app.post("/utils/spotify-metadata", response_model=SpotifyMetadataResponse, tags=["Utilities"])
+async def get_spotify_metadata(body: SpotifyURLRequest, current_user: UserInDB = Depends(get_current_user)):
+    url_str = str(body.url)
+    match = re.search(r'(?:https?:\/\/open\.spotify\.com\/(?:user\/[^\/]+\/)?|spotify:)(playlist|track)[\/:]([a-zA-Z0-9]+)', url_str)
+    if not match:
+        raise HTTPException(status_code=400, detail="Invalid Spotify track or playlist URL format.")
+    
+    item_type, item_id = match.groups()
+    access_token = await get_spotify_access_token()
+    headers = {'Authorization': f'Bearer {access_token}'}
+    
+    try:
+        if item_type == "track":
+            api_url = f'https://api.spotify.com/v1/tracks/{item_id}'
+            response = requests.get(api_url, headers=headers)
+            response.raise_for_status()
+            track_data = response.json()
+
+            track_info = SpotifyTrack(
+                track_name=track_data.get('name', 'N/A'),
+                artist_names=[artist['name'] for artist in track_data.get('artists', [])],
+                album_name=track_data.get('album', {}).get('name', 'N/A'),
+                album_art_url=(track_data['album']['images'][0]['url'] if track_data.get('album', {}).get('images') else None),
+                spotify_url=track_data.get('external_urls', {}).get('spotify')
+            )
+            return SpotifyMetadataResponse(type="track", data=track_info)
+
+        elif item_type == "playlist":
+            api_url = f'https://api.spotify.com/v1/playlists/{item_id}'
+            response = requests.get(api_url, headers=headers)
+            response.raise_for_status()
+            playlist_data = response.json()
+            
+            tracks = []
+            for item in playlist_data.get('tracks', {}).get('items', []):
+                track = item.get('track')
+                if track:
+                    track_info = SpotifyTrack(
+                        track_name=track.get('name', 'N/A'),
+                        artist_names=[artist['name'] for artist in track.get('artists', [])],
+                        album_name=track.get('album', {}).get('name', 'N/A'),
+                        album_art_url=(track['album']['images'][0]['url'] if track.get('album', {}).get('images') else None),
+                        spotify_url=track.get('external_urls', {}).get('spotify')
+                    )
+                    tracks.append(track_info)
+            
+            playlist_info = SpotifyPlaylist(
+                playlist_name=playlist_data.get('name', 'N/A'),
+                description=playlist_data.get('description'),
+                owner_name=playlist_data.get('owner', {}).get('display_name', 'N/A'),
+                playlist_art_url=(playlist_data['images'][0]['url'] if playlist_data.get('images') else None),
+                spotify_url=playlist_data.get('external_urls', {}).get('spotify'),
+                tracks=tracks
+            )
+            return SpotifyMetadataResponse(type="playlist", data=playlist_info)
+
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"Spotify {item_type} with ID '{item_id}' not found.")
+        raise HTTPException(status_code=502, detail=f"Error communicating with Spotify API: {e.response.text}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
 
 # ----------------------------------
 # Authentication
@@ -767,22 +907,16 @@ async def get_user_activity_status(
     since: Optional[datetime] = Query(None),
     current_user: UserInDB = Depends(get_current_user)
 ):
-    """
-    Checks for all new user-specific activity since a given timestamp.
-    This includes new comments on their posts, new replies in threads they've
-    participated in, new invitations, and new notifications.
-    """
     now = datetime.now(timezone.utc)
     new_comment_activity_map = {}
 
     if since:
-        # --- Query 1: Find new comments on posts authored by the current user ---
         my_post_ids = [p["_id"] for p in posts_collection.find({"author_id": current_user.id}, {"_id": 1})]
         if my_post_ids:
             pipeline_my_posts = [
                 {"$match": {
                     "post_id": {"$in": my_post_ids},
-                    "commenter_id": {"$ne": current_user.id}, # Exclude user's own comments
+                    "commenter_id": {"$ne": current_user.id},
                     "created_at": {"$gt": since}
                 }},
                 {"$group": {"_id": "$post_id", "count": {"$sum": 1}}}
@@ -794,8 +928,6 @@ async def get_user_activity_status(
                     new_comment_activity_map[post_id] = 0
                 new_comment_activity_map[post_id] += item['count']
 
-        # --- Query 2: Find new replies in threads the user has participated in ---
-        # Find all posts where the user has commented (but is not the author)
         participated_posts_cursor = comments_collection.distinct(
             "post_id",
             {"commenter_id": current_user.id, "post_author_id": {"$ne": current_user.id}}
@@ -806,7 +938,7 @@ async def get_user_activity_status(
             pipeline_replies = [
                 {"$match": {
                     "post_id": {"$in": participated_post_ids},
-                    "commenter_id": {"$ne": current_user.id}, # Replies from others
+                    "commenter_id": {"$ne": current_user.id},
                     "created_at": {"$gt": since}
                 }},
                 {"$group": {"_id": "$post_id", "count": {"$sum": 1}}}
@@ -818,13 +950,11 @@ async def get_user_activity_status(
                     new_comment_activity_map[post_id] = 0
                 new_comment_activity_map[post_id] += item['count']
 
-    # --- Consolidate comment activity into the response model structure ---
     final_comment_activity = [
         PostActivityInfo(post_id=pid, new_comment_count=count)
         for pid, count in new_comment_activity_map.items()
     ]
 
-    # --- Query 3 & 4: Get counts for invites and notifications ---
     invites_count = invitations_collection.count_documents({
         "invitee_id": current_user.id,
         "status": InvitationStatusEnum.pending.value
@@ -856,7 +986,6 @@ async def list_my_circles(current_user: UserInDB = Depends(get_current_user)):
 
 @app.post("/circles", response_model=CircleOut, status_code=201, tags=["Circles"])
 async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depends(get_current_user)):
-    # FIXED: Manually create the first member dict to preserve ObjectId type
     first_member_doc = {
         "user_id": current_user.id,
         "username": current_user.username,
@@ -940,7 +1069,6 @@ async def join_circle_by_token(body: JoinByTokenRequest, current_user: UserInDB 
     if any(m['user_id'] == current_user.id for m in circle.get("members", [])):
         return JoinByTokenResponse(circle_id=str(circle["_id"]), circle_name=circle["name"])
     
-    # FIXED: Manually create the dict to preserve ObjectId types
     inviter_id = token_doc.get("inviter_id")
     new_member_doc = {
         "user_id": current_user.id,
@@ -1045,7 +1173,6 @@ async def accept_invitation(invitation_id: str, current_user: UserInDB = Depends
         invitations_collection.update_one({"_id": invitation["_id"]}, {"$set": {"status": InvitationStatusEnum.accepted.value}})
         raise HTTPException(status_code=400, detail="You are already a member of this circle.")
 
-    # FIXED: Manually construct the document to preserve ObjectId types
     new_member_doc = {
         "user_id": current_user.id,
         "username": current_user.username,
@@ -1079,7 +1206,7 @@ async def reject_invitation(invitation_id: str, current_user: UserInDB = Depends
     if invitation["status"] != InvitationStatusEnum.pending.value:
         raise HTTPException(status_code=400, detail="This invitation is no longer pending.")
     
-    circle = await get_circle_or_404(str(invitation["circle_id"])) # ensure circle exists
+    circle = await get_circle_or_404(str(invitation["circle_id"]))
     invitations_collection.update_one({"_id": invitation["_id"]}, {"$set": {"status": InvitationStatusEnum.rejected.value}})
 
     await create_notification(
@@ -1107,6 +1234,7 @@ async def mark_notification_as_read(notification_id: str, current_user: UserInDB
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Notification not found or you don't have permission to read it.")
     return Response(status_code=204)
+
 # ----------------------------------
 # Feeds & Posts
 @app.get("/circles/{circle_id}/feed", response_model=FeedResponse, tags=["Feeds"])
@@ -1137,6 +1265,38 @@ async def get_circle_feed(
 async def create_post_in_circle(circle_id: str, post_data: PostCreate, current_user: UserInDB = Depends(get_current_user)):
     circle = await get_circle_or_404(circle_id)
     await check_circle_membership(current_user, circle)
+
+    if post_data.post_type == PostTypeEnum.spotify_playlist and post_data.link:
+        if not all([SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET]):
+            raise HTTPException(status_code=503, detail="Spotify service is not configured on the server.")
+        
+        match = re.search(r'(?:https?:\/\/open\.spotify\.com\/|spotify:)playlist[\/:]([a-zA-Z0-9]+)', post_data.link)
+        if not match:
+            raise HTTPException(status_code=400, detail="Invalid Spotify playlist URL format.")
+        
+        playlist_id = match.groups()[0]
+        access_token = await get_spotify_access_token()
+        headers = {'Authorization': f'Bearer {access_token}'}
+        
+        try:
+            api_url = f'https://api.spotify.com/v1/playlists/{playlist_id}'
+            response = requests.get(api_url, headers=headers)
+            response.raise_for_status()
+            playlist_api_data = response.json()
+
+            post_data.spotify_playlist_data = SpotifyPlaylistData(
+                playlist_name=playlist_api_data.get('name', 'Spotify Playlist'),
+                embed_url=f"https://open.spotify.com/embed/playlist/{playlist_id}?utm_source=generator",
+                spotify_url=playlist_api_data.get('external_urls', {}).get('spotify'),
+                playlist_art_url=(playlist_api_data['images'][0]['url'] if playlist_api_data.get('images') else None)
+            )
+            post_data.link = None
+
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                raise HTTPException(status_code=404, detail="Spotify playlist not found.")
+            raise HTTPException(status_code=502, detail=f"Error communicating with Spotify API.")
+
     is_standard_post_with_image_link = (post_data.post_type == PostTypeEnum.standard and post_data.link and re.search(r'\.(jpg|jpeg|png|gif|webp)$', post_data.link.lower()))
     is_image_post_with_link = (post_data.post_type == PostTypeEnum.image and post_data.link and not post_data.image_data)
     if is_standard_post_with_image_link or is_image_post_with_link:
@@ -1256,7 +1416,6 @@ async def create_comment_on_post(post_id: str, comment_data: CommentCreate, curr
     created_comment = await get_comment_or_404(str(result.inserted_id))
 
     if not is_author:
-        # Notify the post author that someone commented on their post
         await create_notification(
             user_id=post["author_id"],
             notification_type=NotificationTypeEnum.new_comment,
