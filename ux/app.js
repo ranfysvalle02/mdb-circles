@@ -211,7 +211,7 @@ accessToken: localStorage.getItem('accessToken') || null,
 refreshToken: localStorage.getItem('refreshToken') || null,
 currentUser: null,
 myCircles: [],
- circleActivityTimestamps: {},
+circleActivityTimestamps: {},
 dashboardFeed: {
  filter: {
  circle_id: null,
@@ -329,7 +329,7 @@ failedQueue.forEach(prom => {
 failedQueue = [];
 };
 
-// ----------------- NEW: Efficient Activity Polling -----------------
+// ----------------- Efficient Activity Polling -----------------
 
 class ActivityPoller {
   constructor(interval = 15000) {
@@ -411,14 +411,24 @@ class ActivityPoller {
         // Find the circle in the sidebar and highlight it
         const circleLink = document.querySelector(`#myCirclesContainer a[data-circle-id="${circle.circle_id}"]`);
         if (circleLink) {
-            circleLink.classList.add('new-activity-highlight');
+            // **FIX:** Apply the class to the parent .list-group-item element
+            const listItem = circleLink.closest('.list-group-item');
+            if (listItem) {
+                listItem.classList.add('new-activity-highlight');
+            }
         }
     });
 
-    // Show a single, consolidated toast notification
-    const message = updatedCircles.length === 1
-      ? `New activity in <strong>${updatedCircles[0].circle_name}</strong>.`
-      : `New activity in ${updatedCircles.length} circles.`;
+    // **IMPROVEMENT:** Show a more detailed, consolidated toast notification
+    let message;
+    if (updatedCircles.length === 1) {
+        message = `New activity in <strong>${updatedCircles[0].circle_name}</strong>.`;
+    } else if (updatedCircles.length === 2) {
+        message = `New activity in <strong>${updatedCircles[0].circle_name}</strong> and <strong>${updatedCircles[1].circle_name}</strong>.`;
+    } else {
+        const otherCount = updatedCircles.length - 2;
+        message = `New activity in <strong>${updatedCircles[0].circle_name}</strong>, <strong>${updatedCircles[1].circle_name}</strong>, and ${otherCount} other(s).`;
+    }
     showStatus(message, 'info');
   }
 
@@ -634,10 +644,13 @@ style.textContent = `
     position: relative;
     font-weight: 500;
   }
+  .list-group-item.new-activity-highlight > a {
+    padding-left: 2rem !important; /* Make space for the dot */
+  }
   .list-group-item.new-activity-highlight::before {
     content: '';
     position: absolute;
-    left: 8px;
+    left: 1rem;
     top: 50%;
     transform: translateY(-50%);
     width: 8px;
@@ -645,6 +658,7 @@ style.textContent = `
     background-color: var(--primary-color);
     border-radius: 50%;
     animation: pulse-dot 1.5s infinite ease-in-out;
+    z-index: 2;
   }
   @keyframes pulse-dot {
     0% { box-shadow: 0 0 0 0 var(--primary-color-translucent); }
@@ -932,10 +946,13 @@ if (state.currentUser) {
 }
 
 async function showCircleView(circleId) {
- // When a user views a circle, remove its activity highlight
+ // **FIX:** When a user views a circle, find the parent item and remove its activity highlight
  const circleLink = document.querySelector(`#myCirclesContainer a[data-circle-id="${circleId}"]`);
  if (circleLink) {
-    circleLink.classList.remove('new-activity-highlight');
+    const listItem = circleLink.closest('.list-group-item');
+    if (listItem) {
+        listItem.classList.remove('new-activity-highlight');
+    }
  }
  
 state.circleView.currentCircle = null;
@@ -1227,10 +1244,9 @@ function appendPosts(posts, container, circleName = null) {
             const coverImage = playlist.videos.length > 0 ?
               playlist.videos[0].imageSrc :
               'https://via.placeholder.com/400x225.png?text=Playlist';
-            const playlistDataString = JSON.stringify(playlist)
-  .replace(/'/g, "&apos;")  // Safely handle single quotes
-  .replace(/"/g, '&quot;'); // Safely handle double quotes (this fixes the error)
-
+                        const playlistDataString = JSON.stringify(playlist)
+                            .replace(/'/g, "&apos;")
+                            .replace(/"/g, '&quot;');
             contentHtml = `
 <div class="card mt-3 playlist-card"
 style="background-color: var(--form-input-bg); border-color: var(--border-color); position: relative;">
@@ -2740,10 +2756,6 @@ document.getElementById('submitCircleButton')
 const createPostModalEl = document.getElementById('createPostModal');
 const createPostModal = bootstrap.Modal.getOrCreateInstance(createPostModalEl);
 
- // START: BUG FIX FOR POLL CREATION
- // This listener ensures that as the user types in the poll question or options,
- // the application's central state (`state.postCreation.pollData`) is updated in real-time.
- // This was the missing piece that caused poll creation to fail.
  createPostModalEl.addEventListener('input', e => {
    const questionInput = e.target.closest('#pollQuestionInput');
    const optionInput = e.target.closest('.poll-option-input');
@@ -2757,7 +2769,6 @@ const createPostModal = bootstrap.Modal.getOrCreateInstance(createPostModalEl);
      }
    }
  });
- // END: BUG FIX FOR POLL CREATION
 
 document.getElementById('togglePostCreatorBtn').addEventListener('click', () => {
  const select = createPostModalEl.querySelector('.circleSelect');
@@ -3144,8 +3155,8 @@ document.body.addEventListener('click', async e => {
  case 'play-playlist':
   try {
   const playlistDataString = data.playlist
-   .replace(/"/g, '"')
-   .replace(/'/g, "'");
+   .replace(/&apos;/g, "'")
+   .replace(/&quot;/g, '"');
   const playlist = JSON.parse(playlistDataString);
   openPlaylistPlayerModal(playlist);
   } catch (err) {
