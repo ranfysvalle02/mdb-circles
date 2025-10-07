@@ -86,7 +86,6 @@ invite_tokens_collection = db.get_collection("invite_tokens")
 invitations_collection = db.get_collection("invitations")
 notifications_collection = db.get_collection("notifications")
 comments_collection = db.get_collection("comments")
-# NEW: Collection to track specific activity events for notifications
 activity_events_collection = db.get_collection("activity_events")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -111,7 +110,6 @@ async def lifespan(app: FastAPI):
     notifications_collection.create_index([("user_id", ASCENDING), ("created_at", DESCENDING)])
     comments_collection.create_index([("post_id", ASCENDING)])
     comments_collection.create_index([("thread_user_id", ASCENDING)])
-    # NEW: Indexes for the new activity events collection
     activity_events_collection.create_index([("notified_user_ids", ASCENDING)])
     activity_events_collection.create_index([("timestamp", DESCENDING)])
 
@@ -240,10 +238,12 @@ class CircleMember(BaseModel):
 class CircleCreate(BaseModel):
     name: str = Field(..., min_length=3, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
+    is_public: bool = False
 
 class CircleUpdate(BaseModel):
     name: str = Field(..., min_length=3, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
+    is_public: bool
 
 class CircleOut(BaseModel):
     id: PyObjectId = Field(alias="_id")
@@ -252,6 +252,7 @@ class CircleOut(BaseModel):
     owner_id: PyObjectId
     member_count: int
     user_role: Optional[RoleEnum] = None
+    is_public: bool = False
     model_config = ConfigDict(populate_by_name=True)
 
 class CircleManagementOut(CircleOut):
@@ -291,7 +292,6 @@ class NotificationOut(BaseModel):
     created_at: datetime
     model_config = ConfigDict(populate_by_name=True)
 
-# NEW: Model for the activity feed response
 class ActivityEventOut(BaseModel):
     id: PyObjectId = Field(alias="_id")
     circle_id: PyObjectId
@@ -924,10 +924,8 @@ async def mark_all_notifications_as_read(current_user: UserInDB = Depends(get_cu
     notifications_collection.update_many({"user_id": current_user.id, "is_read": False}, {"$set": {"is_read": True}})
     return Response(status_code=204)
 
-# NEW: The new, smarter activity feed endpoint
 @app.get("/users/me/activity-feed", response_model=List[ActivityEventOut], tags=["Users"])
 async def get_user_activity_feed(current_user: UserInDB = Depends(get_current_user)):
-    # Find events where the current user is in the list of users to be notified
     events_cursor = activity_events_collection.find(
         {"notified_user_ids": current_user.id}
     ).sort("timestamp", DESCENDING)
@@ -935,8 +933,6 @@ async def get_user_activity_feed(current_user: UserInDB = Depends(get_current_us
     events = list(events_cursor)
     event_ids = [event["_id"] for event in events]
 
-    # If we found events, remove the current user from the notification list
-    # This marks the event as "delivered" to this user.
     if event_ids:
         activity_events_collection.update_many(
             {"_id": {"$in": event_ids}},
@@ -968,7 +964,7 @@ async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depe
     now = datetime.now(timezone.utc)
     new_circle_doc = {
         "name": circle_data.name, "description": circle_data.description, "owner_id": current_user.id,
-        "members": [first_member_doc], "created_at": now
+        "members": [first_member_doc], "created_at": now, "is_public": circle_data.is_public
     }
     result = circles_collection.insert_one(new_circle_doc)
     created_circle = circles_collection.find_one({"_id": result.inserted_id})
@@ -1079,7 +1075,11 @@ async def update_circle_settings(circle_id: str, circle_data: CircleUpdate, curr
     circle, user_role = await get_circle_and_user_role(circle_id, current_user)
     if user_role != RoleEnum.admin:
         raise HTTPException(status_code=403, detail="Only circle admins can change settings.")
-    update_doc = {"name": circle_data.name, "description": circle_data.description}
+    update_doc = {
+        "name": circle_data.name,
+        "description": circle_data.description,
+        "is_public": circle_data.is_public
+    }
     circles_collection.update_one({"_id": circle["_id"]}, {"$set": update_doc})
     updated_circle = await get_circle_details(circle_id, current_user)
     return updated_circle
@@ -1219,10 +1219,16 @@ async def get_circle_feed(
     limit: int = Query(10, ge=1, le=50),
     sort_by: SortByEnum = Query(SortByEnum.newest),
     tags: Optional[str] = None,
-    current_user: UserInDB = Depends(get_current_user)
+    current_user: Optional[UserInDB] = Depends(get_optional_current_user)
 ):
     circle = await get_circle_or_404(circle_id)
-    await check_circle_membership(current_user, circle)
+    is_public = circle.get("is_public", False)
+
+    if not is_public:
+        if not current_user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="You must be logged in to view this private circle.")
+        await check_circle_membership(current_user, circle)
+
     match_query = {"circle_id": ObjectId(circle_id)}
     if tags:
         tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()]
@@ -1302,7 +1308,6 @@ async def create_post_in_circle(circle_id: str, post_data: PostCreate, current_u
     
     result = posts_collection.insert_one(new_post_doc)
     
-    # MODIFIED: Create a specific activity event instead of just updating a timestamp
     other_member_ids = [
         member['user_id'] for member in circle.get('members', [])
         if member['user_id'] != current_user.id
@@ -1410,7 +1415,6 @@ async def create_comment_on_post(post_id: str, comment_data: CommentCreate, curr
     result = comments_collection.insert_one(new_comment_doc)
     posts_collection.update_one({"_id": post["_id"]}, {"$inc": {"comment_count": 1}, "$pull": {"seen_by_details": {"user_id": post["author_id"]}}})
     
-    # MODIFIED: Create a specific activity event for the new comment
     other_member_ids = [
         member['user_id'] for member in circle.get('members', [])
         if member['user_id'] != current_user.id
