@@ -3238,43 +3238,48 @@ document.body.addEventListener('click', async e => {
 
 const saveCircleSettingsBtn = document.getElementById('saveCircleSettingsBtn');
 
-saveCircleSettingsBtn.addEventListener('click', async () => {
-  const circleId = document.getElementById('manageCircleId').value;
-  const name = document.getElementById('manageCircleName').value;
-  const description = document.getElementById('manageCircleDescription').value;
-  
-  // --- THIS IS THE MISSING PIECE ---
-  const isPublic = document.getElementById('manageCircleIsPublic').checked;
-  // ---------------------------------
+saveCircleSettingsBtn.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const circleId = document.getElementById('manageCircleId').value;
+    const name = document.getElementById('manageCircleName').value;
+    const description = document.getElementById('manageCircleDescription').value;
+    const isPublic = document.getElementById('manageCircleIsPublic').checked;
 
-  if (!name) {
-    showGlobalStatus('Circle name cannot be empty.', 'danger');
-    return;
-  }
+    if (!name) {
+        showStatus('Circle name cannot be empty.', 'danger'); // CORRECTED: showStatus
+        return;
+    }
 
-  const payload = {
-    name,
-    description,
-    is_public: isPublic // Add the value to the payload
-  };
-
-  try {
-    // This assumes you have an API wrapper function like this
-    const updatedCircle = await api.patch(`/circles/${circleId}`, payload);
+    const payload = {
+        name,
+        description,
+        is_public: isPublic 
+    };
     
-    // Logic to close modal and refresh the UI
-    const manageModal = bootstrap.Modal.getInstance(document.getElementById('manageCircleModal'));
-    manageModal.hide();
-    showGlobalStatus('Circle settings saved successfully!', 'success');
-    
-    // Refresh the circle view and sidebar
-    await renderCircleView(circleId); 
-    await renderMyCircles();
+    setButtonLoading(btn, true);
+    try {
+        // CORRECTED: Use apiFetch with the proper method and body
+        const updatedCircle = await apiFetch(`/circles/${circleId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload)
+        });
+        
+        const manageModal = bootstrap.Modal.getInstance(document.getElementById('manageCircleModal'));
+        manageModal.hide();
+        showStatus('Circle settings saved successfully!', 'success'); // CORRECTED: showStatus
+        
+        // Refresh the views
+        if (state.circleView.currentCircle?._id === circleId) {
+            await resetAndRenderCircleFeed(circleId);
+        }
+        await renderAllSidebarComponents(); // This will re-render the sidebar list
 
-  } catch (error) {
-    console.error('Failed to save circle settings:', error);
-    showGlobalStatus(error.message || 'Could not save settings.', 'danger');
-  }
+    } catch (error) {
+        // The apiFetch function already shows the error message, so we don't need to call showStatus here.
+        console.error('Failed to save circle settings:', error);
+    } finally {
+        setButtonLoading(btn, false);
+    }
 });
 
 document.getElementById('deleteCircleConfirmationInput')
