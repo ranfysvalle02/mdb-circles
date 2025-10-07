@@ -3236,8 +3236,46 @@ document.body.addEventListener('click', async e => {
  }
 });
 
-document.getElementById('saveCircleSettingsBtn')
- .addEventListener('click', (e) => handleUpdateCircleSettings(e.currentTarget));
+const saveCircleSettingsBtn = document.getElementById('saveCircleSettingsBtn');
+
+saveCircleSettingsBtn.addEventListener('click', async () => {
+  const circleId = document.getElementById('manageCircleId').value;
+  const name = document.getElementById('manageCircleName').value;
+  const description = document.getElementById('manageCircleDescription').value;
+  
+  // --- THIS IS THE MISSING PIECE ---
+  const isPublic = document.getElementById('manageCircleIsPublic').checked;
+  // ---------------------------------
+
+  if (!name) {
+    showGlobalStatus('Circle name cannot be empty.', 'danger');
+    return;
+  }
+
+  const payload = {
+    name,
+    description,
+    is_public: isPublic // Add the value to the payload
+  };
+
+  try {
+    // This assumes you have an API wrapper function like this
+    const updatedCircle = await api.patch(`/circles/${circleId}`, payload);
+    
+    // Logic to close modal and refresh the UI
+    const manageModal = bootstrap.Modal.getInstance(document.getElementById('manageCircleModal'));
+    manageModal.hide();
+    showGlobalStatus('Circle settings saved successfully!', 'success');
+    
+    // Refresh the circle view and sidebar
+    await renderCircleView(circleId); 
+    await renderMyCircles();
+
+  } catch (error) {
+    console.error('Failed to save circle settings:', error);
+    showGlobalStatus(error.message || 'Could not save settings.', 'danger');
+  }
+});
 
 document.getElementById('deleteCircleConfirmationInput')
  .addEventListener('input', (e) => {
