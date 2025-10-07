@@ -1072,98 +1072,93 @@ await renderCircleFeed(circleId);
 }
 
 async function renderCircleFeed(circleId) {
-const feedState = state.circleView;
-if (!feedState.hasMore || feedState.isLoading) return;
-feedState.isLoading = true;
-dom.feedLoader.classList.remove('hidden');
+    const feedState = state.circleView;
+    if (!feedState.hasMore || feedState.isLoading) return;
 
-try {
- if (feedState.skip === 0) {
- const circleDetails = await apiFetch(`/circles/${circleId}`);
- feedState.currentCircle = circleDetails;
- const userRole = circleDetails.user_role;
- let managementControlsHtml = '';
- if (userRole === 'admin' || userRole === 'moderator') {
-  managementControlsHtml = `
-<button class="btn btn-sm btn-secondary"
-data-action="open-manage-circle" data-circle-id="${circleDetails._id}">
-<i class="bi bi-gear-fill"></i> Manage Circle
-</button>
-`;
- }
+    feedState.isLoading = true;
+    dom.feedLoader.classList.remove('hidden');
 
- dom.circleHeader.innerHTML = `
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-<div>
-<h2><i class="bi bi-hash"></i> ${circleDetails.name}</h2>
-<p class="text-muted mb-0">${circleDetails.description || 'A shared space for posts.'}</p>
-</div>
-<div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-<a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back</a>
-<div class="input-group input-group-sm" style="width: auto;">
-<span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);">
-<i class="bi bi-tags"></i>
-</span>
-<input type="text" id="circleTagFilter"
-class="form-control border-start-0"
-placeholder="Filter by tags..."
-value="${feedState.tags}"
-style="min-width: 150px;">
-</div>
-<select id="circleSortSelect" class="form-select form-select-sm" style="width: auto;">
-<option value="newest" ${feedState.sortBy === 'newest' ? 'selected' : ''}>Sort: Newest</option>
-</select>
-<div class="btn-group">
-<button class="btn btn-sm btn-success" data-action="invite-to-circle" data-circle-id="${circleId}">
-<i class="bi bi-send"></i> Invite
-</button>
-${managementControlsHtml}
-</div>
-<button id="togglePostCreatorCircleBtn" class="btn btn-sm btn-primary ms-2">
-<i class="bi bi-pencil-square"></i> New Post
-</button>
-</div>
-</div>
-`;
- }
+    try {
+        // --- Step 1: Fetch Circle Header Details ---
+        // This part now works for anonymous users thanks to the previous backend fix.
+        if (feedState.skip === 0) {
+            const circleDetails = await apiFetch(`/circles/${circleId}`);
+            feedState.currentCircle = circleDetails;
+            
+            // Determine if the current user has management rights
+            const userRole = circleDetails.user_role;
+            const canManage = state.currentUser && (userRole === 'admin' || userRole === 'moderator');
+            const managementControlsHtml = canManage ? `
+                <button class="btn btn-sm btn-secondary"
+                        data-action="open-manage-circle" data-circle-id="${circleDetails._id}">
+                    <i class="bi bi-gear-fill"></i> Manage
+                </button>` : '';
 
- let url = `/circles/${circleId}/feed?skip=${feedState.skip}&limit=${feedState.limit}&sort_by=${feedState.sortBy}`;
- if (feedState.tags) {
- url += `&tags=${encodeURIComponent(feedState.tags)}`;
- }
- const feedData = await apiFetch(url);
- appendPosts(feedData.posts, dom.circleFeedContainer, feedState.currentCircle.name);
- feedState.hasMore = feedData.has_more;
- feedState.skip += feedData.posts.length;
+            // Render the header with controls appropriate for the user's status
+            dom.circleHeader.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                    <div>
+                        <h2>
+                            <i class="bi bi-hash"></i> ${circleDetails.name}
+                            ${circleDetails.is_public ? '<span class="badge bg-info ms-2" title="This circle is public">Public</span>' : ''}
+                        </h2>
+                        <p class="text-muted mb-0">${circleDetails.description || 'A shared space for posts.'}</p>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                        <a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
+                        <div class="input-group input-group-sm" style="width: auto;">
+                            <span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);"><i class="bi bi-tags"></i></span>
+                            <input type="text" id="circleTagFilter" class="form-control border-start-0" placeholder="Filter by tags..." value="${feedState.tags}" style="min-width: 150px;">
+                        </div>
+                        ${state.currentUser ? `
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-success" data-action="invite-to-circle" data-circle-id="${circleId}">
+                                    <i class="bi bi-send"></i> Invite
+                                </button>
+                                ${managementControlsHtml}
+                            </div>
+                            <button id="togglePostCreatorCircleBtn" class="btn btn-sm btn-primary ms-2">
+                                <i class="bi bi-pencil-square"></i> New Post
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>`;
+        }
 
- if (!dom.circleFeedContainer.querySelector('.post-card-wrapper') && !feedData.has_more) {
- dom.circleFeedContainer.insertAdjacentHTML('beforeend', `<div class="empty-placeholder">This circle has no posts yet. Be the first!</div>`);
- }
-} catch (error) {
- dom.circleHeader.innerHTML = '';
- if (error.status === 403) {
- if (!state.currentUser) {
-  dom.circleFeedContainer.innerHTML = `
-<div class="empty-placeholder">
-This is a private circle. Please
-<a href="#" onclick="window.location.hash=''; handleRoute(); return false;">log in</a> to view or request an invite.
-</div>
-`;
- } else {
-  dom.circleFeedContainer.innerHTML = `
-<div class="empty-placeholder">
-You are not a member. Please request an invite link from someone in the circle.
-</div>
-`;
- }
- } else {
- dom.circleFeedContainer.innerHTML = `<div class="empty-placeholder text-danger">Could not find this circle. It may not exist.</div>`;
- }
-} finally {
- feedState.isLoading = false;
- dom.feedLoader.classList.add('hidden');
+        // --- Step 2: Fetch Circle Feed (Posts) ---
+        // This part already worked correctly for public circles.
+        let url = `/circles/${circleId}/feed?skip=${feedState.skip}&limit=${feedState.limit}&sort_by=${feedState.sortBy}`;
+        if (feedState.tags) {
+            url += `&tags=${encodeURIComponent(feedState.tags)}`;
+        }
+        const feedData = await apiFetch(url);
+        
+        appendPosts(feedData.posts, dom.circleFeedContainer, feedState.currentCircle.name);
+        feedState.hasMore = feedData.has_more;
+        feedState.skip += feedData.posts.length;
+
+        if (!dom.circleFeedContainer.querySelector('.post-card-wrapper') && !feedData.has_more) {
+            dom.circleFeedContainer.insertAdjacentHTML('beforeend', `<div class="empty-placeholder">This circle has no posts yet.</div>`);
+        }
+
+    } catch (error) {
+        // --- Step 3: Improved Error Handling ---
+        dom.circleHeader.innerHTML = ''; // Clear the header on error
+        let errorMessage = `<div class="empty-placeholder text-danger">Could not load this circle. It may not exist or is private.</div>`;
+        if (error.status === 401) {
+             errorMessage = `<div class="empty-placeholder">This is a private circle. Please <a href="#" onclick="window.location.hash=''; handleRoute(); return false;">log in</a> to view.</div>`;
+        } else if (error.status === 403) {
+             errorMessage = `<div class="empty-placeholder">You are not a member of this private circle. Please request an invite.</div>`;
+        }
+        dom.circleFeedContainer.innerHTML = errorMessage;
+    } finally {
+        feedState.isLoading = false;
+        dom.feedLoader.classList.add('hidden');
+    }
 }
-}
+
+
+
 
 // -----------------------------------------------
 // Post loading / "seen" tracking:
