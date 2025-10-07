@@ -1068,19 +1068,51 @@ async def join_circle_by_token(body: JoinByTokenRequest, current_user: UserInDB 
     return JoinByTokenResponse(circle_id=str(circle["_id"]), circle_name=circle["name"])
 
 @app.get("/circles/{circle_id}", response_model=Union[CircleManagementOut, CircleOut], tags=["Circles"])
-async def get_circle_details(circle_id: str, current_user: UserInDB = Depends(get_current_user)):
+async def get_circle_details(
+    circle_id: str,
+    # THIS IS THE CRITICAL FIX: Allows anonymous users to access the endpoint
+    current_user: Optional[UserInDB] = Depends(get_optional_current_user)
+):
     circle = await get_circle_or_404(circle_id)
-    member_info = next((m for m in circle.get('members', []) if m['user_id'] == current_user.id), None)
-    user_role = RoleEnum(member_info['role']) if member_info else None
-    if not user_role:
-        raise HTTPException(status_code=403, detail="You do not have access to this circle.")
+    is_public = circle.get("is_public", False)
+    
+    user_role: Optional[RoleEnum] = None
+    member_info: Optional[Dict] = None
+
+    if current_user:
+        member_info = next((m for m in circle.get('members', []) if m['user_id'] == current_user.id), None)
+        if member_info:
+            user_role = RoleEnum(member_info['role'])
+
+    # If the circle is private, we must enforce membership.
+    if not is_public:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="You must be logged in to view this private circle.")
+        if not user_role:
+            raise HTTPException(status_code=403, detail="You are not a member of this circle.")
+
     member_count = len(circle.get("members", []))
+    
+    # Admins and moderators get to see the full member list
     if user_role in [RoleEnum.admin, RoleEnum.moderator]:
         circle_data = circle.copy()
         raw_members = circle_data.pop("members", [])
-        return CircleManagementOut(**circle_data, member_count=member_count, user_role=user_role, members=[CircleMember(**m) for m in raw_members])
+        return CircleManagementOut(
+            **circle_data,
+            member_count=member_count,
+            user_role=user_role,
+            members=[CircleMember(**m) for m in raw_members]
+        )
     else:
-        return CircleOut(**circle, member_count=member_count, user_role=user_role)
+        # Regular members and anonymous viewers of public circles get the basic view
+        return CircleOut(
+            **circle,
+            member_count=member_count,
+            user_role=user_role
+        )
+
+
+
 
 @app.patch("/circles/{circle_id}", response_model=CircleManagementOut, tags=["Circles"])
 async def update_circle_settings(circle_id: str, circle_data: CircleUpdate, current_user: UserInDB = Depends(get_current_user)):
