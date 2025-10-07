@@ -1236,22 +1236,33 @@ async def get_circle_feed(
     circle = await get_circle_or_404(circle_id)
     is_public = circle.get("is_public", False)
 
+    # ** THIS IS THE CORRECTED LOGIC **
+    # Only perform authentication and membership checks if the circle is NOT public.
     if not is_public:
         if not current_user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="You must be logged in to view this private circle.")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="You must be logged in to view this private circle."
+            )
+        # The check_circle_membership function will raise a 403 if the user is not a member.
         await check_circle_membership(current_user, circle)
 
+    # If the circle is public, or if the user is a member of the private circle, proceed.
     match_query = {"circle_id": ObjectId(circle_id)}
     if tags:
         tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()]
         if tag_list:
             match_query["content.tags"] = {"$all": tag_list}
+    
     match_stage = {"$match": match_query}
     total_posts = posts_collection.count_documents(match_query)
     sort_stage = {"$sort": {"created_at": DESCENDING}}
+    
     pipeline = _get_posts_aggregation_pipeline(match_stage, sort_stage, skip, limit, current_user)
     cursor = posts_collection.aggregate(pipeline)
+    
     posts_list = [PostOut(**p, circle_name=circle["name"]) for p in cursor]
+    
     return FeedResponse(posts=posts_list, has_more=(skip + len(posts_list)) < total_posts)
 
 @app.post("/circles/{circle_id}/posts", response_model=PostOut, status_code=201, tags=["Posts"])
