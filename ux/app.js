@@ -2386,73 +2386,77 @@ try {
 }
 }
 
+
 function renderCircleManagementUI(circle) {
-document.getElementById('manageCircleId').value = circle._id;
-document.getElementById('manageCircleName').value = circle.name;
-document.getElementById('manageCircleDescription').value = circle.description || '';
+    document.getElementById('manageCircleId').value = circle._id;
+    document.getElementById('manageCircleName').value = circle.name;
+    document.getElementById('manageCircleDescription').value = circle.description || '';
 
-const membersContainer = document.getElementById('manageCircleMembersContainer');
-if (!circle.members || circle.members.length === 0) {
- membersContainer.innerHTML = '<p class="text-muted text-center p-3">No member data available.</p>';
-} else {
- const currentUserRole = circle.user_role;
- membersContainer.innerHTML = circle.members.map(member => {
- let actionButtons = '';
- const canManage = (
-  (currentUserRole === 'admin' && member.role !== 'admin') ||
-  (currentUserRole === 'moderator' && member.role === 'member')
- );
- if (canManage && member.user_id !== state.currentUser.id) {
-  if (member.role === 'member') {
-  actionButtons += `
-<button class="btn btn-sm btn-success"
-data-action="manage-member-role"
-data-user-id="${member.user_id}"
-data-new-role="moderator">
-Promote to Mod
-</button>
-`;
-  } else if (member.role === 'moderator') {
-  actionButtons += `
-<button class="btn btn-sm btn-secondary"
-data-action="manage-member-role"
-data-user-id="${member.user_id}"
-data-new-role="member">
-Demote to Member
-</button>
-`;
-  }
-  actionButtons += `
-<button class="btn btn-sm btn-danger ms-2"
-data-action="manage-member-kick"
-data-user-id="${member.user_id}"
-data-username="${member.username}">
-Kick
-</button>
-`;
- }
- const roleBadge = {
-  admin: 'bg-primary',
-  moderator: 'bg-success',
-  member: 'bg-secondary'
- } [member.role];
+    // This is the corrected line that sets the toggle's state
+    document.getElementById('manageCircleIsPublic').checked = circle.is_public;
 
- return `
-<div class="list-group-item d-flex justify-content-between align-items-center">
-<div>
-<img src="${generateAvatarUrl(member.username)}" class="avatar-small me-2">
-<strong>${member.username}</strong>
-<span class="badge rounded-pill ${roleBadge} ms-2">${member.role}</span>
-</div>
-<div class="btn-group">${actionButtons}</div>
-</div>
-`;
- }).join('');
+    const membersContainer = document.getElementById('manageCircleMembersContainer');
+    if (!circle.members || circle.members.length === 0) {
+        membersContainer.innerHTML = '<p class="text-muted text-center p-3">No member data available.</p>';
+    } else {
+        const currentUserRole = circle.user_role;
+        membersContainer.innerHTML = circle.members.map(member => {
+            let actionButtons = '';
+            const canManage = (
+                (currentUserRole === 'admin' && member.role !== 'admin') ||
+                (currentUserRole === 'moderator' && member.role === 'member')
+            );
+
+            if (canManage && member.user_id !== state.currentUser.id) {
+                if (member.role === 'member') {
+                    actionButtons += `
+                        <button class="btn btn-sm btn-success"
+                            data-action="manage-member-role"
+                            data-user-id="${member.user_id}"
+                            data-new-role="moderator">
+                            Promote to Mod
+                        </button>`;
+                } else if (member.role === 'moderator') {
+                    actionButtons += `
+                        <button class="btn btn-sm btn-secondary"
+                            data-action="manage-member-role"
+                            data-user-id="${member.user_id}"
+                            data-new-role="member">
+                            Demote to Member
+                        </button>`;
+                }
+                actionButtons += `
+                    <button class="btn btn-sm btn-danger ms-2"
+                        data-action="manage-member-kick"
+                        data-user-id="${member.user_id}"
+                        data-username="${member.username}">
+                        Kick
+                    </button>`;
+            }
+            const roleBadge = {
+                admin: 'bg-primary',
+                moderator: 'bg-success',
+                member: 'bg-secondary'
+            }[member.role];
+
+            return `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <img src="${generateAvatarUrl(member.username)}" class="avatar-small me-2">
+                    <strong>${member.username}</strong>
+                    <span class="badge rounded-pill ${roleBadge} ms-2">${member.role}</span>
+                </div>
+                <div class="btn-group">${actionButtons}</div>
+            </div>`;
+        }).join('');
+    }
+    // Logic for the 'Danger Zone' tab
+    document.getElementById('confirmDeleteCircleName').textContent = circle.name;
+    document.getElementById('deleteCircleConfirmationInput').value = '';
+    document.getElementById('deleteCircleBtn').disabled = true;
 }
-document.getElementById('confirmDeleteCircleName').textContent = circle.name;
-document.getElementById('deleteCircleConfirmationInput').value = '';
-document.getElementById('deleteCircleBtn').disabled = true;
-}
+
+
 
 async function handleUpdateCircleSettings(btn) {
 const circleId = document.getElementById('manageCircleId').value;
