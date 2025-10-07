@@ -930,16 +930,28 @@ async def get_user_activity_feed(current_user: UserInDB = Depends(get_current_us
         {"notified_user_ids": current_user.id}
     ).sort("timestamp", DESCENDING)
 
-    events = list(events_cursor)
-    event_ids = [event["_id"] for event in events]
+    valid_events = []
+    processed_event_ids = []
 
-    if event_ids:
+    for event in events_cursor:
+        try:
+            # Try to validate each event; this is the safe part
+            valid_event_model = ActivityEventOut(**event)
+            valid_events.append(valid_event_model.model_dump(by_alias=True))
+            processed_event_ids.append(event["_id"])
+        except ValidationError as e:
+            # If an event is bad, log it and continue instead of crashing
+            print(f"Skipping malformed activity event with ID {event.get('_id', 'N/A')}: {e}")
+            continue
+
+    if processed_event_ids:
+        # Only remove users from events that were successfully processed
         activity_events_collection.update_many(
-            {"_id": {"$in": event_ids}},
+            {"_id": {"$in": processed_event_ids}},
             {"$pull": {"notified_user_ids": current_user.id}}
         )
     
-    return [ActivityEventOut(**event) for event in events]
+    return valid_events
     
 # ----------------------------------
 # Circles

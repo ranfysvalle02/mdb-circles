@@ -279,19 +279,29 @@ if (isLoading) {
  btn.innerHTML = btn.dataset.html;
 }
 };
-
 const showStatus = (msg, type = 'success') => {
-const id = `a${Date.now()}`;
-document.getElementById('globalStatus').innerHTML = `
-<div id="${id}" class="alert alert-${type} alert-dismissible fade show">
-${msg}
-<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-</div>
-`;
-setTimeout(() => {
- const alertEl = document.getElementById(id);
- if (alertEl) bootstrap.Alert.getOrCreateInstance(alertEl)?.close();
-}, 4000);
+    const id = `a${Date.now()}${Math.random()}`; // A more unique ID
+    const container = document.getElementById('globalStatus');
+    
+    // This adds the new alert without deleting old ones
+    container.insertAdjacentHTML('beforeend', `
+        <div id="${id}" class="alert alert-${type} alert-dismissible fade show">
+            ${msg}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `);
+
+    const alertEl = document.getElementById(id);
+    
+    // This makes sure the element is safely removed from the DOM after it fades out
+    alertEl.addEventListener('closed.bs.alert', () => {
+        alertEl.remove();
+    });
+
+    // Automatically start the fade-out animation after 4 seconds
+    setTimeout(() => {
+        bootstrap.Alert.getOrCreateInstance(alertEl)?.close();
+    }, 4000);
 };
 
 const getYouTubeID = (url) => {

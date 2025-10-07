@@ -778,3 +778,12 @@ a:hover {
     width: 16px;
     height: 16px;
 }
+
+#globalStatus {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 2000;
+    width: 350px;
+    max-width: 90%;
+}
