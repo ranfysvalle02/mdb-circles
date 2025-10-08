@@ -1411,22 +1411,37 @@ async def vote_on_poll(post_id: str, vote_data: PollVoteRequest, current_user: U
     post = await get_post_or_404(post_id)
     if post.get("content", {}).get("post_type") != "poll":
         raise HTTPException(status_code=400, detail="This post is not a poll.")
+
     circle = await get_circle_or_404(str(post["circle_id"]))
     await check_circle_membership(current_user, circle)
+
     expires_at = post.get("content", {}).get("expires_at")
+
+    # --- FIX IS HERE ---
+    # Make the datetime from the database timezone-aware before comparing
+    if expires_at and isinstance(expires_at, datetime) and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    # --- END FIX ---
+
     if expires_at and datetime.now(timezone.utc) > expires_at:
         raise HTTPException(status_code=403, detail="This poll has closed and is no longer accepting votes.")
+
     options = post["content"]["poll_data"]["options"]
     if not (0 <= vote_data.option_index < len(options)):
         raise HTTPException(status_code=400, detail="Invalid poll option index.")
+
     for i in range(len(options)):
         posts_collection.update_one({"_id": post["_id"]}, {"$pull": {f"content.poll_data.options.{i}.votes": current_user.id}})
+
     posts_collection.update_one({"_id": post["_id"]}, {"$addToSet": {f"content.poll_data.options.{vote_data.option_index}.votes": current_user.id}})
+    
     pipeline = _get_posts_aggregation_pipeline({"$match": {"_id": post["_id"]}}, {}, 0, 1, current_user)
     updated_post_cursor = posts_collection.aggregate(pipeline)
     updated_post = list(updated_post_cursor)
+    
     if not updated_post:
         raise HTTPException(status_code=404, detail="Post not found after poll vote.")
+        
     return {"status": "success", "poll_results": updated_post[0]["poll_results"]}
 
 @app.delete("/circles/{circle_id}/posts/{post_id}", status_code=204, tags=["Posts"])
