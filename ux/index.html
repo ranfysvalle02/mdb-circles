@@ -710,8 +710,7 @@
               </div>
               <div class="tab-pane fade" id="createImagePost">
                 <label for="imageFileInput" class="form-label"
-                  >Upload an image directly from your device or
-                  camera.</label
+                  >Upload an image directly from your device or camera.</label
                 >
                 <input
                   type="file"
@@ -740,7 +739,7 @@
                   </div>
                 </div>
                 <hr />
-                <label for="imageUrlInput" class="form-label  small"
+                <label for="imageUrlInput" class="form-label small"
                   >Or, paste a direct image URL below:</label
                 >
                 <input
@@ -749,7 +748,19 @@
                   id="imageUrlInput"
                   placeholder="Paste direct image URL..."
                 />
-              </div>
+                <div class="mt-3">
+                  <label for="imageCaptionInput" class="form-label small"
+                    >Optional Caption:</label
+                  >
+                  <textarea
+                    id="imageCaptionInput"
+                    class="form-control"
+                    rows="2"
+                    placeholder="Describe your image..."
+                    maxlength="2200"
+                  ></textarea>
+                </div>
+                </div>
               <div class="tab-pane fade" id="createSpotifyPost">
                 <label for="spotifyUrlInput" class="form-label">Paste a Spotify Playlist URL</label>
                 <input type="url" class="form-control" id="spotifyUrlInput" placeholder="https://open.spotify.com/playlist/...">

@@ -330,6 +330,7 @@ class ImageData(BaseModel):
     public_id: str
     height: int
     width: int
+    caption: Optional[str] = Field(None, max_length=2200) 
 
 class WishlistItem(BaseModel):
     url: AnyHttpUrl
@@ -1335,19 +1336,28 @@ async def create_post_in_circle(circle_id: str, post_data: PostCreate, current_u
 
     is_standard_post_with_image_link = (post_data.post_type == PostTypeEnum.standard and post_data.link and re.search(r'\.(jpg|jpeg|png|gif|webp)$', post_data.link.lower()))
     is_image_post_with_link = (post_data.post_type == PostTypeEnum.image and post_data.link and not post_data.image_data)
+    
     if is_standard_post_with_image_link or is_image_post_with_link:
         if all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
             try:
                 upload_result = cloudinary.uploader.upload(post_data.link)
                 post_data.post_type = PostTypeEnum.image
+                
+                # Use the post's text as the caption and then clear it
                 post_data.image_data = ImageData(
-                    url=upload_result.get("secure_url"), public_id=upload_result.get("public_id"),
-                    height=upload_result.get("height"), width=upload_result.get("width")
+                    url=upload_result.get("secure_url"), 
+                    public_id=upload_result.get("public_id"),
+                    height=upload_result.get("height"), 
+                    width=upload_result.get("width"),
+                    caption=post_data.text 
                 )
                 post_data.link = None
+                post_data.text = None # Prevents duplicating content
+
             except Exception as e:
                 print(f"Cloudinary auto-upload failed: {e}")
                 post_data.post_type = PostTypeEnum.standard
+
     post_data.validate_post_content()
     content_data = jsonable_encoder(post_data)
     now = datetime.now(timezone.utc)

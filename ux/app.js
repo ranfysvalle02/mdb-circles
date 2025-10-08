@@ -1360,16 +1360,28 @@ ${imageHtml}
           }
         case 'image':
           {
-            const img = post.content.image_data;
-            if (img && img.url) {
-              contentHtml = `
-<div class="card mt-3"
-style="background-color: var(--form-input-bg); border-color: var(--border-color);">
-<img src="${img.url}" class="card-img-top" alt="User's posted image">
-</div>
-`;
+            postTypeForApi = 'image';
+            // Get the caption from the new input field
+            const caption = creator.querySelector('#imageCaptionInput').value.trim();
+
+            if (state.postCreation.imageData && state.postCreation.imageData.url) {
+              // This is for a direct file upload
+              payload.image_data = { ...state.postCreation.imageData }; // Make a copy
+              if (caption) {
+                payload.image_data.caption = caption; // Add caption to the data object
+              }
             } else {
-              contentHtml = `<p class="text-muted">No image data found.</p>`;
+              // This is for posting an image via URL
+              const urlInput = creator.querySelector('.imageUrlInput');
+              const imageUrl = urlInput.value.trim();
+              if (!imageUrl) {
+                throw new Error('Please upload an image or provide a valid image URL.');
+              }
+              payload.link = imageUrl;
+              // For linked images, the backend uses the 'text' field as the caption
+              if (caption) {
+                payload.text = caption;
+              }
             }
             break;
           }
