@@ -1134,8 +1134,21 @@ async def delete_circle(circle_id: str, current_user: UserInDB = Depends(get_cur
     circle, user_role = await get_circle_and_user_role(circle_id, current_user)
     if user_role != RoleEnum.admin:
         raise HTTPException(status_code=403, detail="Only circle admins can delete the circle.")
+    
+    # --- FIX: Find posts to be deleted to also delete their comments ---
+    posts_in_circle = posts_collection.find({"circle_id": circle["_id"]}, {"_id": 1})
+    post_ids_to_delete = [post["_id"] for post in posts_in_circle]
+
+    if post_ids_to_delete:
+        comments_collection.delete_many({"post_id": {"$in": post_ids_to_delete}})
+    # --- END FIX ---
+
     posts_collection.delete_many({"circle_id": circle["_id"]})
     circles_collection.delete_one({"_id": circle["_id"]})
+    
+    # Also consider deleting invitations, tokens, etc., associated with the circle
+    invitations_collection.delete_many({"circle_id": circle["_id"]})
+    
     return Response(status_code=204)
 
 @app.patch("/circles/{circle_id}/members/{user_id}", response_model=CircleManagementOut, tags=["Circles"])
@@ -1466,7 +1479,7 @@ async def vote_on_poll(post_id: str, vote_data: PollVoteRequest, current_user: U
         raise HTTPException(status_code=404, detail="Post not found after poll vote.")
         
     return {"status": "success", "poll_results": updated_post[0]["poll_results"]}
-    
+
 @app.delete("/circles/{circle_id}/posts/{post_id}", status_code=204, tags=["Posts"])
 async def delete_post(circle_id: str, post_id: str, current_user: UserInDB = Depends(get_current_user)):
     circle = await get_circle_or_404(circle_id)
