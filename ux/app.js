@@ -678,7 +678,7 @@ function renderInvitationsList(invites) {
   <img src="${generateAvatarUrl(invite.inviter_username)}" class="avatar-small me-2">
   <strong>${invite.inviter_username}</strong> invited you to join <strong>${invite.circle_name}</strong>.
  </p>
- <small class="text-muted flex-shrink-0 ms-2">${new Date(invite.created_at).toLocaleDateString()}</small>
+ <small class=" flex-shrink-0 ms-2">${new Date(invite.created_at).toLocaleDateString()}</small>
  </div>
  <div class="mt-2 text-end">
  <button class="btn btn-sm btn-success" data-action="accept-invite" data-invite-id="${invite._id}">Accept</button>
@@ -730,7 +730,7 @@ function renderNotificationsList(notifications) {
    <p class="mb-1 small">${contentHtml}</p>
    ${!n.is_read ? `<button class="btn btn-sm btn-link p-0 flex-shrink-0 ms-2" data-action="mark-notification-read" data-notification-id="${n._id}" title="Mark as Read"><i class="bi bi-check-circle-fill text-primary"></i></button>` : ''}
   </div>
-  <small class="text-muted d-block mt-1">${new Date(n.created_at).toLocaleString()}</small>
+  <small class=" d-block mt-1">${new Date(n.created_at).toLocaleString()}</small>
   `;
 
   if (notificationLink !== '#') {
@@ -1000,8 +1000,8 @@ if (circles.length === 0) {
  html += `
 <div class="text-center p-3 mt-2">
 <h5 class="mb-2"> Welcome to myCircles!</h5>
-<p class="text-muted small">It looks like you're not in any circles yet.</p>
-<p class="text-muted small">Get started by creating your own private space. Just click the <strong class="text-success"><i class="bi bi-plus-circle"></i> New Circle</strong> button above!</p>
+<p class=" small">It looks like you're not in any circles yet.</p>
+<p class=" small">Get started by creating your own private space. Just click the <strong class="text-success"><i class="bi bi-plus-circle"></i> New Circle</strong> button above!</p>
 </div>
 `;
  createCircleBtn.classList.add('highlight-wiggle');
@@ -1102,7 +1102,7 @@ async function renderCircleFeed(circleId) {
                             <i class="bi bi-hash"></i> ${circleDetails.name}
                             ${circleDetails.is_public ? '<span class="badge bg-info ms-2" title="This circle is public">Public</span>' : ''}
                         </h2>
-                        <p class="text-muted mb-0">${circleDetails.description || 'A shared space for posts.'}</p>
+                        <p class="mb-0">${circleDetails.description || 'A shared space for posts.'}</p>
                     </div>
                     <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
                         <a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
@@ -1236,7 +1236,7 @@ style="background-color: var(--form-input-bg); border-color: var(--border-color)
 <img src="${coverImage}" class="card-img-top" alt="Playlist Cover">
 <div class="card-body">
 <h5 class="card-title mb-1">${playlist.name}</h5>
-<p class="card-text text-muted small">${playlist.videos.length} videos</p>
+<p class="card-text small">${playlist.videos.length} videos</p>
 </div>
 <div class="playlist-play-overlay"
 data-action="play-playlist"
@@ -1290,20 +1290,20 @@ ${voteAction}>
                   timeRemaining = `${diffMins}m left`;
                 }
                 pollFooterHtml = `
-<small class="text-muted">
+<small class="">
 Total votes: ${totalVotes}  <i class="bi bi-clock"></i> ${timeRemaining}
 </small>
 `;
               } else {
                 pollFooterHtml = `
-<small class="text-muted">
+<small class="">
 <strong><i class="bi bi-lock-fill"></i> Poll closed on ${expiresDate.toLocaleDateString()}</strong>
  ${totalVotes} votes
 </small>
 `;
               }
             } else {
-              pollFooterHtml = `<small class="text-muted">Total votes: ${totalVotes}</small>`;
+              pollFooterHtml = `<small class="">Total votes: ${totalVotes}</small>`;
             }
 
             contentHtml = `
@@ -1346,9 +1346,9 @@ class="list-group-item list-group-item-action d-flex align-items-center">
 ${imageHtml}
 <div class="wishlist-item-details">
 <strong class="d-block text-truncate">${item.title || item.url}</strong>
-<small class="text-muted text-truncate">${item.description || new URL(item.url).hostname.replace('www.','')}</small>
+<small class="text-truncate">${item.description || new URL(item.url).hostname.replace('www.','')}</small>
 </div>
-<i class="bi bi-box-arrow-up-right ms-auto text-muted"></i>
+<i class="bi bi-box-arrow-up-right ms-auto"></i>
 </a>
 `;
             });
@@ -1369,7 +1369,7 @@ style="background-color: var(--form-input-bg); border-color: var(--border-color)
 </div>
 `;
             } else {
-              contentHtml = `<p class="text-muted">No image data found.</p>`;
+              contentHtml = `<p class="">No image data found.</p>`;
             }
             break;
           }
@@ -1395,7 +1395,7 @@ style="background-color: var(--form-input-bg); border-color: var(--border-color)
       </div>
      `;
             } else {
-              contentHtml = `<p class="text-muted">Could not load Spotify playlist.</p>`;
+              contentHtml = `<p class="">Could not load Spotify playlist.</p>`;
             }
             break;
           }
@@ -1428,7 +1428,7 @@ class="link-preview d-block text-decoration-none">
 </a>
 `;
                 } catch (e) {
-                  contentHtml += `<p class="text-muted">Invalid link: ${post.content.link}</p>`;
+                  contentHtml += `<p class="">Invalid link: ${post.content.link}</p>`;
                 }
               }
             }
@@ -1827,7 +1827,7 @@ async function handleCreatePost(btn) {
   </div>
   `;
           } else {
-            contentHtml = `<p class="text-muted">No image data found.</p>`;
+            contentHtml = `<p class="">No image data found.</p>`;
           }
           break;
         }
@@ -1902,7 +1902,7 @@ modal.show();
 try {
  const data = await apiFetch(`/posts/${postId}/seen-status`);
  const renderUsers = (users) => {
- if (users.length === 0) return '<li class="list-group-item text-muted">None</li>';
+ if (users.length === 0) return '<li class="list-group-item ">None</li>';
  return users.map(user => `
 <li class="list-group-item d-flex align-items-center">
 <img src="${generateAvatarUrl(user.username)}" class="avatar-small me-3">
@@ -2026,11 +2026,11 @@ function renderCommenterList(postId, commenters) {
 const container = document.getElementById('commentsContainer');
 document.getElementById('commentForm').classList.add('hidden');
 if (commenters.length === 0) {
- container.innerHTML = '<p class="text-muted text-center">No one has commented on this post yet.</p>';
+ container.innerHTML = '<p class="text-center">No one has commented on this post yet.</p>';
  return;
 }
 container.innerHTML = `
-<p class="text-muted small">Select a user to view their comment thread:</p>
+<p class="small">Select a user to view their comment thread:</p>
 <div class="list-group">
 ${commenters.map(c => `
 <a href="#"
@@ -2089,8 +2089,8 @@ data-post-author-username="${state.currentUser.username}">
 let commentsHtmlContent = '';
 if (comments.length === 0) {
  commentsHtmlContent = isAuthorViewing ?
- '<p class="text-muted text-center mt-3">No comments in this thread yet.</p>' :
- '<p class="text-muted text-center mt-3">Be the first to comment.</p>';
+ '<p class="text-center mt-3">No comments in this thread yet.</p>' :
+ '<p class="text-center mt-3">Be the first to comment.</p>';
 } else {
  commentsHtmlContent = comments.map(comment => {
  const isCurrentUser = comment.commenter_username === state.currentUser.username;
@@ -2113,7 +2113,7 @@ data-post-id="${postId}">
 }
 </div>
 <p class="mb-1" style="white-space: pre-wrap;">${comment.content}</p>
-<small class="text-muted">${new Date(comment.created_at).toLocaleString()}</small>
+<small class="">${new Date(comment.created_at).toLocaleString()}</small>
 </div>
 `;
  }).join('');
@@ -2196,7 +2196,7 @@ const updateUI = () => {
  return `
 <div class="playlist-queue-item list-group-item d-flex align-items-center gap-3 ${isActive}"
 data-index="${index}">
-<span class="text-muted fw-bold">${index + 1}</span>
+<span class="fw-bold">${index + 1}</span>
 <img src="${video.imageSrc}" width="100" class="rounded" alt="${video.title}">
 <div class="flex-grow-1" style="min-width: 0;">
 <p class="mb-0 small fw-bold text-truncate">${video.title}</p>
@@ -2273,7 +2273,7 @@ try {
 function renderYouTubeSearchResults(results) {
 const container = document.getElementById('youtubeSearchResultsContainer');
 if (!results || results.length === 0) {
- container.innerHTML = '<p class="text-muted small text-center">No videos found.</p>';
+ container.innerHTML = '<p class="small text-center">No videos found.</p>';
  return;
 }
 const addedVideoIds = new Set(
@@ -2302,7 +2302,7 @@ ${isAdded ? 'Added' : '<i class="bi bi-plus-lg"></i>'}
 function renderSelectedPlaylistVideos(container) {
 const videos = state.postCreation.playlist.videos;
 if (videos.length === 0) {
- container.innerHTML = '<p class="text-muted small text-center">Added videos will appear here. You can drag to reorder.</p>';
+ container.innerHTML = '<p class="small text-center">Added videos will appear here. You can drag to reorder.</p>';
  return;
 }
 container.innerHTML = videos.map(video => `
@@ -2397,7 +2397,7 @@ function renderCircleManagementUI(circle) {
 
     const membersContainer = document.getElementById('manageCircleMembersContainer');
     if (!circle.members || circle.members.length === 0) {
-        membersContainer.innerHTML = '<p class="text-muted text-center p-3">No member data available.</p>';
+        membersContainer.innerHTML = '<p class="text-center p-3">No member data available.</p>';
     } else {
         const currentUserRole = circle.user_role;
         membersContainer.innerHTML = circle.members.map(member => {
@@ -2548,7 +2548,7 @@ if (!container) {
 const urls = state.postCreation.wishlist.urls;
 
 if (urls.length === 0) {
- container.innerHTML = '<div class="list-group-item text-muted small text-center">Your added items will appear here.</div>';
+ container.innerHTML = '<div class="list-group-item small text-center">Your added items will appear here.</div>';
  return;
 }
 
@@ -2630,7 +2630,7 @@ tempDiv.querySelectorAll('[data-action]').forEach(el => {
 });
 return `
 <div class="original-post-content p-3 rounded border">
-<h6 class="text-muted small mb-2">Original Post:</h6>
+<h6 class="small mb-2">Original Post:</h6>
 ${tempDiv.innerHTML}
 </div>
 <hr>
@@ -2824,13 +2824,13 @@ createPostModalEl.addEventListener('hidden.bs.modal', () => {
  createPostModalEl.querySelector('.wishlistTitleInput').value = '';
  document.getElementById('wishlistLinkInput').value = '';
  document.getElementById('wishlistStagingArea').innerHTML = `
-<div class="list-group-item text-muted small text-center">
+<div class="list-group-item small text-center">
 Your added items will appear here.
 </div>
 `;
  createPostModalEl.querySelector('.playlistNameInput').value = '';
  createPostModalEl.querySelector('.selectedPlaylistVideosContainer').innerHTML = `
-<p class="text-muted small text-center">
+<p class="small text-center">
 Added videos will appear here. You can drag to reorder.
 </p>
 `;
