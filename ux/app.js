@@ -1359,20 +1359,25 @@ ${imageHtml}
             break;
           }
         case 'image':
-          {
-            const img = post.content.image_data;
-            if (img && img.url) {
-              contentHtml = `
-<div class="card mt-3"
-style="background-color: var(--form-input-bg); border-color: var(--border-color);">
-<img src="${img.url}" class="card-img-top" alt="User's posted image">
-</div>
-`;
-            } else {
-              contentHtml = `<p class="">No image data found.</p>`;
-            }
-            break;
+        {
+          const img = post.content.image_data;
+          if (img && img.url) {
+            // Check for a caption and create the HTML for it
+            const captionHtml = img.caption ?
+              `<div class="card-body"><p class="card-text" style="white-space: pre-wrap;">${img.caption}</p></div>` :
+              '';
+
+            contentHtml = `
+              <div class="card mt-3" style="background-color: var(--form-input-bg); border-color: var(--border-color);">
+                <img src="${img.url}" class="card-img-top" alt="User's posted image">
+                ${captionHtml}
+              </div>
+              `;
+          } else {
+            contentHtml = `<p class="">No image data found.</p>`;
           }
+          break;
+        }
         case 'spotify_playlist':
           {
             const spotifyData = post.content.spotify_playlist_data;
@@ -1813,21 +1818,26 @@ async function handleCreatePost(btn) {
         }
       case 'image':
         {
-          const img = post.content.image_data;
-          if (img && img.url) {
-            // Check for a caption and create the HTML for it
-            const captionHtml = img.caption
-              ? `<div class="card-body"><p class="card-text" style="white-space: pre-wrap;">${img.caption}</p></div>`
-              : '';
+          postTypeForApi = 'image';
+          const imageUrl = creator.querySelector('.imageUrlInput').value.trim();
+          const caption = creator.querySelector('#imageCaptionInput').value.trim();
 
-            contentHtml = `
-  <div class="card mt-3" style="background-color: var(--form-input-bg); border-color: var(--border-color);">
-    <img src="${img.url}" class="card-img-top" alt="User's posted image">
-    ${captionHtml}
-  </div>
-  `;
+          // Check if we have an uploaded image OR a URL.
+          if (!state.postCreation.imageData && !imageUrl) {
+            throw new Error('Please upload an image or provide an image URL.');
+          }
+
+          // Prioritize the uploaded image data if it exists.
+          if (state.postCreation.imageData) {
+            payload.image_data = {
+              ...state.postCreation.imageData,
+              caption: caption // Add the caption to the payload
+            };
           } else {
-            contentHtml = `<p class="">No image data found.</p>`;
+            payload.image_data = {
+              url: imageUrl,
+              caption: caption // Add the caption to the payload
+            };
           }
           break;
         }
@@ -2591,15 +2601,30 @@ data-index="${index}">
 }).join('');
 };
 
+// Utility to remove any lingering tooltips from the DOM.
+// This prevents "ghost" tooltips from staying on screen after the element
+// that triggered them has been removed or re-rendered.
+const hideAllTooltips = () => {
+  document.querySelectorAll('.tooltip').forEach(tooltip => {
+    tooltip.remove();
+  });
+};
+
 const initTooltips = () => {
-const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
-[...tooltipTriggerList].forEach(tooltipTriggerEl => {
- const existingTooltip = bootstrap.Tooltip.getInstance(tooltipTriggerEl);
- if (existingTooltip) {
- existingTooltip.dispose();
- }
- new bootstrap.Tooltip(tooltipTriggerEl);
-});
+  // First, clean up any orphaned tooltips that might be visible.
+  hideAllTooltips();
+
+  // Then, initialize new tooltips on all relevant elements currently in the DOM.
+  const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+  [...tooltipTriggerList].forEach(tooltipTriggerEl => {
+    const existingTooltip = bootstrap.Tooltip.getInstance(tooltipTriggerEl);
+    if (existingTooltip) {
+      // Dispose of any old tooltip instances tied to this specific element
+      // before creating a new one. This is good practice for re-renders.
+      existingTooltip.dispose();
+    }
+    new bootstrap.Tooltip(tooltipTriggerEl);
+  });
 };
 
 function getSanitizedPostContent(postId) {
