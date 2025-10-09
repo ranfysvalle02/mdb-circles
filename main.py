@@ -1427,11 +1427,9 @@ async def vote_on_poll(post_id: str, vote_data: PollVoteRequest, current_user: U
 
     expires_at = post.get("content", {}).get("expires_at")
 
-    # --- FIX IS HERE ---
-    # Make the datetime from the database timezone-aware before comparing
+    # FIX: Make the datetime from the database timezone-aware before comparing
     if expires_at and isinstance(expires_at, datetime) and expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
-    # --- END FIX ---
 
     if expires_at and datetime.now(timezone.utc) > expires_at:
         raise HTTPException(status_code=403, detail="This poll has closed and is no longer accepting votes.")
@@ -1440,12 +1438,27 @@ async def vote_on_poll(post_id: str, vote_data: PollVoteRequest, current_user: U
     if not (0 <= vote_data.option_index < len(options)):
         raise HTTPException(status_code=400, detail="Invalid poll option index.")
 
+    # Remove any previous vote by the user from all options
     for i in range(len(options)):
-        posts_collection.update_one({"_id": post["_id"]}, {"$pull": {f"content.poll_data.options.{i}.votes": current_user.id}})
+        posts_collection.update_one(
+            {"_id": post["_id"]}, 
+            {"$pull": {f"content.poll_data.options.{i}.votes": current_user.id}}
+        )
 
-    posts_collection.update_one({"_id": post["_id"]}, {"$addToSet": {f"content.poll_data.options.{vote_data.option_index}.votes": current_user.id}})
+    # Add the new vote to the selected option
+    posts_collection.update_one(
+        {"_id": post["_id"]}, 
+        {"$addToSet": {f"content.poll_data.options.{vote_data.option_index}.votes": current_user.id}}
+    )
     
-    pipeline = _get_posts_aggregation_pipeline({"$match": {"_id": post["_id"]}}, {}, 0, 1, current_user)
+    # FIX: Provide a valid sort stage (e.g., {"$sort": {"_id": 1}}) instead of an empty dictionary
+    pipeline = _get_posts_aggregation_pipeline(
+        {"$match": {"_id": post["_id"]}}, 
+        {"$sort": {"_id": 1}}, 
+        0, 
+        1, 
+        current_user
+    )
     updated_post_cursor = posts_collection.aggregate(pipeline)
     updated_post = list(updated_post_cursor)
     
@@ -1453,7 +1466,7 @@ async def vote_on_poll(post_id: str, vote_data: PollVoteRequest, current_user: U
         raise HTTPException(status_code=404, detail="Post not found after poll vote.")
         
     return {"status": "success", "poll_results": updated_post[0]["poll_results"]}
-
+    
 @app.delete("/circles/{circle_id}/posts/{post_id}", status_code=204, tags=["Posts"])
 async def delete_post(circle_id: str, post_id: str, current_user: UserInDB = Depends(get_current_user)):
     circle = await get_circle_or_404(circle_id)
