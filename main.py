@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel, Field, AnyHttpUrl, ConfigDict
+from pydantic import BaseModel, Field, AnyHttpUrl, ConfigDict, ValidationError
 from passlib.context import CryptContext
 from pymongo import MongoClient, ASCENDING, DESCENDING, IndexModel
 from bson import ObjectId
@@ -121,7 +121,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Circles Social API",
     description="A complete API with user auth, circles, posts, and real-time features.",
-    version="7.0.0",
+    version="7.1.0",
     lifespan=lifespan,
 )
 
@@ -372,7 +372,7 @@ class PostCreate(BaseModel):
         if self.post_type == PostTypeEnum.image and not self.image_data and not self.link:
             raise ValueError('An image post must contain image_data from an upload or a direct link.')
         if self.post_type == PostTypeEnum.spotify_playlist and not self.link and not self.spotify_playlist_data:
-             raise ValueError('A Spotify playlist post must contain a link.')
+                raise ValueError('A Spotify playlist post must contain a link.')
         self.tags = sorted(set(tag.strip().lower() for tag in self.tags if tag.strip()))
         return self
 
@@ -969,6 +969,18 @@ async def list_my_circles(current_user: UserInDB = Depends(get_current_user)):
 
 @app.post("/circles", response_model=CircleOut, status_code=201, tags=["Circles"])
 async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depends(get_current_user)):
+    # === MODIFIED: Check for duplicate circle name for the current user (case-insensitive) ===
+    existing_circle = circles_collection.find_one({
+        "members.user_id": current_user.id,
+        "name": {"$regex": f"^{re.escape(circle_data.name)}$", "$options": "i"}
+    })
+    if existing_circle:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"You are already in a circle named '{existing_circle['name']}'. Please choose a different name."
+        )
+    # === END MODIFIED BLOCK ===
+
     first_member_doc = {
         "user_id": current_user.id,
         "username": current_user.username,
@@ -1202,6 +1214,20 @@ async def accept_invitation(invitation_id: str, current_user: UserInDB = Depends
         raise HTTPException(status_code=400, detail="This invitation is no longer pending.")
 
     circle = await get_circle_or_404(str(invitation["circle_id"]))
+
+    # === MODIFIED: Check if the user is already in another circle with the same name ===
+    existing_circle_with_same_name = circles_collection.find_one({
+        "_id": {"$ne": circle["_id"]},
+        "members.user_id": current_user.id,
+        "name": {"$regex": f"^{re.escape(circle['name'])}$", "$options": "i"}
+    })
+    if existing_circle_with_same_name:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"You are already a member of a different circle named '{circle['name']}'. Cannot join another with the same name."
+        )
+    # === END MODIFIED BLOCK ===
+
     if any(m['user_id'] == current_user.id for m in circle.get("members", [])):
         invitations_collection.update_one({"_id": invitation["_id"]}, {"$set": {"status": InvitationStatusEnum.accepted.value}})
         raise HTTPException(status_code=400, detail="You are already a member of this circle.")
