@@ -340,3 +340,57 @@ class NotificationOut(BaseModel):
     created_at: datetime
     model_config = ConfigDict(populate_by_name=True)
 ```
+
+
+---
+
+## Appendix: A Manifesto for Humane Notifications in a World of Circles
+
+The "Circles" model doesn't just fix the feed; it provides the perfect foundation for a notification system that respects users' time, attention, and mental well-being. Instead of a single, chaotic firehose of alerts, we can build a system based on **intention** and **context**.
+
+### Guiding Principles
+
+1.  **Control Belongs to the User:** The user, not the platform, decides what is important.
+2.  **Context is Everything:** A notification's urgency is defined by the Circle it comes from.
+3.  **Calm Over Compulsion:** Inform, don't interrupt. Provide value without demanding immediate action.
+4.  **Clarity Over Curiosity:** Give the user everything they need to know directly in the notification.
+
+### Humane Notification Features Enabled by Circles
+
+#### 1\. Circle-Level Notification Controls
+
+This is the cornerstone. Forget generic on/off toggles. Users set their preferences on a per-circle basis.
+
+  * **"Family" Circle:** Immediate push notifications for all new posts and comments. This is my inner circle, and I want to know what's happening.
+  * **"Work Projects" Circle:** Push notifications for @-mentions only. All other activity is bundled into a daily digest. I need to be reachable, but not constantly distracted.
+  * **"Local Hiking Club" Circle:** All notifications are off. Activity appears as a "passive" update on the app's home screen. This is a low-priority interest, and I'll catch up when I have time.
+
+#### 2\. The Multi-Circle Digest
+
+Instead of a single, generic digest, users can schedule multiple, context-aware summaries.
+
+  * **The Morning Briefing (8:00 AM):** "Here's what happened overnight in your 'Work Projects' and 'Side Hustle' circles."
+  * **The Evening Roundup (7:00 PM):** "Catch up on your 'Book Club' and 'Hiking Club' circles from today."
+  * **Real-time Alerts:** The "Family" circle bypasses the digest entirely, preserving its high-priority status.
+
+#### 3\. The "Attention Budget"
+
+Users can set a "budget" for how many push notifications they're willing to receive from lower-priority circles per day.
+
+  * **Example:** "Allow up to 5 notifications per day from my 'Gaming Friends' circle." The system then uses its own logic to send only the most important ones (e.g., direct mentions, poll results you voted in) to stay within that budget. This respects the user's attention as a finite resource.
+
+#### 4\. Ambient Activity & The "Info Shelf"
+
+The `activity-status` endpoint powers a calmer way to stay informed.
+
+  * **The Quiet Badge:** Instead of a red dot with a number, the app icon might show a subtle glow or a small, abstract shape indicating new activity. There's something new, but it's not screaming for your attention.
+  * **The Dashboard:** Inside the app, each Circle icon shows a quiet summary of what's new ("3 new posts," "New poll results") so the user can choose where to direct their attention, rather than being led by a notification.
+
+#### 5\. AI-Powered Summaries for Busy Circles
+
+For extremely active circles, a simple notification count is still noise. We can leverage our OpenAI integration to provide true insight.
+
+  * **Instead of:** "25 new messages in 'Event Planning'."
+  * **You get:** "Activity in 'Event Planning' is high. The main topic is a debate about the venue, with 'The Grand Hall' being the current favorite. Also, Sarah is asking for everyone's dietary restrictions."
+
+By building these humane features on top of the Circles architecture, we create a product that is not only more organized but fundamentally more respectful of its users. We move from a system designed to maximize engagement to one designed to foster meaningful, calm, and intentional connection.
