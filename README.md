@@ -344,6 +344,36 @@ class NotificationOut(BaseModel):
 
 ---
 
+## Quick Deploy to Render
+
+You can instantly deploy your own running instance of the **mdb-circles** API server directly from this public repository to **Render** using the button below.
+
+This is the fastest way to get your server running on a live, scalable cloud platform.
+
+[](https://www.google.com/search?q=https://render.com/deploy%3Frepo%3Dhttps://github.com/ranfysvalle02/mdb-circles)
+
+### Prerequisites
+
+1.  A **Render** account.
+2.  A **MongoDB Atlas** connection string, as the service requires a database.
+3.  A **Cloudinary** account (optional, for full image-upload feature).
+
+### Environment Variables
+
+The deployment will require the following environment variables to be set in the Render dashboard. These are crucial for the API's security and functionality:
+
+| Variable Name | Description | Required |
+| :--- | :--- | :--- |
+| **MONGO\_URI** | Your connection string for the MongoDB Atlas database. | **Yes** |
+| **JWT\_SECRET** | A long, complex string used to sign user authentication tokens. | **Yes** |
+| **OPENAI\_API\_KEY** | The key for the AI-powered content creation feature. | **Yes** |
+| **CLOUDINARY\_CLOUD\_NAME** | Your Cloudinary Cloud Name for image hosting. | No (Optional) |
+| **CLOUDINARY\_API\_KEY** | Your Cloudinary API Key. | No (Optional) |
+| **CLOUDINARY\_API\_SECRET** | Your Cloudinary API Secret. | No (Optional) |
+| **ENVIRONMENT** | Set to `production` to ensure proper logging and security headers. | No (Recommended) |
+
+-----
+
 ## Appendix: A Manifesto for Humane Notifications in a World of Circles
 
 The "Circles" model doesn't just fix the feed; it provides the perfect foundation for a notification system that respects users' time, attention, and mental well-being. Instead of a single, chaotic firehose of alerts, we can build a system based on **intention** and **context**.
