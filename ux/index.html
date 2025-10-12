@@ -294,7 +294,7 @@
               <div id="sidebar">
                 <div class="glass-card">
                   <h3>
-                    <i class="bi bi-grid-3x3-gap"></i> My Circles
+                    <i class="bi bi-grid-3x3-gap"></i> myCircles
                   </h3>
                   <p class=" small">
                     Click a circle to view its feed.
@@ -674,15 +674,30 @@
                 </div>
               </div>
               <div class="tab-pane fade" id="createPlaylistPost">
-                <label for="playlistNameInput" class="visually-hidden"
-                  >Playlist Name</label
-                >
+                <label for="playlistNameInput" class="visually-hidden">Playlist Name</label>
                 <input
                   type="text"
                   id="playlistNameInput"
                   class="form-control playlistNameInput mb-2"
-                  placeholder="My Awesome Playlist"
+                  placeholder="My Awesome Playlist 🎵"
                 />
+
+                <div class="input-group mb-3">
+                  <input
+                    type="url"
+                    id="youtubeUrlInput"
+                    class="form-control"
+                    placeholder="Or paste a YouTube video URL here..."
+                  />
+                  <button
+                    class="btn btn-primary"
+                    type="button"
+                    data-action="add-yt-video-from-url"
+                  >
+                    <i class="bi bi-plus-lg"></i> Add
+                  </button>
+                </div>
+
                 <button
                   class="btn btn-secondary btn-sm mb-2"
                   data-action="open-yt-search"
@@ -700,58 +715,27 @@
                 </div>
               </div>
               <div class="tab-pane fade" id="createImagePost">
-                <label for="imageFileInput" class="form-label"
-                  >Upload an image directly from your device or camera.</label
-                >
+                <label for="imageFileInput" class="form-label">Upload up to 3 images from your device.</label>
                 <input
                   type="file"
                   class="form-control"
                   id="imageFileInput"
                   accept="image/*"
+                  multiple
                 />
-                <div
-                  id="imageUploadPreviewContainer"
-                  class="mt-3 text-center hidden"
-                >
-                  <img
-                    id="imageUploadPreview"
-                    src="#"
-                    alt="Image preview"
-                    class="img-fluid rounded"
-                    style="max-height: 250px;"
-                  />
-                  <div class="progress mt-2" style="height: 5px;">
-                    <div
-                      id="imageUploadProgressBar"
-                      class="progress-bar"
-                      role="progressbar"
-                      style="width: 0%;"
-                    ></div>
-                  </div>
+                <div id="imageUploadPreviewContainer" class="mt-3 d-flex flex-wrap gap-2 justify-content-center">
                 </div>
-                <hr />
-                <label for="imageUrlInput" class="form-label small"
-                  >Or, paste a direct image URL below:</label
-                >
-                <input
-                  type="text"
-                  class="form-control imageUrlInput"
-                  id="imageUrlInput"
-                  placeholder="Paste direct image URL..."
-                />
                 <div class="mt-3">
-                  <label for="imageCaptionInput" class="form-label small"
-                    >Optional Caption:</label
-                  >
+                  <label for="imageCaptionInput" class="form-label">Optional Caption:</label>
                   <textarea
                     id="imageCaptionInput"
                     class="form-control"
                     rows="2"
-                    placeholder="Describe your image..."
-                    maxlength="2200"
+                    placeholder="Describe your images..."
+                    maxlength="10000"
                   ></textarea>
                 </div>
-                </div>
+              </div>
               <div class="tab-pane fade" id="createSpotifyPost">
                 <label for="spotifyUrlInput" class="form-label">Paste a Spotify Playlist URL</label>
                 <input type="url" class="form-control" id="spotifyUrlInput" placeholder="https://open.spotify.com/playlist/...">
@@ -1291,7 +1275,7 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-primary" data-action="confirm-chat-participants">Confirm & Post</button>
+            <button type="button" class="btn btn-primary" data-action="confirm-chat-participants">Confirm</button>
           </div>
         </div>
       </div>
@@ -1318,6 +1302,47 @@
         </div>
       </div>
     </div>
+
+    <div class="modal fade" id="editPostModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Edit Post</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <form id="editPostForm">
+                <input type="hidden" id="editPostId">
+                <input type="hidden" id="editCircleId">
+                
+                <div id="editPostContentContainer" class="mb-3"></div>
+                
+                <div id="editPostTextContainer" class="mb-3">
+                  <label for="editPostText" class="form-label">Post Text</label>
+                  <textarea id="editPostText" class="form-control" rows="5"></textarea>
+                </div>
+                <div id="editPostTagsContainer" class="mb-3">
+                  <label for="editPostTags" class="form-label">Tags (comma-separated)</label>
+                  <input type="text" id="editPostTags" class="form-control">
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" role="switch" id="editEnableChatSwitch">
+                  <label class="form-check-label" for="editEnableChatSwitch">Enable Chat</label>
+                </div>
+                <div id="editChatOptionsContainer" class="mt-2 hidden">
+                  <button type="button" class="btn btn-sm btn-outline-primary" data-action="edit-chat-participants">
+                    <i class="bi bi-people-fill"></i> Manage Participants
+                  </button>
+                </div>
+              </form>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+              <button type="button" class="btn btn-primary" data-action="save-post-edits">Save Changes</button>
+            </div>
+          </div>
+        </div>
+      </div>
     
 
     <script

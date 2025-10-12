@@ -1,224 +1,262 @@
-# seed_db.py
 import os
-import random
 from datetime import datetime, timedelta, timezone
-from collections import defaultdict
-
+from pymongo import MongoClient
 from bson import ObjectId
-from dotenv import load_dotenv
-from faker import Faker
 from passlib.context import CryptContext
-from pymongo import ASCENDING, DESCENDING, IndexModel, MongoClient
+from dotenv import load_dotenv
 
-# --- Configuration & Setup ---
+# --- Configuration ---
+# Load environment variables from .env file
 load_dotenv()
-fake = Faker()
+
+# Use the same MongoDB URI and password context as your main application
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+DB_NAME = "circles_app"  # Make sure this matches your FastAPI app's database name
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-MONGO_DETAILS = os.getenv(
-    "MONGO_URI",
-    "mongodb://localhost:2717/?retryWrites=true&w=majority&directConnection=true"
-)
-client = MongoClient(MONGO_DETAILS)
-db = client.circles_app
+# --- Helper Functions ---
+def hash_password(password):
+    """Hashes a password using the application's context."""
+    return pwd_context.hash(password)
 
-# --- Main Seeding Function ---
+def get_utc_now():
+    """Returns the current time in a timezone-aware format."""
+    return datetime.now(timezone.utc)
+
+# --- Main Seeding Logic ---
 def seed_database():
     """
-    Clears and seeds the database with a variety of consistent, realistic data.
+    Clears and populates the database with a complete set of sample data.
     """
-    print("🚀 Starting database seeding process...")
+    print("--- Starting Database Seeding ---")
+    
+    try:
+        client = MongoClient(MONGO_URI)
+        db = client[DB_NAME]
+    except Exception as e:
+        print(f"❌ Could not connect to MongoDB: {e}")
+        return
 
-    # 1. Clean Slate: Drop existing collections for a fresh start
-    print("🔥 Clearing existing data...")
-    collections_to_drop = [
-        "users", "circles", "posts", "comments",
-        "invite_tokens", "invitations", "notifications"
+    # 1. Clear existing data
+    print("🗑️ Clearing existing collections...")
+    collections_to_clear = [
+        "users", "circles", "posts", "comments", 
+        "invitations", "notifications", "activity_events"
     ]
-    for collection in collections_to_drop:
-        db.drop_collection(collection)
+    for collection_name in collections_to_clear:
+        db[collection_name].delete_many({})
     print("✅ Collections cleared.")
 
-    # 2. Seed Users
-    print("👤 Seeding users...")
-    users = []
+    # 2. Create Users
+    print("\n👤 Creating users...")
+    users = {}
     user_data = [
-        {"username": "alice"}, {"username": "bob"}, {"username": "charlie"},
-        {"username": "diana"}, {"username": "evan"}, {"username": "frank"}
+        ("alice", "password123"),
+        ("bob", "password123"),
+        ("charlie", "password123"),
+        ("diana", "password123"),
+        ("eve", "password123"),
     ]
-    for user_info in user_data:
-        user = {
-            "_id": ObjectId(),
-            # Enforce lowercase usernames to match application logic
-            "username": user_info["username"].lower(),
-            "password_hash": pwd_context.hash("password123")
+    for username, password in user_data:
+        user_doc = {
+            "username": username,
+            "password_hash": hash_password(password),
         }
-        users.append(user)
-    db.users.insert_many(users)
+        result = db.users.insert_one(user_doc)
+        users[username] = result.inserted_id
+        print(f"   - Created user: {username}")
     print(f"✅ Created {len(users)} users.")
 
-    # Create a quick lookup map for user objects by username
-    user_map = {user["username"]: user for user in db.users.find()}
-
-    # 3. Seed Circles
-    print("🌐 Seeding circles...")
-    alice_id = user_map["alice"]["_id"]
-    bob_id = user_map["bob"]["_id"]
-    charlie_id = user_map["charlie"]["_id"]
-    diana_id = user_map["diana"]["_id"]
-    evan_id = user_map["evan"]["_id"]
-    frank_id = user_map["frank"]["_id"]
-
-    tech_members = [
-        {"user_id": alice_id, "username": "alice", "role": "admin"},
-        {"user_id": bob_id, "username": "bob", "role": "moderator"},
-        {"user_id": charlie_id, "username": "charlie", "role": "member"}
-    ]
-    circle_tech = {
-        "_id": ObjectId(), "name": "Tech Talk",
-        "description": fake.sentence(nb_words=10),
-        "owner_id": alice_id, "members": tech_members,
-        "created_at": fake.past_datetime(start_date="-30d", tzinfo=timezone.utc)
+    # 3. Create Circles
+    print("\n🌐 Creating circles and adding members...")
+    circles = {}
+    
+    # Circle 1: Cool Coders (Private)
+    coders_circle_doc = {
+        "name": "Cool Coders",
+        "description": "A private space for discussing development and projects.",
+        "owner_id": users["alice"],
+        "is_public": False,
+        "created_at": get_utc_now(),
+        "members": [
+            {"user_id": users["alice"], "username": "alice", "role": "admin"},
+            {"user_id": users["bob"], "username": "bob", "role": "moderator"},
+            {"user_id": users["charlie"], "username": "charlie", "role": "member"},
+        ]
     }
+    result = db.circles.insert_one(coders_circle_doc)
+    circles["coders"] = result.inserted_id
+    print("   - Created circle: Cool Coders")
 
-    book_members = [
-        {"user_id": diana_id, "username": "diana", "role": "admin"},
-        {"user_id": alice_id, "username": "alice", "role": "member"},
-        {"user_id": evan_id, "username": "evan", "role": "member"},
-        {"user_id": frank_id, "username": "frank", "role": "member"}
-    ]
-    circle_books = {
-        "_id": ObjectId(), "name": "Book Club",
-        "description": fake.sentence(nb_words=8),
-        "owner_id": diana_id, "members": book_members,
-        "created_at": fake.past_datetime(start_date="-30d", tzinfo=timezone.utc)
+    # Circle 2: Weekend Gamers (Private)
+    gamers_circle_doc = {
+        "name": "Weekend Gamers",
+        "description": "Planning our weekend gaming sessions. All skill levels welcome!",
+        "owner_id": users["bob"],
+        "is_public": False,
+        "created_at": get_utc_now(),
+        "members": [
+            {"user_id": users["bob"], "username": "bob", "role": "admin"},
+            {"user_id": users["diana"], "username": "diana", "role": "member"},
+            {"user_id": users["eve"], "username": "eve", "role": "member"},
+        ]
     }
-    db.circles.insert_many([circle_tech, circle_books])
-    print("✅ Created 2 circles.")
+    result = db.circles.insert_one(gamers_circle_doc)
+    circles["gamers"] = result.inserted_id
+    print("   - Created circle: Weekend Gamers")
 
-    # 4. Seed Posts & Comments
-    print("✍️ Seeding posts and comments...")
-    all_posts = []
-    all_comments = []
+    # Circle 3: Public Square (Public)
+    public_circle_doc = {
+        "name": "Public Square",
+        "description": "A public circle for everyone to share anything interesting.",
+        "owner_id": users["charlie"],
+        "is_public": True,
+        "created_at": get_utc_now(),
+        "members": [
+            {"user_id": users["charlie"], "username": "charlie", "role": "admin"},
+            {"user_id": users["alice"], "username": "alice", "role": "member"},
+            {"user_id": users["bob"], "username": "bob", "role": "member"},
+            {"user_id": users["diana"], "username": "diana", "role": "member"},
+            {"user_id": users["eve"], "username": "eve", "role": "member"},
+        ]
+    }
+    result = db.circles.insert_one(public_circle_doc)
+    circles["public"] = result.inserted_id
+    print("   - Created circle: Public Square")
+    print(f"✅ Created {len(circles)} circles.")
 
-    # --- Posts for Tech Talk ---
-    post1_id = ObjectId()
-    all_posts.append({
-        "_id": post1_id, "circle_id": circle_tech["_id"], "author_id": alice_id, "author_username": "alice",
-        "content": {
-            "post_type": "standard", "text": fake.paragraph(nb_sentences=4),
-            "link": "https://github.com", "tags": ["programming", "opensource"],
-        },
-        "created_at": fake.past_datetime(start_date="-10d", tzinfo=timezone.utc),
-        "seen_by_details": [{"user_id": bob_id, "seen_at": fake.past_datetime(start_date="-5d", tzinfo=timezone.utc)}],
-    })
-    all_comments.extend([
-        {"_id": ObjectId(), "post_id": post1_id, "post_author_id": alice_id, "commenter_id": bob_id, "commenter_username": "bob", "content": fake.sentence(), "created_at": fake.past_datetime(start_date="-9d", tzinfo=timezone.utc), "thread_user_id": bob_id},
-        {"_id": ObjectId(), "post_id": post1_id, "post_author_id": alice_id, "commenter_id": alice_id, "commenter_username": "alice", "content": "Thanks!", "created_at": fake.past_datetime(start_date="-8d", tzinfo=timezone.utc), "thread_user_id": bob_id}
-    ])
-
-    post2_id = ObjectId()
-    all_posts.append({
-        "_id": post2_id, "circle_id": circle_tech["_id"], "author_id": bob_id, "author_username": "bob",
-        "content": {
-            "post_type": "poll", "text": "What's your favorite code editor for web development?",
+    # 4. Create Posts
+    print("\n📝 Creating posts of various types...")
+    posts = {}
+    
+    # --- Post Definitions ---
+    post_definitions = [
+        # Standard Posts
+        {"author": "alice", "circle": "coders", "content": {"post_type": "standard", "text": "Just pushed a major update to the main branch! Please review my PR. The key file to check is `app/services/new_feature.py`."}},
+        {"author": "bob", "circle": "public", "content": {"post_type": "standard", "text": "Has anyone seen the latest Blade Runner movie? Thoughts?", "link": "https://www.imdb.com/title/tt1856101/", "tags": ["movies", "sci-fi"]}},
+        
+        # Poll Post
+        {"author": "bob", "circle": "gamers", "content": {
+            "post_type": "poll",
             "poll_data": {
-                "question": "Favorite Code Editor?",
-                "options": [
-                    {"text": "VS Code", "votes": [charlie_id]},
-                    {"text": "Neovim", "votes": [bob_id]},
-                    {"text": "JetBrains IDEs", "votes": []},
-                ],
+                "question": "What should we play this Friday?",
+                "options": [{"text": "Valorant"}, {"text": "Helldivers 2"}, {"text": "Lethal Company"}, {"text": "League of Legends"}]
             },
-            "expires_at": datetime.now(timezone.utc) + timedelta(days=3), "tags": ["development", "poll"],
-        },
-        "created_at": fake.past_datetime(start_date="-2d", tzinfo=timezone.utc),
-        "seen_by_details": [
-             {"user_id": alice_id, "seen_at": fake.past_datetime(start_date="-1d", tzinfo=timezone.utc)},
-             {"user_id": charlie_id, "seen_at": fake.past_datetime(start_date="-1d", tzinfo=timezone.utc)},
-        ],
-    })
+            "expires_at": get_utc_now() + timedelta(days=3),
+            "tags": ["planning", "gaming"]
+        }},
 
-    # --- Posts for Book Club ---
-    post3_id = ObjectId()
-    all_posts.append({
-        "_id": post3_id, "circle_id": circle_books["_id"], "author_id": diana_id, "author_username": "diana",
-        "content": {
-            "post_type": "wishlist", "text": "My reading wishlist for the next few months!",
+        # YouTube Playlist Post
+        {"author": "charlie", "circle": "public", "content": {
+            "post_type": "yt-playlist",
+            "playlist_data": {
+                "name": "Chill Lofi Beats to Code/Relax to",
+                "videos": [
+                    {"id": "5qap5aO4i9A", "title": "lofi hip hop radio 📚 - beats to relax/study to", "imageSrc": "https://i.ytimg.com/vi/5qap5aO4i9A/hqdefault_live.jpg"},
+                    {"id": "jfKfPfyJRdk", "title": "lofi hip hop radio 💤 - beats to sleep/chill to", "imageSrc": "https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault_live.jpg"}
+                ]
+            },
+            "tags": ["music", "focus"]
+        }},
+        
+        # Wishlist Post
+        {"author": "diana", "circle": "gamers", "content": {
+            "post_type": "wishlist",
+            "text": "My PC Upgrade Wishlist!",
             "wishlist_data": [
-                {"url": "https://www.goodreads.com/book/show/18144590-the-three-body-problem", "title": "The Three-Body Problem", "description": fake.sentence(), "image": "https://i.gr-assets.com/images/S/compressed.photo.goodreads.com/books/1415428227l/20518872.jpg"},
-                {"url": "https://www.goodreads.com/book/show/13496.A_Game_of_Thrones", "title": "A Game of Thrones", "description": fake.sentence(), "image": "https://i.gr-assets.com/images/S/compressed.photo.goodreads.com/books/1562726234l/13496.jpg"}
-            ],
-            "tags": ["scifi", "fantasy", "wishlist"],
-        },
-        "created_at": fake.past_datetime(start_date="-5d", tzinfo=timezone.utc),
-        "seen_by_details": [{"user_id": alice_id, "seen_at": fake.past_datetime(start_date="-1d", tzinfo=timezone.utc)}],
-    })
+                {"url": "https://www.amazon.com/dp/B09VCHR1VH", "title": "NVIDIA GeForce RTX 4090"},
+                {"url": "https://www.amazon.com/dp/B0BEHH2V26", "title": "AMD Ryzen 9 7950X3D"}
+            ]
+        }},
 
-    if all_posts:
-        db.posts.insert_many(all_posts)
-        print(f"✅ Created {len(all_posts)} posts.")
-    if all_comments:
-        db.comments.insert_many(all_comments)
-        print(f"✅ Created {len(all_comments)} comments.")
+        # Image Post
+        {"author": "eve", "circle": "public", "content": {
+            "post_type": "image",
+            "images_data": [{
+                "url": "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+                "public_id": "sample", "height": 864, "width": 1280,
+                "caption": "Found this cool sample image. What a landscape!"
+            }],
+            "tags": ["photography", "nature"]
+        }},
+        
+        # Spotify Playlist Post
+        {"author": "alice", "circle": "public", "content": {
+            "post_type": "spotify_playlist",
+            "text": "Check out my workout playlist!",
+            "spotify_playlist_data": {
+                "playlist_name": "Beast Mode",
+                "embed_url": "https://open.spotify.com/embed/playlist/?utm_source=generator",
+                "spotify_url": "http://googleusercontent.com/spotify.com/6"
+            },
+            "tags": ["music", "fitness"]
+        }},
+    ]
+    
+    for i, p_def in enumerate(post_definitions):
+        author_id = users[p_def["author"]]
+        circle_id = circles[p_def["circle"]]
+        post_doc = {
+            "author_id": author_id,
+            "author_username": p_def["author"],
+            "circle_id": circle_id,
+            "content": p_def["content"],
+            "created_at": get_utc_now() - timedelta(hours=i*2), # Stagger post times
+            "seen_by_details": [],
+            "comment_count": 0,
+            "is_chat_enabled": False,
+        }
+        # Add poll votes for the poll post
+        if p_def["content"]["post_type"] == "poll":
+            post_doc["content"]["poll_data"]["options"][0]["votes"] = [users["diana"]]
+            post_doc["content"]["poll_data"]["options"][1]["votes"] = [users["bob"], users["eve"]]
 
-    # 5. Seed Invitations & Notifications
-    print("✉️ Seeding invitations and notifications...")
-    # Create a pending invitation from Alice inviting Diana to Tech Talk
-    invitation = {
-        "_id": ObjectId(), "circle_id": circle_tech["_id"], "inviter_id": alice_id,
-        "invitee_id": diana_id, "status": "pending",
-        "created_at": datetime.now(timezone.utc) - timedelta(days=1)
+        result = db.posts.insert_one(post_doc)
+        posts[f"post_{i+1}"] = result.inserted_id
+    
+    print(f"✅ Created {len(posts)} posts.")
+
+    # 5. Simulate Post Views and Comments
+    print("\n💬 Simulating views and comments...")
+    
+    # Add views to the first post
+    db.posts.update_one(
+        {"_id": posts["post_1"]},
+        {"$set": {
+            "seen_by_details": [
+                {"user_id": users["bob"], "seen_at": get_utc_now() - timedelta(minutes=30)},
+                {"user_id": users["charlie"], "seen_at": get_utc_now() - timedelta(minutes=15)},
+            ]
+        }}
+    )
+
+    # Add comments
+    comment1_doc = {
+        "post_id": posts["post_1"], "post_author_id": users["alice"],
+        "commenter_id": users["bob"], "commenter_username": "bob",
+        "content": "Looks good, Alice! Just left a couple of minor suggestions on the PR.",
+        "created_at": get_utc_now() - timedelta(minutes=10),
+        "thread_user_id": users["bob"], # Non-author comment, thread is their own
     }
-    db.invitations.insert_one(invitation)
+    db.comments.insert_one(comment1_doc)
 
-    # Create a corresponding notification for Diana
-    notification = {
-        "_id": ObjectId(), "user_id": diana_id, "type": "invite_received",
-        "content": {
-            "circle_id": str(circle_tech["_id"]), "circle_name": circle_tech["name"],
-            "inviter_username": "alice"
-        },
-        "is_read": False, "created_at": datetime.now(timezone.utc) - timedelta(days=1)
+    comment2_doc = {
+        "post_id": posts["post_1"], "post_author_id": users["alice"],
+        "commenter_id": users["alice"], "commenter_username": "alice",
+        "content": "Thanks for the quick review, Bob! I'll address them now.",
+        "created_at": get_utc_now() - timedelta(minutes=5),
+        "thread_user_id": users["bob"], # Author replying to Bob's thread
     }
-    db.notifications.insert_one(notification)
-    print("✅ Created 1 pending invitation and 1 notification.")
+    db.comments.insert_one(comment2_doc)
 
+    # Update comment count on the post
+    db.posts.update_one({"_id": posts["post_1"]}, {"$set": {"comment_count": 2}})
+    print("✅ Simulated activity on posts.")
 
-    # 6. Final Data Integrity Pass: Update comment counts on posts
-    print("🔄 Syncing post comment counts...")
-    comment_counts = defaultdict(int)
-    for comment in all_comments:
-        comment_counts[comment["post_id"]] += 1
+    # --- Finalization ---
+    print("\n\n--- Seeding Complete! ---")
+    print(f"Database '{DB_NAME}' is now populated with sample data.")
+    client.close()
 
-    for post_id, count in comment_counts.items():
-        db.posts.update_one({"_id": post_id}, {"$set": {"comment_count": count}})
-    print("✅ Comment counts synced.")
-
-
-    # 7. Ensure Indexes
-    # Note: This is good practice for a standalone script, but may be redundant
-    # if the FastAPI 'lifespan' function is also creating them.
-    print("🔍 Ensuring database indexes exist...")
-    db.users.create_index([("username", ASCENDING)], unique=True)
-    db.circles.create_index([("name", ASCENDING)])
-    db.posts.create_index([("circle_id", ASCENDING), ("created_at", DESCENDING)])
-    db.posts.create_index([("content.tags", ASCENDING)])
-    db.invite_tokens.create_index([("expires_at", DESCENDING)], expireAfterSeconds=0)
-    db.invitations.create_index([("invitee_id", ASCENDING), ("status", ASCENDING)])
-    db.comments.create_index([("post_id", ASCENDING), ("created_at", ASCENDING)])
-    print("✅ Indexes ensured.")
-
-
-    print("\n🎉 Database seeding complete! 🎉")
-    print("You can log in with: alice, bob, charlie, diana, evan, frank")
-    print("The password for all users is: password123")
-    print("\n💡 Try logging in as 'diana' to see the pending circle invitation!")
-
-
-# --- Run the Seeder ---
 if __name__ == "__main__":
-    try:
-        seed_database()
-    finally:
-        client.close()
+    seed_database()
