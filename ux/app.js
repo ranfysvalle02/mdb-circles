@@ -1961,21 +1961,17 @@ async function finalizePostCreation() {
             case 'image':
                 {
                     postTypeForApi = 'image';
-                    const imageUrl = creator.querySelector('.imageUrlInput').value.trim();
                     const caption = creator.querySelector('#imageCaptionInput').value.trim();
-                    if (!state.postCreation.imageData && !imageUrl) {
-                        throw new Error('Please upload an image or provide an image URL.');
+                    
+                    // Corrected Logic: Only check for an image uploaded to the state.
+                    if (!state.postCreation.imageData) {
+                        throw new Error('Please wait for the image to finish uploading.');
                     }
-                    if (state.postCreation.imageData) {
-                        payload.image_data = { ...state.postCreation.imageData,
-                            caption
-                        };
-                    } else {
-                        payload.image_data = {
-                            url: imageUrl,
-                            caption
-                        };
-                    }
+
+                    // The image data is from the successful upload. Just add the caption.
+                    payload.image_data = { ...state.postCreation.imageData,
+                        caption
+                    };
                     break;
                 }
             case 'spotify_playlist':
