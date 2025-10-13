@@ -1970,10 +1970,10 @@ async function finalizePostCreation() {
                     }
 
                     // It now correctly uses the data from the successful upload and adds the caption.
-                    payload.image_data = { 
+                    payload.images_data = [{ 
                         ...state.postCreation.imageData,
                         caption: caption 
-                    };
+                    }];
                     break;
                 }
             case 'spotify_playlist':
