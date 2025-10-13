@@ -1963,14 +1963,16 @@ async function finalizePostCreation() {
                     postTypeForApi = 'image';
                     const caption = creator.querySelector('#imageCaptionInput').value.trim();
                     
-                    // Corrected Logic: Only check for an image uploaded to the state.
+                    // This is the corrected logic. It no longer looks for a non-existent URL input
+                    // and correctly checks if the image data from the upload exists.
                     if (!state.postCreation.imageData) {
-                        throw new Error('Please wait for the image to finish uploading.');
+                        throw new Error('Please wait for the image to finish uploading, or select a file.');
                     }
 
-                    // The image data is from the successful upload. Just add the caption.
-                    payload.image_data = { ...state.postCreation.imageData,
-                        caption
+                    // It now correctly uses the data from the successful upload and adds the caption.
+                    payload.image_data = { 
+                        ...state.postCreation.imageData,
+                        caption: caption 
                     };
                     break;
                 }
