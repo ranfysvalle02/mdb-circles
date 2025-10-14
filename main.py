@@ -364,7 +364,8 @@ class PostCreate(BaseModel):
     playlist_data: Optional[PlaylistData] = None
     poll_data: Optional[PollData] = None
     wishlist_data: Optional[List[WishlistItem]] = None
-    images_data: Optional[List[ImageData]] = Field(default=None, max_length=3)
+    # The max_length is now set to 1
+    images_data: Optional[List[ImageData]] = Field(default=None, max_length=1)
     poll_duration_hours: Optional[int] = None
     spotify_playlist_data: Optional[SpotifyPlaylistData] = None
     is_chat_enabled: bool = False
