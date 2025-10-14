@@ -1523,7 +1523,9 @@ ${imageHtml}
                     }
                 case 'image':
                     {
-                        const img = post.content.image_data;
+                        const img = (post.content.images_data && post.content.images_data.length > 0) 
+                            ? post.content.images_data[0] 
+                            : post.content.image_data;
                         if (img && img.url) {
                             const captionHtml = img.caption ?
                                 `<div class="card-body"><p class="card-text" style="white-space: pre-wrap;color:white;">${img.caption}</p></div>` :
