@@ -24,7 +24,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, Field, AnyHttpUrl, ConfigDict, ValidationError
 from passlib.context import CryptContext
-from pymongo import MongoClient, ASCENDING, DESCENDING, IndexModel
+from pymongo import MongoClient, ASCENDING, DESCENDING, IndexModel, ReadPreference
+from pymongo.errors import ServerSelectionTimeoutError
 from bson import ObjectId
 from pydantic_core import core_schema
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -75,7 +76,16 @@ if all([SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET]):
 else:
     print("Warning: Spotify credentials not found. Spotify features will be disabled.")
 
-client = MongoClient(os.getenv("MONGO_URI"), serverSelectionTimeoutMS=5000)
+# MongoDB client configuration with improved timeout and retry settings
+# to handle replica set elections and transient connection issues
+client = MongoClient(
+    os.getenv("MONGO_URI"), 
+    serverSelectionTimeoutMS=30000,  # Increased from 5s to 30s to handle replica set elections
+    retryWrites=True,  # Automatically retry write operations on transient errors
+    retryReads=True,   # Automatically retry read operations on transient errors
+    connectTimeoutMS=10000,  # Connection timeout
+    socketTimeoutMS=30000    # Socket timeout
+)
 db = client.circles_app
 
 users_collection = db.get_collection("users")
