@@ -96,6 +96,7 @@ invitations_collection = db.get_collection("invitations")
 notifications_collection = db.get_collection("notifications")
 comments_collection = db.get_collection("comments")
 activity_events_collection = db.get_collection("activity_events")
+friends_collection = db.get_collection("friends")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -125,6 +126,9 @@ async def lifespan(app: FastAPI):
     comments_collection.create_index([("thread_user_id", ASCENDING)])
     activity_events_collection.create_index([("notified_user_ids", ASCENDING)])
     activity_events_collection.create_index([("timestamp", DESCENDING)])
+    friends_collection.create_index([("user_id", ASCENDING), ("friend_id", ASCENDING)], unique=True)
+    friends_collection.create_index([("user_id", ASCENDING), ("status", ASCENDING)])
+    friends_collection.create_index([("friend_id", ASCENDING), ("status", ASCENDING)])
 
     print("Database indexes ensured.")
     yield
@@ -193,6 +197,12 @@ class NotificationTypeEnum(str, Enum):
     new_comment = "new_comment"
     chat_invite = "chat_invite"
     new_chat_message = "new_chat_message"
+    friend_request_received = "friend_request_received"
+    friend_request_accepted = "friend_request_accepted"
+
+class FriendStatusEnum(str, Enum):
+    pending = "pending"
+    accepted = "accepted"
 
 class ActivityEventTypeEnum(str, Enum):
     new_post = "new_post"
@@ -513,6 +523,27 @@ class ChatMessageOut(BaseModel):
 
 class ChatParticipantUpdateRequest(BaseModel):
     participant_ids: List[PyObjectId]
+
+class FriendRequestCreate(BaseModel):
+    username: str = Field(..., min_length=1)
+
+class FriendOut(BaseModel):
+    id: PyObjectId = Field(alias="_id")
+    user_id: PyObjectId
+    username: str
+    status: FriendStatusEnum
+    created_at: datetime
+    requested_by: PyObjectId
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+class FriendRequestOut(BaseModel):
+    id: PyObjectId = Field(alias="_id")
+    user_id: PyObjectId
+    username: str
+    status: FriendStatusEnum
+    created_at: datetime
+    is_sent_by_me: bool
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 # ==============================================================================
@@ -1915,6 +1946,208 @@ async def update_chat_participants(post_id: str, update_data: ChatParticipantUpd
     )
     
     return [ChatParticipant(**p) for p in new_participant_docs]
+
+# ----------------------------------
+# Friends
+# ----------------------------------
+@app.post("/friends/request", status_code=201, tags=["Friends"])
+async def send_friend_request(request_data: FriendRequestCreate, current_user: UserInDB = Depends(get_current_user)):
+    """Send a friend request to another user."""
+    target_user = users_collection.find_one({"username": request_data.username.lower()})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    
+    target_user_id = target_user["_id"]
+    if target_user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="You cannot send a friend request to yourself.")
+    
+    # Check if friendship already exists
+    existing_friendship = friends_collection.find_one({
+        "$or": [
+            {"user_id": current_user.id, "friend_id": target_user_id},
+            {"user_id": target_user_id, "friend_id": current_user.id}
+        ]
+    })
+    if existing_friendship:
+        if existing_friendship["status"] == FriendStatusEnum.accepted.value:
+            raise HTTPException(status_code=400, detail="You are already friends with this user.")
+        elif existing_friendship["status"] == FriendStatusEnum.pending.value:
+            raise HTTPException(status_code=400, detail="A friend request is already pending between you two.")
+    
+    # Create friend request (bidirectional for easy lookup)
+    now = datetime.now(timezone.utc)
+    friend_doc = {
+        "user_id": current_user.id,
+        "friend_id": target_user_id,
+        "username": target_user["username"],
+        "status": FriendStatusEnum.pending.value,
+        "created_at": now,
+        "requested_by": current_user.id
+    }
+    friends_collection.insert_one(friend_doc)
+    
+    # Create reverse entry for the target user
+    reverse_friend_doc = {
+        "user_id": target_user_id,
+        "friend_id": current_user.id,
+        "username": current_user.username,
+        "status": FriendStatusEnum.pending.value,
+        "created_at": now,
+        "requested_by": current_user.id
+    }
+    friends_collection.insert_one(reverse_friend_doc)
+    
+    # Create notification for target user
+    await create_notification(
+        user_id=target_user_id,
+        notification_type=NotificationTypeEnum.friend_request_received,
+        content={
+            "requester_username": current_user.username,
+            "requester_id": str(current_user.id)
+        }
+    )
+    
+    return {"message": f"Friend request sent to {target_user['username']}."}
+
+@app.get("/friends", response_model=List[FriendRequestOut], tags=["Friends"])
+async def get_friends(
+    current_user: UserInDB = Depends(get_current_user),
+    status: Optional[FriendStatusEnum] = Query(None, description="Filter by status: pending or accepted")
+):
+    """Get list of friends and friend requests."""
+    query = {"user_id": current_user.id}
+    if status:
+        query["status"] = status.value
+    
+    friends_cursor = friends_collection.find(query).sort("created_at", DESCENDING)
+    result = []
+    for friend_doc in friends_cursor:
+        is_sent_by_me = friend_doc.get("requested_by") == current_user.id
+        result.append(FriendRequestOut(
+            **friend_doc,
+            is_sent_by_me=is_sent_by_me
+        ))
+    return result
+
+@app.post("/friends/{friend_id}/accept", status_code=200, tags=["Friends"])
+async def accept_friend_request(friend_id: str, current_user: UserInDB = Depends(get_current_user)):
+    """Accept a friend request."""
+    if not ObjectId.is_valid(friend_id):
+        raise HTTPException(status_code=400, detail="Invalid friend ID.")
+    
+    target_user_id = ObjectId(friend_id)
+    
+    # Check if friend request exists
+    friend_request = friends_collection.find_one({
+        "user_id": current_user.id,
+        "friend_id": target_user_id,
+        "status": FriendStatusEnum.pending.value
+    })
+    if not friend_request:
+        raise HTTPException(status_code=404, detail="Friend request not found.")
+    
+    # Update both sides to accepted
+    friends_collection.update_many(
+        {
+            "$or": [
+                {"user_id": current_user.id, "friend_id": target_user_id},
+                {"user_id": target_user_id, "friend_id": current_user.id}
+            ]
+        },
+        {"$set": {"status": FriendStatusEnum.accepted.value}}
+    )
+    
+    # Get the requester's username for notification
+    requester = users_collection.find_one({"_id": target_user_id})
+    if requester:
+        await create_notification(
+            user_id=target_user_id,
+            notification_type=NotificationTypeEnum.friend_request_accepted,
+            content={
+                "accepter_username": current_user.username,
+                "accepter_id": str(current_user.id)
+            }
+        )
+    
+    return {"message": "Friend request accepted."}
+
+@app.post("/friends/{friend_id}/reject", status_code=200, tags=["Friends"])
+async def reject_friend_request(friend_id: str, current_user: UserInDB = Depends(get_current_user)):
+    """Reject a friend request."""
+    if not ObjectId.is_valid(friend_id):
+        raise HTTPException(status_code=400, detail="Invalid friend ID.")
+    
+    target_user_id = ObjectId(friend_id)
+    
+    # Check if friend request exists
+    friend_request = friends_collection.find_one({
+        "user_id": current_user.id,
+        "friend_id": target_user_id,
+        "status": FriendStatusEnum.pending.value
+    })
+    if not friend_request:
+        raise HTTPException(status_code=404, detail="Friend request not found.")
+    
+    # Delete both sides of the friendship
+    friends_collection.delete_many({
+        "$or": [
+            {"user_id": current_user.id, "friend_id": target_user_id},
+            {"user_id": target_user_id, "friend_id": current_user.id}
+        ]
+    })
+    
+    return {"message": "Friend request rejected."}
+
+@app.delete("/friends/{friend_id}", status_code=204, tags=["Friends"])
+async def remove_friend(friend_id: str, current_user: UserInDB = Depends(get_current_user)):
+    """Remove a friend (unfriend)."""
+    if not ObjectId.is_valid(friend_id):
+        raise HTTPException(status_code=400, detail="Invalid friend ID.")
+    
+    target_user_id = ObjectId(friend_id)
+    
+    # Check if friendship exists
+    friendship = friends_collection.find_one({
+        "user_id": current_user.id,
+        "friend_id": target_user_id,
+        "status": FriendStatusEnum.accepted.value
+    })
+    if not friendship:
+        raise HTTPException(status_code=404, detail="Friendship not found.")
+    
+    # Delete both sides of the friendship
+    friends_collection.delete_many({
+        "$or": [
+            {"user_id": current_user.id, "friend_id": target_user_id},
+            {"user_id": target_user_id, "friend_id": current_user.id}
+        ]
+    })
+    
+    return Response(status_code=204)
+
+@app.get("/friends/{friend_id}/status", tags=["Friends"])
+async def get_friend_status(friend_id: str, current_user: UserInDB = Depends(get_current_user)):
+    """Get the friendship status with a user."""
+    if not ObjectId.is_valid(friend_id):
+        raise HTTPException(status_code=400, detail="Invalid friend ID.")
+    
+    target_user_id = ObjectId(friend_id)
+    
+    if target_user_id == current_user.id:
+        return {"status": "self"}
+    
+    friendship = friends_collection.find_one({
+        "user_id": current_user.id,
+        "friend_id": target_user_id
+    })
+    
+    if not friendship:
+        return {"status": "none"}
+    
+    return {
+        "status": friendship["status"],
+        "is_sent_by_me": friendship.get("requested_by") == current_user.id
+    }
 
 # ----------------------------------
 # Static / Frontend

@@ -170,6 +170,10 @@ const state = {
         circleId: null,
         originalPost: null,
         participant_ids: []
+    },
+    friends: {
+        list: [],
+        requests: []
     }
 };
 
@@ -185,7 +189,11 @@ const dom = {
     circleHeader: document.getElementById('circleHeader'),
     circleFeedContainer: document.getElementById('circleFeedContainer'),
     feedLoader: document.getElementById('feed-loader'),
-    circlePostCreatorContainer: null
+    circlePostCreatorContainer: null,
+    friendsContainer: document.getElementById('friendsContainer'),
+    friendRequestsList: document.getElementById('friendRequestsList'),
+    friendUsernameInput: document.getElementById('friendUsernameInput'),
+    sendFriendRequestBtn: document.getElementById('sendFriendRequestBtn')
 };
 
 // -----------------------------------------------
@@ -735,6 +743,14 @@ function renderActivityItems() {
                         notificationLink = `javascript:document.querySelector('[data-post-id="${item.type_specific.content.post_id}"] [data-action="open-comments"]')?.click()`;
                     }
                     break;
+                case 'friend_request_received':
+                    contentHtml = `<img src="${generateAvatarUrl(item.type_specific.content.requester_username)}" class="avatar-small me-2"> <strong>${item.type_specific.content.requester_username}</strong> sent you a friend request.`;
+                    notificationLink = '#'; // No link for friend requests
+                    break;
+                case 'friend_request_accepted':
+                    contentHtml = `<img src="${generateAvatarUrl(item.type_specific.content.accepter_username)}" class="avatar-small me-2"> <strong>${item.type_specific.content.accepter_username}</strong> accepted your friend request.`;
+                    notificationLink = '#'; // No link for friend requests
+                    break;
                 default:
                     contentHtml = `An unknown notification was received.`;
             }
@@ -1146,9 +1162,148 @@ async function renderAllSidebarComponents() {
         const myCircles = await apiFetch('/circles/mine');
         state.myCircles = myCircles;
         renderMyCircles(myCircles);
+        await loadFriends();
     } catch (error) {
         console.error("Failed to load sidebar components", error);
         dom.myCirclesContainer.innerHTML = `<div class="empty-placeholder text-danger small">Could not load circles.</div>`;
+    }
+}
+
+async function loadFriends() {
+    if (!state.currentUser) return;
+    try {
+        const friends = await apiFetch('/friends');
+        state.friends.list = friends.filter(f => f.status === 'accepted');
+        state.friends.requests = friends.filter(f => f.status === 'pending');
+        renderFriends();
+        renderFriendRequests();
+    } catch (error) {
+        console.error("Failed to load friends", error);
+    }
+}
+
+function renderFriends() {
+    if (!dom.friendsContainer) return;
+    const friends = state.friends.list;
+    
+    if (friends.length === 0) {
+        dom.friendsContainer.innerHTML = `
+            <div class="list-group-item small text-center">
+                Your friends will appear here.
+            </div>
+        `;
+        return;
+    }
+    
+    dom.friendsContainer.innerHTML = friends.map(friend => `
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-person-check me-2"></i>${friend.username}</span>
+            <button class="btn btn-sm btn-outline-danger" data-action="remove-friend" data-friend-id="${friend.user_id}">
+                <i class="bi bi-person-x"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+function renderFriendRequests() {
+    if (!dom.friendRequestsList) return;
+    const requests = state.friends.requests;
+    
+    if (requests.length === 0) {
+        dom.friendRequestsList.innerHTML = `
+            <div class="list-group-item small text-center">
+                No pending requests.
+            </div>
+        `;
+        return;
+    }
+    
+    dom.friendRequestsList.innerHTML = requests.map(request => {
+        if (request.is_sent_by_me) {
+            return `
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-person-plus me-2"></i>${request.username}</span>
+                    <span class="badge bg-secondary">Pending</span>
+                </div>
+            `;
+        } else {
+            return `
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-person-plus me-2"></i>${request.username}</span>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-success" data-action="accept-friend" data-friend-id="${request.user_id}">
+                            <i class="bi bi-check"></i>
+                        </button>
+                        <button class="btn btn-danger" data-action="reject-friend" data-friend-id="${request.user_id}">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+    }).join('');
+}
+
+async function sendFriendRequest(username) {
+    if (!username || !username.trim()) {
+        showStatus('Please enter a username.', 'error');
+        return;
+    }
+    
+    try {
+        setButtonLoading(dom.sendFriendRequestBtn, true);
+        await apiFetch('/friends/request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: username.trim() })
+        });
+        showStatus('Friend request sent!', 'success');
+        dom.friendUsernameInput.value = '';
+        const modal = bootstrap.Modal.getInstance(document.getElementById('addFriendModal'));
+        if (modal) modal.hide();
+        await loadFriends();
+    } catch (error) {
+        showStatus(error.message || 'Failed to send friend request.', 'error');
+    } finally {
+        setButtonLoading(dom.sendFriendRequestBtn, false);
+    }
+}
+
+async function acceptFriendRequest(friendId) {
+    try {
+        await apiFetch(`/friends/${friendId}/accept`, {
+            method: 'POST'
+        });
+        showStatus('Friend request accepted!', 'success');
+        await loadFriends();
+    } catch (error) {
+        showStatus(error.message || 'Failed to accept friend request.', 'error');
+    }
+}
+
+async function rejectFriendRequest(friendId) {
+    try {
+        await apiFetch(`/friends/${friendId}/reject`, {
+            method: 'POST'
+        });
+        showStatus('Friend request rejected.', 'info');
+        await loadFriends();
+    } catch (error) {
+        showStatus(error.message || 'Failed to reject friend request.', 'error');
+    }
+}
+
+async function removeFriend(friendId) {
+    if (!confirm('Are you sure you want to remove this friend?')) return;
+    
+    try {
+        await apiFetch(`/friends/${friendId}`, {
+            method: 'DELETE'
+        });
+        showStatus('Friend removed.', 'info');
+        await loadFriends();
+    } catch (error) {
+        showStatus(error.message || 'Failed to remove friend.', 'error');
     }
 }
 
@@ -2945,12 +3100,16 @@ function renderCircleManagementUI(circle) {
                 member: 'bg-secondary'
             } [member.role];
 
+            const isFriend = state.friends.list.some(f => f.user_id === member.user_id);
+            const friendBadge = isFriend ? '<i class="bi bi-person-check-fill text-primary ms-2" title="Friend"></i>' : '';
+            
             return `
            <div class="list-group-item d-flex justify-content-between align-items-center">
            <div>
               <img src="${generateAvatarUrl(member.username)}" class="avatar-small me-2">
               <strong>${member.username}</strong>
               <span class="badge rounded-pill ${roleBadge} ms-2">${member.role}</span>
+              ${friendBadge}
            </div>
            <div class="btn-group">${actionButtons}</div>
            </div>`;
@@ -3587,6 +3746,21 @@ Added videos will appear here. You can drag to reorder.
                     }
                     break;
                 }
+            case 'send-friend-request':
+                {
+                    const username = dom.friendUsernameInput?.value.trim();
+                    await sendFriendRequest(username);
+                    break;
+                }
+            case 'accept-friend':
+                await acceptFriendRequest(data.friendId);
+                break;
+            case 'reject-friend':
+                await rejectFriendRequest(data.friendId);
+                break;
+            case 'remove-friend':
+                await removeFriend(data.friendId);
+                break;
             case 'show-seen-status':
                 handleShowSeenStatus(data.postId);
                 break;
@@ -4033,6 +4207,17 @@ ${options.length <= 2 ? 'disabled' : ''}>
         } finally {
             setButtonLoading(btn, false);
         }
+    }
+
+    // Handle Enter key in friend username input
+    if (dom.friendUsernameInput) {
+        dom.friendUsernameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const username = dom.friendUsernameInput.value.trim();
+                sendFriendRequest(username);
+            }
+        });
     }
 
     initTheme();
