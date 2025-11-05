@@ -41,7 +41,7 @@ def seed_database():
     print("🗑️ Clearing existing collections...")
     collections_to_clear = [
         "users", "circles", "posts", "comments", 
-        "invitations", "notifications", "activity_events"
+        "invitations", "notifications", "activity_events", "friends"
     ]
     for collection_name in collections_to_clear:
         db[collection_name].delete_many({})
@@ -72,6 +72,7 @@ def seed_database():
     circles = {}
     
     # Circle 1: Cool Coders (Private)
+    # Note: Colors are member-specific - each member can have their own color for this circle
     coders_circle_doc = {
         "name": "Cool Coders",
         "description": "A private space for discussing development and projects.",
@@ -79,9 +80,9 @@ def seed_database():
         "is_public": False,
         "created_at": get_utc_now(),
         "members": [
-            {"user_id": users["alice"], "username": "alice", "role": "admin"},
-            {"user_id": users["bob"], "username": "bob", "role": "moderator"},
-            {"user_id": users["charlie"], "username": "charlie", "role": "member"},
+            {"user_id": users["alice"], "username": "alice", "role": "admin", "color": "#3B82F6"},  # Blue for alice
+            {"user_id": users["bob"], "username": "bob", "role": "moderator", "color": "#10B981"},  # Green for bob
+            {"user_id": users["charlie"], "username": "charlie", "role": "member", "color": "#F59E0B"},  # Orange for charlie
         ]
     }
     result = db.circles.insert_one(coders_circle_doc)
@@ -89,6 +90,7 @@ def seed_database():
     print("   - Created circle: Cool Coders")
 
     # Circle 2: Weekend Gamers (Private)
+    # Note: Colors are member-specific - different members see this circle in different colors
     gamers_circle_doc = {
         "name": "Weekend Gamers",
         "description": "Planning our weekend gaming sessions. All skill levels welcome!",
@@ -96,9 +98,9 @@ def seed_database():
         "is_public": False,
         "created_at": get_utc_now(),
         "members": [
-            {"user_id": users["bob"], "username": "bob", "role": "admin"},
-            {"user_id": users["diana"], "username": "diana", "role": "member"},
-            {"user_id": users["eve"], "username": "eve", "role": "member"},
+            {"user_id": users["bob"], "username": "bob", "role": "admin", "color": "#8B5CF6"},  # Purple for bob
+            {"user_id": users["diana"], "username": "diana", "role": "member", "color": "#EF4444"},  # Red for diana
+            {"user_id": users["eve"], "username": "eve", "role": "member", "color": "#06B6D4"},  # Cyan for eve
         ]
     }
     result = db.circles.insert_one(gamers_circle_doc)
@@ -106,6 +108,8 @@ def seed_database():
     print("   - Created circle: Weekend Gamers")
 
     # Circle 3: Public Square (Public)
+    # Note: Colors are member-specific - demonstrates that same circle can have different colors per member
+    # Some members have colors, some don't (to show fallback behavior)
     public_circle_doc = {
         "name": "Public Square",
         "description": "A public circle for everyone to share anything interesting.",
@@ -113,11 +117,11 @@ def seed_database():
         "is_public": True,
         "created_at": get_utc_now(),
         "members": [
-            {"user_id": users["charlie"], "username": "charlie", "role": "admin"},
-            {"user_id": users["alice"], "username": "alice", "role": "member"},
-            {"user_id": users["bob"], "username": "bob", "role": "member"},
-            {"user_id": users["diana"], "username": "diana", "role": "member"},
-            {"user_id": users["eve"], "username": "eve", "role": "member"},
+            {"user_id": users["charlie"], "username": "charlie", "role": "admin", "color": "#F97316"},  # Orange for charlie
+            {"user_id": users["alice"], "username": "alice", "role": "member", "color": "#14B8A6"},  # Teal for alice
+            {"user_id": users["bob"], "username": "bob", "role": "member", "color": "#EC4899"},  # Pink for bob
+            {"user_id": users["diana"], "username": "diana", "role": "member"},  # No color - will use fallback if circle-level color exists
+            {"user_id": users["eve"], "username": "eve", "role": "member", "color": "#84CC16"},  # Lime for eve
         ]
     }
     result = db.circles.insert_one(public_circle_doc)
@@ -253,9 +257,84 @@ def seed_database():
     db.posts.update_one({"_id": posts["post_1"]}, {"$set": {"comment_count": 2}})
     print("✅ Simulated activity on posts.")
 
+    # 6. Create Friendships
+    print("\n🤝 Creating friendships based on circle memberships...")
+    
+    # Build a set of user pairs who are in the same circles
+    friend_pairs = set()
+    
+    # Get all circles to find shared memberships
+    all_circles = list(db.circles.find({}))
+    for circle in all_circles:
+        members = circle.get("members", [])
+        member_ids = [member["user_id"] for member in members]
+        
+        # Create pairs for all members in this circle
+        for i in range(len(member_ids)):
+            for j in range(i + 1, len(member_ids)):
+                # Store pairs in sorted order to avoid duplicates
+                pair = tuple(sorted([member_ids[i], member_ids[j]]))
+                friend_pairs.add(pair)
+    
+    print(f"   Found {len(friend_pairs)} unique friend pairs to create.")
+    
+    # Create bidirectional friendships
+    friendships_created = 0
+    for user1_id, user2_id in friend_pairs:
+        # Get usernames
+        user1 = db.users.find_one({"_id": user1_id})
+        user2 = db.users.find_one({"_id": user2_id})
+        
+        if not user1 or not user2:
+            continue
+        
+        user1_username = user1.get("username", "unknown")
+        user2_username = user2.get("username", "unknown")
+        
+        # Check if friendship already exists
+        existing = db.friends.find_one({
+            "user_id": user1_id,
+            "friend_id": user2_id
+        })
+        
+        if not existing:
+            now = get_utc_now()
+            
+            # Create bidirectional friendship entries
+            # Entry 1: user1 -> user2
+            friend_doc_1 = {
+                "user_id": user1_id,
+                "friend_id": user2_id,
+                "username": user2_username,
+                "status": "accepted",
+                "created_at": now,
+                "requested_by": user1_id
+            }
+            db.friends.insert_one(friend_doc_1)
+            
+            # Entry 2: user2 -> user1
+            friend_doc_2 = {
+                "user_id": user2_id,
+                "friend_id": user1_id,
+                "username": user1_username,
+                "status": "accepted",
+                "created_at": now,
+                "requested_by": user1_id
+            }
+            db.friends.insert_one(friend_doc_2)
+            
+            friendships_created += 1
+            print(f"   - Created friendship: {user1_username} ↔ {user2_username}")
+    
+    print(f"✅ Created {friendships_created} friendships ({friendships_created * 2} friend entries total).")
+
     # --- Finalization ---
     print("\n\n--- Seeding Complete! ---")
     print(f"Database '{DB_NAME}' is now populated with sample data.")
+    print(f"   - Users: {len(users)}")
+    print(f"   - Circles: {len(circles)}")
+    print(f"   - Posts: {len(posts)}")
+    print(f"   - Friendships: {friendships_created}")
     client.close()
 
 if __name__ == "__main__":

@@ -335,6 +335,43 @@ const generateAvatarUrl = (username) => {
     return `https://api.dicebear.com/8.x/rings/svg?seed=${encodeURIComponent(username)}`;
 };
 
+// Helper to get contrast color (white or black) for text on colored backgrounds
+function getContrastColor(hexColor) {
+    if (!hexColor) return '#ffffff';
+    // Remove # if present
+    const hex = hexColor.replace('#', '');
+    // Convert to RGB
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    // Calculate luminance
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    // Return white for dark colors, black for light colors
+    return luminance > 0.5 ? '#000000' : '#ffffff';
+}
+
+// Helper to get circle color from circle data or circle list
+function getCircleColor(circleId) {
+    if (!circleId) return null;
+    // Try to find in current circle
+    if (state.circleView.currentCircle && state.circleView.currentCircle._id === circleId) {
+        return state.circleView.currentCircle.color;
+    }
+    // Try to find in myCircles list
+    const circle = state.myCircles?.find(c => c._id === circleId);
+    return circle?.color || null;
+}
+
+// Helper to get circle labels
+function getCircleLabels(circleId) {
+    if (!circleId) return [];
+    if (state.circleView.currentCircle && state.circleView.currentCircle._id === circleId) {
+        return state.circleView.currentCircle.labels || [];
+    }
+    const circle = state.myCircles?.find(c => c._id === circleId);
+    return circle?.labels || [];
+}
+
 // -----------------------------------------------
 // API wrapper with token refresh logic:
 let isRefreshing = false;
@@ -1156,15 +1193,103 @@ async function renderDashboard() {
     }
 }
 
+// Circle pagination state
+state.circlesPagination = {
+    skip: 0,
+    limit: 20,
+    search: '',
+    label: '',
+    color: '',
+    sortBy: 'name',
+    total: 0,
+    hasMore: false
+};
+
 async function renderAllSidebarComponents() {
     if (!state.currentUser) return;
     try {
-        const myCircles = await apiFetch('/circles/mine');
-        state.myCircles = myCircles;
-        renderMyCircles(myCircles);
+        await loadCirclesWithFilters();
+        await loadFilterOptions();
         await loadFriends();
     } catch (error) {
         console.error("Failed to load sidebar components", error);
+        dom.myCirclesContainer.innerHTML = `<div class="empty-placeholder text-danger small">Could not load circles.</div>`;
+    }
+}
+
+async function loadFilterOptions() {
+    try {
+        const [labelsData, colorsData] = await Promise.all([
+            apiFetch('/circles/mine/labels'),
+            apiFetch('/circles/mine/colors')
+        ]);
+        
+        // Update label filter
+        const labelSelect = document.getElementById('circleLabelFilter');
+        if (labelSelect) {
+            const currentValue = labelSelect.value;
+            labelSelect.innerHTML = '<option value="">All Labels</option>';
+            labelsData.labels.forEach(label => {
+                const option = document.createElement('option');
+                option.value = label;
+                option.textContent = label;
+                labelSelect.appendChild(option);
+            });
+            labelSelect.value = currentValue;
+        }
+        
+        // Update color filter
+        const colorSelect = document.getElementById('circleColorFilter');
+        if (colorSelect) {
+            const currentValue = colorSelect.value;
+            colorSelect.innerHTML = '<option value="">All Colors</option>';
+            colorsData.colors.forEach(color => {
+                const option = document.createElement('option');
+                option.value = color;
+                option.textContent = color;
+                option.style.backgroundColor = color;
+                colorSelect.appendChild(option);
+            });
+            colorSelect.value = currentValue;
+        }
+    } catch (error) {
+        console.error("Failed to load filter options", error);
+    }
+}
+
+async function loadCirclesWithFilters(reset = false) {
+    if (!state.currentUser) return;
+    
+    if (reset) {
+        state.circlesPagination.skip = 0;
+    }
+    
+    const params = new URLSearchParams({
+        skip: state.circlesPagination.skip,
+        limit: state.circlesPagination.limit,
+        sort_by: state.circlesPagination.sortBy
+    });
+    
+    if (state.circlesPagination.search) {
+        params.append('search', state.circlesPagination.search);
+    }
+    if (state.circlesPagination.label) {
+        params.append('label', state.circlesPagination.label);
+    }
+    if (state.circlesPagination.color) {
+        params.append('color', state.circlesPagination.color);
+    }
+    
+    try {
+        const response = await apiFetch(`/circles/mine?${params}`);
+        state.myCircles = response.circles;
+        state.circlesPagination.total = response.total;
+        state.circlesPagination.hasMore = response.has_more;
+        renderMyCircles(response.circles);
+        renderCirclesPagination();
+        renderActiveFilters();
+    } catch (error) {
+        console.error("Failed to load circles", error);
         dom.myCirclesContainer.innerHTML = `<div class="empty-placeholder text-danger small">Could not load circles.</div>`;
     }
 }
@@ -1322,30 +1447,222 @@ function renderMyCircles(circles) {
     `;
 
     if (circles.length === 0) {
-        html += `
-        <div class="text-center p-3 mt-2">
-        <h5 class="mb-2"> Welcome to myCircles!</h5>
-        <p class=" small">It looks like you're not in any circles yet.</p>
-        <p class=" small">Get started by creating your own private space. Just click the <strong class="text-success"><i class="bi bi-plus-circle"></i> New Circle</strong> button above!</p>
-        </div>
-        `;
-        createCircleBtn.classList.add('highlight-wiggle');
+        if (state.circlesPagination.search || state.circlesPagination.label || state.circlesPagination.color) {
+            html += `
+            <div class="text-center p-3 mt-2">
+            <p class="small">No circles match your filters.</p>
+            <button class="btn btn-sm btn-secondary" onclick="clearCircleFilters()">Clear Filters</button>
+            </div>
+            `;
+        } else {
+            html += `
+            <div class="text-center p-3 mt-2">
+            <h5 class="mb-2"> Welcome to myCircles!</h5>
+            <p class=" small">It looks like you're not in any circles yet.</p>
+            <p class=" small">Get started by creating your own private space. Just click the <strong class="text-success"><i class="bi bi-plus-circle"></i> New Circle</strong> button above!</p>
+            </div>
+            `;
+            createCircleBtn.classList.add('highlight-wiggle');
+        }
     } else {
-        html += circles.map(c => `
-        <div class="list-group-item d-flex justify-content-between align-items-center p-0">
-        <a href="#/circle/${c._id}"
-        class="flex-grow-1 list-group-item-action border-0 clickable px-3 py-2"
-        data-circle-id="${c._id}" data-bs-toggle="tooltip" title="${c.name}">
-        <i class="bi bi-hash"></i> ${c.name}
-        </a>
-        </div>
-        `).join('');
+        html += circles.map(c => {
+            const colorStyle = c.color ? `style="border-left: 5px solid ${c.color}; background: linear-gradient(to right, ${c.color}15 0%, transparent 5%);"` : '';
+            const colorBadge = c.color ? `
+                <span class="badge rounded-pill me-2" 
+                      style="background-color: ${c.color}; width: 16px; height: 16px; padding: 0; border: 2px solid ${c.color}; box-shadow: 0 0 4px ${c.color}40;" 
+                      title="${c.color}"></span>
+            ` : '';
+            const labelsHtml = c.labels && c.labels.length > 0 
+                ? `<div class="mt-1 d-flex flex-wrap gap-1">
+                    ${c.labels.map(l => `
+                        <span class="badge bg-secondary" style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">
+                            <i class="bi bi-tag-fill" style="font-size: 0.6rem;"></i> ${l}
+                        </span>
+                    `).join('')}
+                   </div>`
+                : '';
+            
+            // Use envelope icon for direct messages, hash icon for regular circles
+            const iconClass = c.is_direct_message ? 'bi-envelope-fill' : 'bi-hash';
+            const iconTitle = c.is_direct_message ? 'Direct Message' : 'Circle';
+            
+            return `
+            <div class="list-group-item d-flex justify-content-between align-items-center p-0" ${colorStyle}>
+            <a href="#/circle/${c._id}"
+            class="flex-grow-1 list-group-item-action border-0 clickable px-3 py-2"
+            data-circle-id="${c._id}" data-bs-toggle="tooltip" title="${c.name}">
+            <div class="d-flex align-items-center">
+            ${colorBadge}
+            <i class="bi ${iconClass} me-2" style="color: ${c.color || 'inherit'};" title="${iconTitle}"></i>
+            <div class="flex-grow-1">
+            <div class="fw-semibold">${c.name}</div>
+            ${labelsHtml}
+            </div>
+            </div>
+            </a>
+            </div>
+            `;
+        }).join('');
         createCircleBtn.classList.remove('highlight-wiggle');
     }
 
     dom.myCirclesContainer.innerHTML = html;
     initTooltips();
 }
+
+function renderCirclesPagination() {
+    const paginationContainer = document.getElementById('circlesPagination');
+    if (!paginationContainer) return;
+    
+    if (state.circlesPagination.total === 0) {
+        paginationContainer.innerHTML = '';
+        return;
+    }
+    
+    const currentPage = Math.floor(state.circlesPagination.skip / state.circlesPagination.limit) + 1;
+    const totalPages = Math.ceil(state.circlesPagination.total / state.circlesPagination.limit);
+    const start = state.circlesPagination.skip + 1;
+    const end = Math.min(state.circlesPagination.skip + state.circlesPagination.limit, state.circlesPagination.total);
+    
+    let html = `
+    <small class="text-muted">Showing ${start}-${end} of ${state.circlesPagination.total}</small>
+    <div class="btn-group btn-group-sm">
+    `;
+    
+    if (state.circlesPagination.skip > 0) {
+        html += `<button class="btn btn-outline-secondary" onclick="loadPreviousCircles()"><i class="bi bi-chevron-left"></i></button>`;
+    } else {
+        html += `<button class="btn btn-outline-secondary" disabled><i class="bi bi-chevron-left"></i></button>`;
+    }
+    
+    if (state.circlesPagination.hasMore) {
+        html += `<button class="btn btn-outline-secondary" onclick="loadNextCircles()"><i class="bi bi-chevron-right"></i></button>`;
+    } else {
+        html += `<button class="btn btn-outline-secondary" disabled><i class="bi bi-chevron-right"></i></button>`;
+    }
+    
+    html += `</div>`;
+    paginationContainer.innerHTML = html;
+}
+
+function loadPreviousCircles() {
+    state.circlesPagination.skip = Math.max(0, state.circlesPagination.skip - state.circlesPagination.limit);
+    loadCirclesWithFilters();
+}
+
+function loadNextCircles() {
+    if (state.circlesPagination.hasMore) {
+        state.circlesPagination.skip += state.circlesPagination.limit;
+        loadCirclesWithFilters();
+    }
+}
+
+function renderActiveFilters() {
+    // Check if container exists, if not create it
+    let filterBadgesContainer = document.getElementById('activeFiltersContainer');
+    if (!filterBadgesContainer) {
+        const filterSection = document.querySelector('#myCirclesContainer').parentElement;
+        const controlsDiv = filterSection.querySelector('.mb-3');
+        if (controlsDiv) {
+            filterBadgesContainer = document.createElement('div');
+            filterBadgesContainer.id = 'activeFiltersContainer';
+            filterBadgesContainer.className = 'mb-2 d-flex flex-wrap gap-1';
+            controlsDiv.appendChild(filterBadgesContainer);
+        } else {
+            return;
+        }
+    }
+    
+    const activeFilters = [];
+    
+    if (state.circlesPagination.search) {
+        activeFilters.push({
+            type: 'search',
+            label: `Search: "${state.circlesPagination.search}"`,
+            value: state.circlesPagination.search
+        });
+    }
+    
+    if (state.circlesPagination.label) {
+        activeFilters.push({
+            type: 'label',
+            label: `Label: ${state.circlesPagination.label}`,
+            value: state.circlesPagination.label
+        });
+    }
+    
+    if (state.circlesPagination.color) {
+        activeFilters.push({
+            type: 'color',
+            label: `Color: ${state.circlesPagination.color}`,
+            value: state.circlesPagination.color,
+            color: state.circlesPagination.color
+        });
+    }
+    
+    if (activeFilters.length === 0) {
+        filterBadgesContainer.innerHTML = '';
+        return;
+    }
+    
+    const badgesHtml = activeFilters.map(filter => {
+        const colorStyle = filter.color ? `style="background-color: ${filter.color}; color: ${getContrastColor(filter.color)};"` : '';
+        return `
+            <span class="badge ${filter.color ? '' : 'bg-primary'} d-flex align-items-center gap-1" ${colorStyle}>
+                ${filter.label}
+                <button class="btn-close btn-close-white" style="font-size: 0.6rem; opacity: 0.8;" 
+                    onclick="removeFilter('${filter.type}')" 
+                    title="Remove filter"></button>
+            </span>
+        `;
+    }).join('');
+    
+    filterBadgesContainer.innerHTML = `
+        <div class="w-100 small text-muted mb-1">Active Filters:</div>
+        ${badgesHtml}
+        <button class="btn btn-sm btn-outline-secondary" onclick="clearCircleFilters()" style="font-size: 0.75rem;">
+            <i class="bi bi-x-circle"></i> Clear All
+        </button>
+    `;
+}
+
+function removeFilter(filterType) {
+    switch(filterType) {
+        case 'search':
+            state.circlesPagination.search = '';
+            document.getElementById('circleSearchInput').value = '';
+            break;
+        case 'label':
+            state.circlesPagination.label = '';
+            document.getElementById('circleLabelFilter').value = '';
+            break;
+        case 'color':
+            state.circlesPagination.color = '';
+            document.getElementById('circleColorFilter').value = '';
+            break;
+    }
+    state.circlesPagination.skip = 0;
+    loadCirclesWithFilters(true);
+}
+
+function clearCircleFilters() {
+    state.circlesPagination.search = '';
+    state.circlesPagination.label = '';
+    state.circlesPagination.color = '';
+    state.circlesPagination.skip = 0;
+    
+    document.getElementById('circleSearchInput').value = '';
+    document.getElementById('circleLabelFilter').value = '';
+    document.getElementById('circleColorFilter').value = '';
+    
+    loadCirclesWithFilters(true);
+}
+
+// Make functions globally available for onclick handlers
+window.loadPreviousCircles = loadPreviousCircles;
+window.loadNextCircles = loadNextCircles;
+window.clearCircleFilters = clearCircleFilters;
+window.removeFilter = removeFilter;
 
 async function resetAndRenderDashboardFeed() {
     state.dashboardFeed.skip = 0;
@@ -1420,17 +1737,55 @@ async function renderCircleFeed(circleId) {
            <i class="bi bi-gear-fill"></i> Manage
            </button>` : '';
 
+            // Build color and labels display
+            const colorStyle = circleDetails.color ? `style="border-left: 5px solid ${circleDetails.color}; padding-left: 15px;"` : '';
+            const colorBadge = circleDetails.color ? `
+              <span class="badge rounded-pill me-2" style="background-color: ${circleDetails.color}; color: ${getContrastColor(circleDetails.color)}; font-weight: 600;" title="Your Circle Color">
+                <i class="bi bi-palette-fill"></i> ${circleDetails.color}
+              </span>
+            ` : '';
+            const labelsHtml = circleDetails.labels && circleDetails.labels.length > 0 
+                ? `<div class="mt-2 d-flex flex-wrap gap-1">
+                    ${circleDetails.labels.map(l => `<span class="badge bg-secondary" style="font-size: 0.75rem;"><i class="bi bi-tag-fill"></i> ${l}</span>`).join('')}
+                   </div>`
+                : '';
+            
+            // Member-specific color picker (available to all members)
+            const memberColorPicker = state.currentUser ? `
+              <div class="input-group input-group-sm" style="width: auto; max-width: 200px;">
+                <span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);" title="Your personal color for this circle"><i class="bi bi-palette"></i></span>
+                <input type="color" id="memberCircleColor" class="form-control form-control-color border-start-0" value="${circleDetails.color || '#3b82f6'}" title="Set your color for this circle" style="width: 60px; height: 31px; cursor: pointer;">
+                <input type="text" id="memberCircleColorHex" class="form-control border-start-0" placeholder="#000000" value="${circleDetails.color || ''}" maxlength="7" style="width: 90px; font-size: 0.75rem;">
+                <button class="btn btn-sm btn-outline-secondary" id="updateMemberColorBtn" data-circle-id="${circleId}" title="Update your color">
+                  <i class="bi bi-check"></i>
+                </button>
+              </div>
+            ` : '';
+
+            // Use envelope icon for direct messages, hash icon for regular circles
+            const headerIconClass = circleDetails.is_direct_message ? 'bi-envelope-fill' : 'bi-hash';
+            const headerIconTitle = circleDetails.is_direct_message ? 'Direct Message' : 'Circle';
+            const directMessageBadge = circleDetails.is_direct_message ? '<span class="badge bg-primary" title="Direct Message"><i class="bi bi-envelope-fill"></i> DM</span>' : '';
+            const defaultDescription = circleDetails.is_direct_message ? 'A direct message between two members.' : 'A shared space for posts.';
+            
             dom.circleHeader.innerHTML = `
-           <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-           <div>
-              <h2>
-              <i class="bi bi-hash"></i> ${circleDetails.name}
-              ${circleDetails.is_public ? '<span class="badge bg-info ms-2" title="This circle is public">Public</span>' : ''}
-              </h2>
-              <p class="mb-0">${circleDetails.description || 'A shared space for posts.'}</p>
+           <div class="d-flex justify-content-between align-items-center flex-wrap gap-3" ${colorStyle}>
+           <div class="flex-grow-1">
+              <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                <h2 class="mb-0">
+                  ${circleDetails.color ? `<span class="badge rounded-pill me-2" style="background-color: ${circleDetails.color}; width: 20px; height: 20px; padding: 0;" title="${circleDetails.color}"></span>` : ''}
+                  <i class="bi ${headerIconClass}" title="${headerIconTitle}"></i> ${circleDetails.name}
+                </h2>
+                ${directMessageBadge}
+                ${colorBadge}
+                ${circleDetails.is_public ? '<span class="badge bg-info" title="This circle is public"><i class="bi bi-globe"></i> Public</span>' : ''}
+              </div>
+              <p class="mb-1">${circleDetails.description || defaultDescription}</p>
+              ${labelsHtml}
            </div>
            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
               <a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
+              ${memberColorPicker}
               <div class="input-group input-group-sm" style="width: auto;">
               <span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);"><i class="bi bi-tags"></i></span>
               <input type="text" id="circleTagFilter" class="form-control border-start-0" placeholder="Filter by tags..." value="${feedState.tags}" style="min-width: 150px;">
@@ -1828,6 +2183,15 @@ title="Open Comments">
 `;
 
             const displayCircleName = circleName || post.circle_name;
+            const circleId = post.circle_id;
+            const circleColor = getCircleColor(circleId);
+            const circleLabels = getCircleLabels(circleId);
+            const circleColorStyle = circleColor ? `style="border-left: 4px solid ${circleColor};"` : '';
+            const circleColorBadge = circleColor ? `<span class="badge rounded-pill me-1" style="background-color: ${circleColor}; width: 10px; height: 10px; padding: 0;" title="${circleColor}"></span>` : '';
+            const circleLabelsBadges = circleLabels.length > 0 
+                ? `<span class="ms-1">${circleLabels.map(l => `<span class="badge bg-secondary" style="font-size: 0.65rem; padding: 0.15rem 0.35rem;"><i class="bi bi-tag-fill"></i> ${l}</span>`).join(' ')}</span>`
+                : '';
+            
             const canModify = state.currentUser && post.author_username === state.currentUser.username;
             const dropdownMenu = canModify ? `
 <div class="dropdown">
@@ -1862,18 +2226,21 @@ data-circle-id="${post.circle_id}">
 <div class="post-card-wrapper"
 data-post-id="${postId}"
 data-post-wrapper-id="${postId}">
-<div class="glass-card post-card ${hasNewActivity ? 'has-new-activity' : ''}" data-post-id="${postId}">
+<div class="glass-card post-card ${hasNewActivity ? 'has-new-activity' : ''}" data-post-id="${postId}" ${circleColorStyle}>
 <div class="post-card-body">
 <div class="d-flex justify-content-between align-items-start">
-<div class="d-flex align-items-center">
+<div class="d-flex align-items-center flex-grow-1">
 <img src="${generateAvatarUrl(post.author_username)}" class="avatar me-3">
-<div>
+<div class="flex-grow-1">
 <strong class="d-block">${post.author_username}</strong>
-<small>
-in <a href="#/circle/${post.circle_id}"
+<small class="d-flex align-items-center flex-wrap gap-1">
+${circleColorBadge}
+<span>in <a href="#/circle/${post.circle_id}"
 class="text-reset fw-bold">
 ${displayCircleName}
-</a> ${new Date(post.created_at).toLocaleString()}
+</a></span>
+${circleLabelsBadges}
+<span class="ms-2">${new Date(post.created_at).toLocaleString()}</span>
 </small>
 </div>
 </div>
@@ -1954,6 +2321,8 @@ async function handleCreateCircle() {
     const btn = document.getElementById('submitCircleButton');
     const name = document.getElementById('circleName').value;
     const description = document.getElementById('circleDescription').value;
+    const color = document.getElementById('circleColor').value;
+    const labelsInput = document.getElementById('circleLabels').value;
 
     if (!name.trim()) {
         return showStatus('Circle name cannot be empty', 'warning');
@@ -1961,7 +2330,9 @@ async function handleCreateCircle() {
 
     const payload = {
         name,
-        description
+        description: description || undefined,
+        // Note: color is now member-specific, will be set after circle creation
+        labels: labelsInput ? labelsInput.split(',').map(l => l.trim()).filter(l => l) : undefined
     };
 
     setButtonLoading(btn, true);
@@ -1970,9 +2341,25 @@ async function handleCreateCircle() {
             method: 'POST',
             body: JSON.stringify(payload)
         });
+        
+        // Set member-specific color if provided
+        if (color && color.trim()) {
+            try {
+                await apiFetch(`/circles/${newCircle._id}/my-color`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ color: color.trim() })
+                });
+            } catch (colorError) {
+                // Color setting failed, but circle creation succeeded, so continue
+                console.warn('Failed to set member color:', colorError);
+            }
+        }
+        
         showStatus(`Circle "${newCircle.name}" created! Navigating...`, 'success');
         bootstrap.Modal.getInstance('#createCircleModal').hide();
         document.getElementById('createCircleForm').reset();
+        document.getElementById('circleColor').value = '#3b82f6';
+        document.getElementById('circleColorHex').value = '';
 
         await renderAllSidebarComponents();
 
@@ -3053,8 +3440,24 @@ function renderCircleManagementUI(circle) {
     document.getElementById('manageCircleId').value = circle._id;
     document.getElementById('manageCircleName').value = circle.name;
     document.getElementById('manageCircleDescription').value = circle.description || '';
-
     document.getElementById('manageCircleIsPublic').checked = circle.is_public;
+    
+    // Note: Color is now member-specific, not circle-level
+    // Hide or disable color fields in admin settings
+    const colorField = document.getElementById('manageCircleColor');
+    const colorHexField = document.getElementById('manageCircleColorHex');
+    const colorLabel = colorField?.closest('.mb-3')?.querySelector('label');
+    if (colorField && colorHexField) {
+        colorField.style.display = 'none';
+        colorHexField.style.display = 'none';
+        if (colorLabel) colorLabel.style.display = 'none';
+        // Also hide the parent row if it exists
+        const colorRow = colorField.closest('.row') || colorField.closest('.mb-3');
+        if (colorRow) colorRow.style.display = 'none';
+    }
+    
+    // Set labels
+    document.getElementById('manageCircleLabels').value = circle.labels ? circle.labels.join(', ') : '';
 
     const membersContainer = document.getElementById('manageCircleMembersContainer');
     if (!circle.members || circle.members.length === 0) {
@@ -3124,9 +3527,14 @@ function renderCircleManagementUI(circle) {
 
 async function handleUpdateCircleSettings(btn) {
     const circleId = document.getElementById('manageCircleId').value;
+    const labelsInput = document.getElementById('manageCircleLabels').value;
+    
     const payload = {
         name: document.getElementById('manageCircleName').value,
-        description: document.getElementById('manageCircleDescription').value
+        description: document.getElementById('manageCircleDescription').value,
+        is_public: document.getElementById('manageCircleIsPublic').checked,
+        // Note: color is now member-specific, not circle-level. Use updateMyCircleColor() instead.
+        labels: labelsInput ? labelsInput.split(',').map(l => l.trim()).filter(l => l) : undefined
     };
 
     setButtonLoading(btn, true);
@@ -3143,6 +3551,39 @@ async function handleUpdateCircleSettings(btn) {
         showStatus(e.message, 'danger');
     } finally {
         setButtonLoading(btn, false);
+    }
+}
+
+async function updateMyCircleColor(circleId) {
+    const colorPicker = document.getElementById('memberCircleColor');
+    const hexInput = document.getElementById('memberCircleColorHex');
+    
+    if (!colorPicker || !hexInput) return;
+    
+    const color = colorPicker.value || hexInput.value.trim();
+    
+    if (!color) {
+        return showStatus('Please enter a color', 'warning');
+    }
+    
+    // Validate hex color format
+    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+        return showStatus('Invalid color format. Please use hex format (e.g., #FF5733)', 'warning');
+    }
+    
+    try {
+        const updatedCircle = await apiFetch(`/circles/${circleId}/my-color`, {
+            method: 'PATCH',
+            body: JSON.stringify({ color: color })
+        });
+        
+        showStatus('Your circle color updated!', 'success');
+        
+        // Update the UI to reflect the new color
+        await resetAndRenderCircleFeed(circleId);
+        await renderAllSidebarComponents();
+    } catch (e) {
+        showStatus(e.message, 'danger');
     }
 }
 
@@ -4219,6 +4660,99 @@ ${options.length <= 2 ? 'disabled' : ''}>
             }
         });
     }
+
+    // Circle search and filter event listeners
+    const circleSearchInput = document.getElementById('circleSearchInput');
+    if (circleSearchInput) {
+        let searchTimeout;
+        circleSearchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                state.circlesPagination.search = e.target.value.trim();
+                loadCirclesWithFilters(true);
+            }, 300);
+        });
+    }
+
+    const circleLabelFilter = document.getElementById('circleLabelFilter');
+    if (circleLabelFilter) {
+        circleLabelFilter.addEventListener('change', (e) => {
+            state.circlesPagination.label = e.target.value;
+            loadCirclesWithFilters(true);
+        });
+    }
+
+    const circleColorFilter = document.getElementById('circleColorFilter');
+    if (circleColorFilter) {
+        circleColorFilter.addEventListener('change', (e) => {
+            state.circlesPagination.color = e.target.value;
+            loadCirclesWithFilters(true);
+        });
+    }
+
+    const circleSortBy = document.getElementById('circleSortBy');
+    if (circleSortBy) {
+        circleSortBy.addEventListener('change', (e) => {
+            state.circlesPagination.sortBy = e.target.value;
+            loadCirclesWithFilters(true);
+        });
+    }
+
+    // Color picker sync handlers
+    const circleColor = document.getElementById('circleColor');
+    const circleColorHex = document.getElementById('circleColorHex');
+    if (circleColor && circleColorHex) {
+        circleColor.addEventListener('input', (e) => {
+            circleColorHex.value = e.target.value.toUpperCase();
+        });
+        circleColorHex.addEventListener('input', (e) => {
+            const value = e.target.value;
+            if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
+                circleColor.value = value;
+            }
+        });
+    }
+
+    const manageCircleColor = document.getElementById('manageCircleColor');
+    const manageCircleColorHex = document.getElementById('manageCircleColorHex');
+    if (manageCircleColor && manageCircleColorHex) {
+        manageCircleColor.addEventListener('input', (e) => {
+            manageCircleColorHex.value = e.target.value.toUpperCase();
+        });
+        manageCircleColorHex.addEventListener('input', (e) => {
+            const value = e.target.value;
+            if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
+                manageCircleColor.value = value;
+            }
+        });
+    }
+
+    // Member-specific color picker handlers (using event delegation for dynamically created elements)
+    document.addEventListener('input', (e) => {
+        if (e.target.id === 'memberCircleColor') {
+            const hexInput = document.getElementById('memberCircleColorHex');
+            if (hexInput) {
+                hexInput.value = e.target.value.toUpperCase();
+            }
+        }
+        if (e.target.id === 'memberCircleColorHex') {
+            const colorPicker = document.getElementById('memberCircleColor');
+            const value = e.target.value;
+            if (colorPicker && /^#[0-9A-Fa-f]{6}$/.test(value)) {
+                colorPicker.value = value;
+            }
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (e.target.id === 'updateMemberColorBtn' || e.target.closest('#updateMemberColorBtn')) {
+            const btn = e.target.id === 'updateMemberColorBtn' ? e.target : e.target.closest('#updateMemberColorBtn');
+            const circleId = btn.getAttribute('data-circle-id');
+            if (circleId) {
+                updateMyCircleColor(circleId);
+            }
+        }
+    });
 
     initTheme();
     handleRoute();

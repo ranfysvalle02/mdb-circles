@@ -254,17 +254,24 @@ class CircleMember(BaseModel):
     username: str
     role: RoleEnum = RoleEnum.member
     invited_by: Optional[PyObjectId] = None
+    color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$", description="Member-specific color preference")
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 class CircleCreate(BaseModel):
     name: str = Field(..., min_length=3, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
     is_public: bool = False
+    color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$", description="Hex color code (e.g., #FF5733)")
+    labels: Optional[List[str]] = Field(None, max_length=10, description="List of labels/tags for organization")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata as key-value pairs")
 
 class CircleUpdate(BaseModel):
-    name: str = Field(..., min_length=3, max_length=100)
+    name: Optional[str] = Field(None, min_length=3, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    is_public: bool
+    is_public: Optional[bool] = None
+    # Note: color is now member-specific, not circle-level. Use PATCH /circles/{circle_id}/my-color to set member color.
+    labels: Optional[List[str]] = Field(None, max_length=10, description="List of labels/tags for organization")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata as key-value pairs")
 
 class CircleOut(BaseModel):
     id: PyObjectId = Field(alias="_id")
@@ -274,6 +281,11 @@ class CircleOut(BaseModel):
     member_count: int
     user_role: Optional[RoleEnum] = None
     is_public: bool = False
+    color: Optional[str] = None
+    labels: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
+    created_at: Optional[datetime] = None
+    is_direct_message: bool = False
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 class CircleManagementOut(CircleOut):
@@ -281,6 +293,9 @@ class CircleManagementOut(CircleOut):
 
 class MemberRoleUpdate(BaseModel):
     role: RoleEnum
+
+class MemberColorUpdate(BaseModel):
+    color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$", description="Hex color code (e.g., #FF5733). Set to null to remove.")
 
 class InviteTokenCreateResponse(BaseModel):
     token: str
@@ -1043,16 +1058,148 @@ async def get_user_activity_feed(current_user: UserInDB = Depends(get_current_us
 # ----------------------------------
 # Circles
 # ----------------------------------
-@app.get("/circles/mine", response_model=List[CircleOut], tags=["Circles"])
-async def list_my_circles(current_user: UserInDB = Depends(get_current_user)):
-    circles_cursor = circles_collection.find({"members.user_id": current_user.id}).sort("name", ASCENDING)
+class CircleListResponse(BaseModel):
+    circles: List[CircleOut]
+    total: int
+    skip: int
+    limit: int
+    has_more: bool
+
+@app.get("/circles/mine", response_model=CircleListResponse, tags=["Circles"])
+async def list_my_circles(
+    current_user: UserInDB = Depends(get_current_user),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    search: Optional[str] = Query(None, description="Search by name or description"),
+    label: Optional[str] = Query(None, description="Filter by label"),
+    color: Optional[str] = Query(None, description="Filter by color hex code"),
+    sort_by: str = Query("name", description="Sort by: name, created_at, member_count")
+):
+    """Get user's circles with pagination, search, and filtering."""
+    # Build query
+    query = {"members.user_id": current_user.id}
+    
+    # Search by name or description
+    if search:
+        query["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"description": {"$regex": search, "$options": "i"}}
+        ]
+    
+    # Filter by label
+    if label:
+        query["labels"] = {"$in": [label]}
+    
+    # Filter by color (member-specific or circle-level for backward compatibility)
+    # Note: This is approximate since we can't easily filter by member color in MongoDB query
+    # The actual filtering will be done after fetching to check member-specific colors
+    if color:
+        # If $or already exists (from search), we need to combine conditions
+        if "$or" in query:
+            # Combine search and color filters using $and
+            existing_or = query.pop("$or")
+            query["$and"] = [
+                {"$or": existing_or},
+                {"$or": [
+                    {"color": color},  # Legacy circle-level color
+                    {"members": {"$elemMatch": {"user_id": current_user.id, "color": color}}}  # Member-specific color
+                ]}
+            ]
+        else:
+            query["$or"] = [
+                {"color": color},  # Legacy circle-level color
+                {"members": {"$elemMatch": {"user_id": current_user.id, "color": color}}}  # Member-specific color
+            ]
+    
+    # Build sort
+    sort_direction = ASCENDING
+    if sort_by == "created_at":
+        sort_field = "created_at"
+        sort_direction = DESCENDING
+    elif sort_by == "member_count":
+        # We'll need to sort after aggregation for member_count
+        sort_field = "name"
+    else:
+        sort_field = "name"
+    
+    # Fetch circles (we may need to fetch more to account for post-fetch color filtering)
+    fetch_limit = limit * 2 if color else limit  # Fetch more if filtering by color to account for filtering
+    circles_cursor = circles_collection.find(query).sort(sort_field, sort_direction).skip(skip).limit(fetch_limit)
     result = []
+    fetched_count = 0
     for c in circles_cursor:
+        fetched_count += 1
         member_info = next((m for m in c.get('members', []) if m['user_id'] == current_user.id), None)
         user_role = RoleEnum(member_info['role']) if member_info else None
-        item = CircleOut(**c, member_count=len(c.get("members", [])), user_role=user_role)
+        # Use member-specific color if available, otherwise fall back to circle-level color (for backward compatibility)
+        member_color = member_info.get('color') if member_info else None
+        circle_color = c.get('color')
+        final_color = member_color if member_color else circle_color
+        
+        # Apply color filter after fetching (to ensure member-specific colors are checked)
+        if color and final_color != color:
+            continue
+        
+        # Create circle data with member-specific color
+        circle_data = c.copy()
+        circle_data['color'] = final_color
+        member_count = len(c.get("members", []))
+        is_direct_message = member_count == 2
+        item = CircleOut(**circle_data, member_count=member_count, user_role=user_role, is_direct_message=is_direct_message)
         result.append(item)
-    return result
+        
+        # Stop if we have enough results
+        if len(result) >= limit:
+            break
+    
+    # Sort by member_count if needed (after fetching)
+    if sort_by == "member_count":
+        result.sort(key=lambda x: x.member_count, reverse=True)
+    
+    # Calculate total and has_more
+    # If filtering by color, we fetched more to account for filtering, so check if we got the full fetch_limit
+    # This is an approximation - for exact counts, we'd need to fetch all and filter, which is expensive
+    has_more = len(result) == limit and (not color or fetched_count == fetch_limit)
+    total = skip + len(result) + (1 if has_more else 0)  # Approximate total
+    
+    return CircleListResponse(
+        circles=result,
+        total=total,
+        skip=skip,
+        limit=limit,
+        has_more=has_more
+    )
+
+@app.get("/circles/mine/labels", tags=["Circles"])
+async def get_my_circle_labels(current_user: UserInDB = Depends(get_current_user)):
+    """Get all unique labels from user's circles."""
+    circles = circles_collection.find(
+        {"members.user_id": current_user.id, "labels": {"$exists": True, "$ne": []}},
+        {"labels": 1}
+    )
+    all_labels = set()
+    for circle in circles:
+        if circle.get("labels"):
+            all_labels.update(circle["labels"])
+    return {"labels": sorted(list(all_labels))}
+
+@app.get("/circles/mine/colors", tags=["Circles"])
+async def get_my_circle_colors(current_user: UserInDB = Depends(get_current_user)):
+    """Get all unique colors from user's circle preferences (member-specific)."""
+    circles = circles_collection.find(
+        {"members.user_id": current_user.id},
+        {"members": 1, "color": 1}  # Include both member colors and legacy circle color
+    )
+    all_colors = set()
+    for circle in circles:
+        # Get member-specific color
+        member_info = next((m for m in circle.get('members', []) if m['user_id'] == current_user.id), None)
+        if member_info and member_info.get('color'):
+            all_colors.add(member_info['color'])
+        # Fall back to legacy circle-level color if member has no color preference
+        elif circle.get("color"):
+            all_colors.add(circle["color"])
+    return {"colors": sorted(list(all_colors))}
 
 @app.post("/circles", response_model=CircleOut, status_code=201, tags=["Circles"])
 async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depends(get_current_user)):
@@ -1066,19 +1213,45 @@ async def create_circle(circle_data: CircleCreate, current_user: UserInDB = Depe
             detail=f"You are already in a circle named '{existing_circle['name']}'. Please choose a different name."
         )
 
+    # Set member-specific color if provided (color is now member-specific, not circle-level)
     first_member_doc = {
         "user_id": current_user.id,
         "username": current_user.username,
         "role": RoleEnum.admin.value
     }
+    if circle_data.color:
+        first_member_doc["color"] = circle_data.color
+    
     now = datetime.now(timezone.utc)
     new_circle_doc = {
-        "name": circle_data.name, "description": circle_data.description, "owner_id": current_user.id,
-        "members": [first_member_doc], "created_at": now, "is_public": circle_data.is_public
+        "name": circle_data.name,
+        "description": circle_data.description,
+        "owner_id": current_user.id,
+        "members": [first_member_doc],
+        "created_at": now,
+        "is_public": circle_data.is_public
     }
+    
+    # Add optional fields if provided (note: color is now member-specific, handled above)
+    if circle_data.labels:
+        new_circle_doc["labels"] = [label.strip().lower() for label in circle_data.labels if label.strip()]
+    if circle_data.metadata:
+        new_circle_doc["metadata"] = circle_data.metadata
+    
     result = circles_collection.insert_one(new_circle_doc)
     created_circle = circles_collection.find_one({"_id": result.inserted_id})
-    return CircleOut(**created_circle, member_count=1, user_role=RoleEnum.admin)
+    
+    # Use member-specific color if available, otherwise fall back to circle-level color
+    member_info = next((m for m in created_circle.get('members', []) if m['user_id'] == current_user.id), None)
+    member_color = member_info.get('color') if member_info else None
+    circle_color = created_circle.get('color')
+    final_color = member_color if member_color else circle_color
+    
+    circle_data = created_circle.copy()
+    circle_data['color'] = final_color
+    member_count = 1
+    is_direct_message = member_count == 2
+    return CircleOut(**circle_data, member_count=member_count, user_role=RoleEnum.admin, is_direct_message=is_direct_message)
 
 @app.post("/circles/{circle_id}/invite-token", response_model=InviteTokenCreateResponse, tags=["Circles"])
 async def create_invite_token(circle_id: str, current_user: UserInDB = Depends(get_current_user)):
@@ -1188,21 +1361,32 @@ async def get_circle_details(
             raise HTTPException(status_code=403, detail="You are not a member of this circle.")
 
     member_count = len(circle.get("members", []))
+    is_direct_message = member_count == 2
+    
+    # Use member-specific color if available, otherwise fall back to circle-level color
+    member_color = member_info.get('color') if member_info else None
+    circle_color = circle.get('color')
+    final_color = member_color if member_color else circle_color
     
     if user_role in [RoleEnum.admin, RoleEnum.moderator]:
         circle_data = circle.copy()
+        circle_data['color'] = final_color  # Use member-specific color in response
         raw_members = circle_data.pop("members", [])
         return CircleManagementOut(
             **circle_data,
             member_count=member_count,
             user_role=user_role,
+            is_direct_message=is_direct_message,
             members=[CircleMember(**m) for m in raw_members]
         )
     else:
+        circle_data = circle.copy()
+        circle_data['color'] = final_color  # Use member-specific color in response
         return CircleOut(
-            **circle,
+            **circle_data,
             member_count=member_count,
-            user_role=user_role
+            user_role=user_role,
+            is_direct_message=is_direct_message
         )
 
 @app.patch("/circles/{circle_id}", response_model=CircleManagementOut, tags=["Circles"])
@@ -1210,13 +1394,25 @@ async def update_circle_settings(circle_id: str, circle_data: CircleUpdate, curr
     circle, user_role = await get_circle_and_user_role(circle_id, current_user)
     if user_role != RoleEnum.admin:
         raise HTTPException(status_code=403, detail="Only circle admins can change settings.")
-    update_doc = {
-        "name": circle_data.name,
-        "description": circle_data.description,
-        "is_public": circle_data.is_public
-    }
-    circles_collection.update_one({"_id": circle["_id"]}, {"$set": update_doc})
-    updated_circle_doc = circles_collection.find_one({"_id": circle["_id"]})
+    
+    update_doc = {}
+    update_payload = circle_data.model_dump(exclude_unset=True)
+    
+    if "name" in update_payload:
+        update_doc["name"] = update_payload["name"]
+    if "description" in update_payload:
+        update_doc["description"] = update_payload["description"]
+    if "is_public" in update_payload:
+        update_doc["is_public"] = update_payload["is_public"]
+    # Note: color is now member-specific, removed from circle-level updates
+    if "labels" in update_payload:
+        update_doc["labels"] = [label.strip().lower() for label in update_payload["labels"] if label.strip()]
+    if "metadata" in update_payload:
+        update_doc["metadata"] = update_payload["metadata"]
+    
+    if update_doc:
+        circles_collection.update_one({"_id": circle["_id"]}, {"$set": update_doc})
+    
     return await get_circle_details(circle_id, current_user)
 
 
@@ -1279,6 +1475,23 @@ async def kick_circle_member(circle_id: str, user_id: str, current_user: UserInD
             raise HTTPException(status_code=403, detail="You do not have permission to kick this member.")
 
     circles_collection.update_one({"_id": circle["_id"]}, {"$pull": {"members": {"user_id": target_user_id}}})
+    return await get_circle_details(circle_id, current_user)
+
+@app.patch("/circles/{circle_id}/my-color", response_model=CircleOut, tags=["Circles"])
+async def update_my_circle_color(circle_id: str, color_data: MemberColorUpdate, current_user: UserInDB = Depends(get_current_user)):
+    """Update the current user's color preference for a circle (member-specific)."""
+    circle, user_role = await get_circle_and_user_role(circle_id, current_user)
+    
+    # Update the member's color preference
+    member_update = {"members.$.color": color_data.color}
+    result = circles_collection.update_one(
+        {"_id": circle["_id"], "members.user_id": current_user.id},
+        {"$set": member_update}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Member not found in this circle.")
+    
     return await get_circle_details(circle_id, current_user)
 
 # ----------------------------------

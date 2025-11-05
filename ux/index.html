@@ -299,7 +299,31 @@
                   <p class=" small">
                     Click a circle to view its feed.
                   </p>
+                  <div class="mb-3">
+                    <div class="input-group input-group-sm mb-2">
+                      <span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);">
+                        <i class="bi bi-search"></i>
+                      </span>
+                      <input type="text" id="circleSearchInput" class="form-control border-start-0" placeholder="Search circles..." />
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap mb-2">
+                      <select id="circleLabelFilter" class="form-select form-select-sm" style="flex: 1; min-width: 120px;">
+                        <option value="">All Labels</option>
+                      </select>
+                      <select id="circleColorFilter" class="form-select form-select-sm" style="flex: 1; min-width: 120px;">
+                        <option value="">All Colors</option>
+                      </select>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                      <select id="circleSortBy" class="form-select form-select-sm" style="flex: 1;">
+                        <option value="name">Sort: Name</option>
+                        <option value="created_at">Sort: Newest</option>
+                        <option value="member_count">Sort: Members</option>
+                      </select>
+                    </div>
+                  </div>
                   <div id="myCirclesContainer" class="list-group"></div>
+                  <div id="circlesPagination" class="mt-2 d-flex justify-content-between align-items-center"></div>
                 </div>
                 <div class="glass-card mt-3">
                   <div class="d-flex justify-content-between align-items-center mb-2">
@@ -443,7 +467,7 @@
           <div class="modal-body">
             <form id="createCircleForm">
               <div class="mb-3">
-                <label for="circleName" class="visually-hidden"
+                <label for="circleName" class="form-label"
                   >Circle Name</label
                 >
                 <input
@@ -455,7 +479,7 @@
                 />
               </div>
               <div class="mb-3">
-                <label for="circleDescription" class="visually-hidden"
+                <label for="circleDescription" class="form-label"
                   >Description (Optional)</label
                 >
                 <textarea
@@ -463,6 +487,37 @@
                   class="form-control"
                   placeholder="Description (Optional)"
                 ></textarea>
+              </div>
+              <div class="mb-3">
+                <label for="circleColor" class="form-label">Color</label>
+                <div class="input-group">
+                  <input
+                    type="color"
+                    id="circleColor"
+                    class="form-control form-control-color"
+                    value="#3b82f6"
+                    title="Choose circle color"
+                  />
+                  <input
+                    type="text"
+                    id="circleColorHex"
+                    class="form-control"
+                    placeholder="#3b82f6"
+                    pattern="^#[0-9A-Fa-f]{6}$"
+                    maxlength="7"
+                  />
+                </div>
+                <small class="form-text text-muted">Choose a color to organize your circles</small>
+              </div>
+              <div class="mb-3">
+                <label for="circleLabels" class="form-label">Labels</label>
+                <input
+                  type="text"
+                  id="circleLabels"
+                  class="form-control"
+                  placeholder="work, personal, gaming (comma separated)"
+                />
+                <small class="form-text text-muted">Add labels to organize circles (e.g., work, personal, gaming)</small>
               </div>
               </form>
           </div>
@@ -1018,6 +1073,37 @@
                     <input class="form-check-input" type="checkbox" role="switch" id="manageCircleIsPublic">
                     <label class="form-check-label" for="manageCircleIsPublic">Make Circle Public</label>
                     <small class="form-text d-block">Public circles and their posts can be viewed by anyone, even if they are not logged in.</small>
+                  </div>
+                  <div class="mb-3">
+                    <label for="manageCircleColor" class="form-label">Color</label>
+                    <div class="input-group">
+                      <input
+                        type="color"
+                        id="manageCircleColor"
+                        class="form-control form-control-color"
+                        value="#3b82f6"
+                        title="Choose circle color"
+                      />
+                      <input
+                        type="text"
+                        id="manageCircleColorHex"
+                        class="form-control"
+                        placeholder="#3b82f6"
+                        pattern="^#[0-9A-Fa-f]{6}$"
+                        maxlength="7"
+                      />
+                    </div>
+                    <small class="form-text text-muted">Choose a color to organize your circles</small>
+                  </div>
+                  <div class="mb-3">
+                    <label for="manageCircleLabels" class="form-label">Labels</label>
+                    <input
+                      type="text"
+                      id="manageCircleLabels"
+                      class="form-control"
+                      placeholder="work, personal, gaming (comma separated)"
+                    />
+                    <small class="form-text text-muted">Add labels to organize circles (e.g., work, personal, gaming)</small>
                   </div>
                   </form>
               </div>
