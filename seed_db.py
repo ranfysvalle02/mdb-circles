@@ -72,7 +72,7 @@ def seed_database():
     circles = {}
     
     # Circle 1: Cool Coders (Private)
-    # Note: Colors are member-specific - each member can have their own color for this circle
+    # Note: Colors, personal_name, and tags are member-specific - each member can have their own values
     coders_circle_doc = {
         "name": "Cool Coders",
         "description": "A private space for discussing development and projects.",
@@ -80,9 +80,30 @@ def seed_database():
         "is_public": False,
         "created_at": get_utc_now(),
         "members": [
-            {"user_id": users["alice"], "username": "alice", "role": "admin", "color": "#3B82F6"},  # Blue for alice
-            {"user_id": users["bob"], "username": "bob", "role": "moderator", "color": "#10B981"},  # Green for bob
-            {"user_id": users["charlie"], "username": "charlie", "role": "member", "color": "#F59E0B"},  # Orange for charlie
+            {
+                "user_id": users["alice"], 
+                "username": "alice", 
+                "role": "admin", 
+                "color": "#3B82F6",  # Blue for alice
+                "personal_name": "Dev Team",  # Alice's personal name for this circle
+                "tags": ["work", "development", "coding"]
+            },
+            {
+                "user_id": users["bob"], 
+                "username": "bob", 
+                "role": "moderator", 
+                "color": "#10B981",  # Green for bob
+                "personal_name": "Cool Coders",  # Bob uses default (circle name)
+                "tags": ["coding", "projects"]
+            },
+            {
+                "user_id": users["charlie"], 
+                "username": "charlie", 
+                "role": "member", 
+                "color": "#F59E0B",  # Orange for charlie
+                # No personal_name - will default to circle name
+                "tags": ["work"]
+            },
         ]
     }
     result = db.circles.insert_one(coders_circle_doc)
@@ -90,7 +111,7 @@ def seed_database():
     print("   - Created circle: Cool Coders")
 
     # Circle 2: Weekend Gamers (Private)
-    # Note: Colors are member-specific - different members see this circle in different colors
+    # Note: Colors, personal_name, and tags are member-specific - different members see different values
     gamers_circle_doc = {
         "name": "Weekend Gamers",
         "description": "Planning our weekend gaming sessions. All skill levels welcome!",
@@ -98,9 +119,30 @@ def seed_database():
         "is_public": False,
         "created_at": get_utc_now(),
         "members": [
-            {"user_id": users["bob"], "username": "bob", "role": "admin", "color": "#8B5CF6"},  # Purple for bob
-            {"user_id": users["diana"], "username": "diana", "role": "member", "color": "#EF4444"},  # Red for diana
-            {"user_id": users["eve"], "username": "eve", "role": "member", "color": "#06B6D4"},  # Cyan for eve
+            {
+                "user_id": users["bob"], 
+                "username": "bob", 
+                "role": "admin", 
+                "color": "#8B5CF6",  # Purple for bob
+                "personal_name": "Gaming Squad",  # Bob's personal name
+                "tags": ["gaming", "weekend", "friends"]
+            },
+            {
+                "user_id": users["diana"], 
+                "username": "diana", 
+                "role": "member", 
+                "color": "#EF4444",  # Red for diana
+                # No personal_name - will default to circle name
+                "tags": ["gaming", "fun"]
+            },
+            {
+                "user_id": users["eve"], 
+                "username": "eve", 
+                "role": "member", 
+                "color": "#06B6D4",  # Cyan for eve
+                "personal_name": "Game Night",  # Eve's personal name
+                "tags": ["gaming", "social"]
+            },
         ]
     }
     result = db.circles.insert_one(gamers_circle_doc)
@@ -108,8 +150,8 @@ def seed_database():
     print("   - Created circle: Weekend Gamers")
 
     # Circle 3: Public Square (Public)
-    # Note: Colors are member-specific - demonstrates that same circle can have different colors per member
-    # Some members have colors, some don't (to show fallback behavior)
+    # Note: Colors, personal_name, and tags are member-specific - demonstrates that same circle can have different values per member
+    # Some members have colors/personal_names/tags, some don't (to show fallback behavior)
     public_circle_doc = {
         "name": "Public Square",
         "description": "A public circle for everyone to share anything interesting.",
@@ -117,11 +159,44 @@ def seed_database():
         "is_public": True,
         "created_at": get_utc_now(),
         "members": [
-            {"user_id": users["charlie"], "username": "charlie", "role": "admin", "color": "#F97316"},  # Orange for charlie
-            {"user_id": users["alice"], "username": "alice", "role": "member", "color": "#14B8A6"},  # Teal for alice
-            {"user_id": users["bob"], "username": "bob", "role": "member", "color": "#EC4899"},  # Pink for bob
-            {"user_id": users["diana"], "username": "diana", "role": "member"},  # No color - will use fallback if circle-level color exists
-            {"user_id": users["eve"], "username": "eve", "role": "member", "color": "#84CC16"},  # Lime for eve
+            {
+                "user_id": users["charlie"], 
+                "username": "charlie", 
+                "role": "admin", 
+                "color": "#F97316",  # Orange for charlie
+                "personal_name": "Public Square",  # Uses default (circle name)
+                "tags": ["public", "general", "sharing"]
+            },
+            {
+                "user_id": users["alice"], 
+                "username": "alice", 
+                "role": "member", 
+                "color": "#14B8A6",  # Teal for alice
+                "personal_name": "Community Feed",  # Alice's personal name
+                "tags": ["community", "sharing"]
+            },
+            {
+                "user_id": users["bob"], 
+                "username": "bob", 
+                "role": "member", 
+                "color": "#EC4899",  # Pink for bob
+                # No personal_name - will default to circle name
+                "tags": ["public"]
+            },
+            {
+                "user_id": users["diana"], 
+                "username": "diana", 
+                "role": "member"
+                # No color, personal_name, or tags - will use defaults/fallbacks
+            },
+            {
+                "user_id": users["eve"], 
+                "username": "eve", 
+                "role": "member", 
+                "color": "#84CC16",  # Lime for eve
+                "personal_name": "Public Discussions",  # Eve's personal name
+                "tags": ["public", "discussions", "social"]
+            },
         ]
     }
     result = db.circles.insert_one(public_circle_doc)

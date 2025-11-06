@@ -255,6 +255,8 @@ class CircleMember(BaseModel):
     role: RoleEnum = RoleEnum.member
     invited_by: Optional[PyObjectId] = None
     color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$", description="Member-specific color preference")
+    personal_name: Optional[str] = Field(None, max_length=100, description="Personal name for the circle (defaults to circle name)")
+    tags: Optional[List[str]] = Field(None, max_items=20, description="Member-specific tags for organizing circles")
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 class CircleCreate(BaseModel):
@@ -282,7 +284,8 @@ class CircleOut(BaseModel):
     user_role: Optional[RoleEnum] = None
     is_public: bool = False
     color: Optional[str] = None
-    labels: Optional[List[str]] = None
+    personal_name: Optional[str] = Field(None, description="Personal name for the circle (user-specific, defaults to circle name)")
+    tags: Optional[List[str]] = Field(None, description="Member-specific tags for organizing circles")
     metadata: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     is_direct_message: bool = False
@@ -296,6 +299,12 @@ class MemberRoleUpdate(BaseModel):
 
 class MemberColorUpdate(BaseModel):
     color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$", description="Hex color code (e.g., #FF5733). Set to null to remove.")
+
+class MemberPersonalNameUpdate(BaseModel):
+    personal_name: Optional[str] = Field(None, max_length=100, description="Personal name for the circle. Set to null to reset to circle name.")
+
+class MemberTagsUpdate(BaseModel):
+    tags: Optional[List[str]] = Field(None, max_items=20, description="List of tags (comma-separated or as array). Set to null or empty to remove all tags.")
 
 class InviteTokenCreateResponse(BaseModel):
     token: str
@@ -1070,8 +1079,8 @@ async def list_my_circles(
     current_user: UserInDB = Depends(get_current_user),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    search: Optional[str] = Query(None, description="Search by name or description"),
-    label: Optional[str] = Query(None, description="Filter by label"),
+    search: Optional[str] = Query(None, description="Search by name, personal name, or description"),
+    tag: Optional[str] = Query(None, description="Filter by member-specific tag"),
     color: Optional[str] = Query(None, description="Filter by color hex code"),
     sort_by: str = Query("name", description="Sort by: name, created_at, member_count")
 ):
@@ -1079,16 +1088,15 @@ async def list_my_circles(
     # Build query
     query = {"members.user_id": current_user.id}
     
-    # Search by name or description
+    # Search by name, personal name, or description (personal name filtering happens after fetch)
     if search:
         query["$or"] = [
             {"name": {"$regex": search, "$options": "i"}},
             {"description": {"$regex": search, "$options": "i"}}
         ]
     
-    # Filter by label
-    if label:
-        query["labels"] = {"$in": [label]}
+    # Filter by tag (member-specific, filtering happens after fetch)
+    # Note: We can't easily filter by member tags in MongoDB query, so we'll filter after fetching
     
     # Filter by color (member-specific or circle-level for backward compatibility)
     # Note: This is approximate since we can't easily filter by member color in MongoDB query
@@ -1122,27 +1130,51 @@ async def list_my_circles(
     else:
         sort_field = "name"
     
-    # Fetch circles (we may need to fetch more to account for post-fetch color filtering)
-    fetch_limit = limit * 2 if color else limit  # Fetch more if filtering by color to account for filtering
+    # Fetch circles (we may need to fetch more to account for post-fetch filtering)
+    fetch_limit = limit * 3 if (color or tag) else limit  # Fetch more if filtering to account for post-fetch filtering
     circles_cursor = circles_collection.find(query).sort(sort_field, sort_direction).skip(skip).limit(fetch_limit)
     result = []
     fetched_count = 0
     for c in circles_cursor:
         fetched_count += 1
         member_info = next((m for m in c.get('members', []) if m['user_id'] == current_user.id), None)
+        if not member_info:
+            continue
+        
         user_role = RoleEnum(member_info['role']) if member_info else None
         # Use member-specific color if available, otherwise fall back to circle-level color (for backward compatibility)
         member_color = member_info.get('color') if member_info else None
         circle_color = c.get('color')
         final_color = member_color if member_color else circle_color
         
+        # Get member-specific personal_name and tags
+        personal_name = member_info.get('personal_name')
+        member_tags = member_info.get('tags', [])
+        
         # Apply color filter after fetching (to ensure member-specific colors are checked)
         if color and final_color != color:
             continue
         
-        # Create circle data with member-specific color
+        # Apply tag filter after fetching (member-specific tags)
+        if tag and tag.lower() not in [t.lower() for t in member_tags]:
+            continue
+        
+        # Apply search filter on personal_name (if search is provided)
+        if search:
+            # Check if personal_name matches search (in addition to name/description already checked)
+            personal_name_match = personal_name and search.lower() in personal_name.lower()
+            if not personal_name_match and not any(search.lower() in str(v).lower() for v in [c.get('name'), c.get('description')] if v):
+                # Re-check name/description since we might have missed it in the query
+                name_match = search.lower() in c.get('name', '').lower()
+                desc_match = search.lower() in (c.get('description') or '').lower()
+                if not (name_match or desc_match):
+                    continue
+        
+        # Create circle data with member-specific attributes
         circle_data = c.copy()
         circle_data['color'] = final_color
+        circle_data['personal_name'] = personal_name  # Will be None if not set, defaults to circle name in frontend
+        circle_data['tags'] = member_tags if member_tags else None
         member_count = len(c.get("members", []))
         is_direct_message = member_count == 2
         item = CircleOut(**circle_data, member_count=member_count, user_role=user_role, is_direct_message=is_direct_message)
@@ -1157,9 +1189,9 @@ async def list_my_circles(
         result.sort(key=lambda x: x.member_count, reverse=True)
     
     # Calculate total and has_more
-    # If filtering by color, we fetched more to account for filtering, so check if we got the full fetch_limit
+    # If filtering by color or tag, we fetched more to account for filtering, so check if we got the full fetch_limit
     # This is an approximation - for exact counts, we'd need to fetch all and filter, which is expensive
-    has_more = len(result) == limit and (not color or fetched_count == fetch_limit)
+    has_more = len(result) == limit and (not (color or tag) or fetched_count == fetch_limit)
     total = skip + len(result) + (1 if has_more else 0)  # Approximate total
     
     return CircleListResponse(
@@ -1170,18 +1202,19 @@ async def list_my_circles(
         has_more=has_more
     )
 
-@app.get("/circles/mine/labels", tags=["Circles"])
-async def get_my_circle_labels(current_user: UserInDB = Depends(get_current_user)):
-    """Get all unique labels from user's circles."""
+@app.get("/circles/mine/tags", tags=["Circles"])
+async def get_my_circle_tags(current_user: UserInDB = Depends(get_current_user)):
+    """Get all unique tags from user's circles (member-specific)."""
     circles = circles_collection.find(
-        {"members.user_id": current_user.id, "labels": {"$exists": True, "$ne": []}},
-        {"labels": 1}
+        {"members.user_id": current_user.id},
+        {"members": 1}
     )
-    all_labels = set()
+    all_tags = set()
     for circle in circles:
-        if circle.get("labels"):
-            all_labels.update(circle["labels"])
-    return {"labels": sorted(list(all_labels))}
+        member_info = next((m for m in circle.get('members', []) if m['user_id'] == current_user.id), None)
+        if member_info and member_info.get('tags'):
+            all_tags.update(member_info['tags'])
+    return {"tags": sorted(list(all_tags))}
 
 @app.get("/circles/mine/colors", tags=["Circles"])
 async def get_my_circle_colors(current_user: UserInDB = Depends(get_current_user)):
@@ -1368,9 +1401,15 @@ async def get_circle_details(
     circle_color = circle.get('color')
     final_color = member_color if member_color else circle_color
     
+    # Get member-specific personal_name and tags
+    personal_name = member_info.get('personal_name') if member_info else None
+    member_tags = member_info.get('tags', []) if member_info else []
+    
     if user_role in [RoleEnum.admin, RoleEnum.moderator]:
         circle_data = circle.copy()
         circle_data['color'] = final_color  # Use member-specific color in response
+        circle_data['personal_name'] = personal_name  # Member-specific personal name
+        circle_data['tags'] = member_tags if member_tags else None  # Member-specific tags
         raw_members = circle_data.pop("members", [])
         return CircleManagementOut(
             **circle_data,
@@ -1382,6 +1421,8 @@ async def get_circle_details(
     else:
         circle_data = circle.copy()
         circle_data['color'] = final_color  # Use member-specific color in response
+        circle_data['personal_name'] = personal_name  # Member-specific personal name
+        circle_data['tags'] = member_tags if member_tags else None  # Member-specific tags
         return CircleOut(
             **circle_data,
             member_count=member_count,
@@ -1487,6 +1528,52 @@ async def update_my_circle_color(circle_id: str, color_data: MemberColorUpdate, 
     result = circles_collection.update_one(
         {"_id": circle["_id"], "members.user_id": current_user.id},
         {"$set": member_update}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Member not found in this circle.")
+    
+    return await get_circle_details(circle_id, current_user)
+
+@app.patch("/circles/{circle_id}/my-personal-name", response_model=CircleOut, tags=["Circles"])
+async def update_my_circle_personal_name(circle_id: str, name_data: MemberPersonalNameUpdate, current_user: UserInDB = Depends(get_current_user)):
+    """Update the current user's personal name for a circle (member-specific)."""
+    circle, user_role = await get_circle_and_user_role(circle_id, current_user)
+    
+    # If personal_name is None or empty string, remove it (reset to circle name)
+    if name_data.personal_name is None or (isinstance(name_data.personal_name, str) and name_data.personal_name.strip() == ""):
+        member_update = {"$unset": {"members.$.personal_name": ""}}
+    else:
+        # Update the member's personal name
+        member_update = {"$set": {"members.$.personal_name": name_data.personal_name.strip()}}
+    
+    result = circles_collection.update_one(
+        {"_id": circle["_id"], "members.user_id": current_user.id},
+        member_update
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Member not found in this circle.")
+    
+    return await get_circle_details(circle_id, current_user)
+
+@app.patch("/circles/{circle_id}/my-tags", response_model=CircleOut, tags=["Circles"])
+async def update_my_circle_tags(circle_id: str, tags_data: MemberTagsUpdate, current_user: UserInDB = Depends(get_current_user)):
+    """Update the current user's tags for a circle (member-specific)."""
+    circle, user_role = await get_circle_and_user_role(circle_id, current_user)
+    
+    # Normalize tags: convert to lowercase, remove duplicates, filter empty strings
+    if tags_data.tags is None:
+        # Remove all tags
+        member_update = {"$unset": {"members.$.tags": ""}}
+    else:
+        # Normalize and set tags
+        normalized_tags = list(set([tag.strip().lower() for tag in tags_data.tags if tag.strip()]))
+        member_update = {"$set": {"members.$.tags": normalized_tags}}
+    
+    result = circles_collection.update_one(
+        {"_id": circle["_id"], "members.user_id": current_user.id},
+        member_update
     )
     
     if result.matched_count == 0:

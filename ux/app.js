@@ -362,14 +362,14 @@ function getCircleColor(circleId) {
     return circle?.color || null;
 }
 
-// Helper to get circle labels
-function getCircleLabels(circleId) {
+// Helper to get circle tags
+function getCircleTags(circleId) {
     if (!circleId) return [];
     if (state.circleView.currentCircle && state.circleView.currentCircle._id === circleId) {
-        return state.circleView.currentCircle.labels || [];
+        return state.circleView.currentCircle.tags || [];
     }
     const circle = state.myCircles?.find(c => c._id === circleId);
-    return circle?.labels || [];
+    return circle?.tags || [];
 }
 
 // -----------------------------------------------
@@ -1198,7 +1198,7 @@ state.circlesPagination = {
     skip: 0,
     limit: 20,
     search: '',
-    label: '',
+    tag: '',
     color: '',
     sortBy: 'name',
     total: 0,
@@ -1220,23 +1220,23 @@ async function renderAllSidebarComponents() {
 
 async function loadFilterOptions() {
     try {
-        const [labelsData, colorsData] = await Promise.all([
-            apiFetch('/circles/mine/labels'),
+        const [tagsData, colorsData] = await Promise.all([
+            apiFetch('/circles/mine/tags'),
             apiFetch('/circles/mine/colors')
         ]);
         
-        // Update label filter
-        const labelSelect = document.getElementById('circleLabelFilter');
-        if (labelSelect) {
-            const currentValue = labelSelect.value;
-            labelSelect.innerHTML = '<option value="">All Labels</option>';
-            labelsData.labels.forEach(label => {
+        // Update tag filter
+        const tagSelect = document.getElementById('circleTagFilter');
+        if (tagSelect) {
+            const currentValue = tagSelect.value;
+            tagSelect.innerHTML = '<option value="">All Tags</option>';
+            tagsData.tags.forEach(tag => {
                 const option = document.createElement('option');
-                option.value = label;
-                option.textContent = label;
-                labelSelect.appendChild(option);
+                option.value = tag;
+                option.textContent = tag;
+                tagSelect.appendChild(option);
             });
-            labelSelect.value = currentValue;
+            tagSelect.value = currentValue;
         }
         
         // Update color filter
@@ -1274,8 +1274,8 @@ async function loadCirclesWithFilters(reset = false) {
     if (state.circlesPagination.search) {
         params.append('search', state.circlesPagination.search);
     }
-    if (state.circlesPagination.label) {
-        params.append('label', state.circlesPagination.label);
+    if (state.circlesPagination.tag) {
+        params.append('tag', state.circlesPagination.tag);
     }
     if (state.circlesPagination.color) {
         params.append('color', state.circlesPagination.color);
@@ -1458,7 +1458,7 @@ function renderMyCircles(circles) {
     `;
 
     if (filteredCircles.length === 0) {
-        if (state.circlesPagination.search || state.circlesPagination.label || state.circlesPagination.color) {
+        if (state.circlesPagination.search || state.circlesPagination.tag || state.circlesPagination.color) {
             html += `
             <div class="text-center p-3 mt-2">
             <p class="small">No ${activeTab === 'dms' ? 'direct messages' : 'circles'} match your filters.</p>
@@ -1494,21 +1494,22 @@ function renderMyCircles(circles) {
                       title="${c.color}"></span>
             ` : '';
             
-            // Editable labels with click-to-edit
-            const labelsHtml = c.labels && c.labels.length > 0 
-                ? `<div class="mt-1 d-flex flex-wrap gap-1 align-items-center" data-circle-id="${c._id}" data-labels="${c.labels.join(',')}">
-                    ${c.labels.map(l => `
-                        <span class="badge bg-secondary editable-label" style="font-size: 0.7rem; padding: 0.2rem 0.4rem; cursor: pointer;" title="Click to edit labels">
-                            <i class="bi bi-tag-fill" style="font-size: 0.6rem;"></i> ${l}
+            // Editable tags with click-to-edit
+            const displayName = c.personal_name || c.name;
+            const tagsHtml = c.tags && c.tags.length > 0 
+                ? `<div class="mt-1 d-flex flex-wrap gap-1 align-items-center" data-circle-id="${c._id}" data-tags="${c.tags.join(',')}">
+                    ${c.tags.map(t => `
+                        <span class="badge bg-secondary editable-tag" style="font-size: 0.7rem; padding: 0.2rem 0.4rem; cursor: pointer;" title="Click to edit tags">
+                            <i class="bi bi-tag-fill" style="font-size: 0.6rem;"></i> ${t}
                         </span>
                     `).join('')}
-                    <button class="btn btn-sm p-0 ms-1" style="font-size: 0.7rem; line-height: 1;" data-action="edit-labels" data-circle-id="${c._id}" title="Edit labels">
+                    <button class="btn btn-sm p-0 ms-1" style="font-size: 0.7rem; line-height: 1;" data-action="edit-tags" data-circle-id="${c._id}" title="Edit tags">
                         <i class="bi bi-pencil-square"></i>
                     </button>
                    </div>`
-                : `<div class="mt-1" data-circle-id="${c._id}" data-labels="">
-                    <button class="btn btn-sm btn-outline-secondary btn-sm p-1" style="font-size: 0.7rem;" data-action="edit-labels" data-circle-id="${c._id}" title="Add labels">
-                        <i class="bi bi-tag"></i> Add labels
+                : `<div class="mt-1" data-circle-id="${c._id}" data-tags="">
+                    <button class="btn btn-sm btn-outline-secondary btn-sm p-1" style="font-size: 0.7rem;" data-action="edit-tags" data-circle-id="${c._id}" title="Add tags">
+                        <i class="bi bi-tag"></i> Add tags
                     </button>
                    </div>`;
             
@@ -1539,13 +1540,19 @@ function renderMyCircles(circles) {
             <div class="list-group-item d-flex justify-content-between align-items-center p-0" ${colorStyle}>
             <a href="#/circle/${c._id}"
             class="flex-grow-1 list-group-item-action border-0 clickable px-3 py-2"
-            data-circle-id="${c._id}" data-bs-toggle="tooltip" title="${c.name}">
+            data-circle-id="${c._id}" data-bs-toggle="tooltip" title="${displayName}">
             <div class="d-flex align-items-center">
             ${colorBadge}
             <i class="bi ${iconClass} me-2" style="color: ${c.color || 'inherit'};" title="${iconTitle}"></i>
             <div class="flex-grow-1">
-            <div class="fw-semibold">${c.name}</div>
-            ${labelsHtml}
+            <div class="fw-semibold d-flex align-items-center gap-2">
+                <span class="editable-personal-name" data-circle-id="${c._id}" title="Click to edit personal name">${displayName}</span>
+                ${c.personal_name ? `<span class="text-muted small" style="font-weight: normal;">(${c.name})</span>` : ''}
+                <button class="btn btn-sm p-0 ms-auto" style="font-size: 0.7rem; line-height: 1; opacity: 0.5;" data-action="edit-personal-name" data-circle-id="${c._id}" title="Edit personal name">
+                    <i class="bi bi-pencil-square"></i>
+                </button>
+            </div>
+            ${tagsHtml}
             </div>
             </div>
             </a>
@@ -1666,11 +1673,11 @@ function renderActiveFilters() {
         });
     }
     
-    if (state.circlesPagination.label) {
+    if (state.circlesPagination.tag) {
         activeFilters.push({
-            type: 'label',
-            label: `Label: ${state.circlesPagination.label}`,
-            value: state.circlesPagination.label
+            type: 'tag',
+            label: `Tag: ${state.circlesPagination.tag}`,
+            value: state.circlesPagination.tag
         });
     }
     
@@ -1715,9 +1722,9 @@ function removeFilter(filterType) {
             state.circlesPagination.search = '';
             document.getElementById('circleSearchInput').value = '';
             break;
-        case 'label':
-            state.circlesPagination.label = '';
-            document.getElementById('circleLabelFilter').value = '';
+        case 'tag':
+            state.circlesPagination.tag = '';
+            document.getElementById('circleTagFilter').value = '';
             break;
         case 'color':
             state.circlesPagination.color = '';
@@ -1730,12 +1737,13 @@ function removeFilter(filterType) {
 
 function clearCircleFilters() {
     state.circlesPagination.search = '';
-    state.circlesPagination.label = '';
+    state.circlesPagination.tag = '';
     state.circlesPagination.color = '';
     state.circlesPagination.skip = 0;
     
     document.getElementById('circleSearchInput').value = '';
-    document.getElementById('circleLabelFilter').value = '';
+    const tagFilter = document.getElementById('circleTagFilter');
+    if (tagFilter) tagFilter.value = '';
     document.getElementById('circleColorFilter').value = '';
     
     loadCirclesWithFilters(true);
@@ -1828,23 +1836,24 @@ async function renderCircleFeed(circleId) {
               </span>
             ` : '';
             
-            // Editable labels with click-to-edit
-            const labelsHtml = circleDetails.labels && circleDetails.labels.length > 0 
-                ? `<div class="mt-2 d-flex flex-wrap gap-1 align-items-center" data-circle-id="${circleId}" data-labels="${circleDetails.labels.join(',')}">
-                    ${circleDetails.labels.map(l => `
-                        <span class="badge bg-secondary editable-label" style="font-size: 0.75rem; cursor: pointer;" title="Click to edit labels">
-                            <i class="bi bi-tag-fill"></i> ${l}
+            // Editable tags with click-to-edit (available to all members)
+            const displayName = circleDetails.personal_name || circleDetails.name;
+            const tagsHtml = circleDetails.tags && circleDetails.tags.length > 0 
+                ? `<div class="mt-2 d-flex flex-wrap gap-1 align-items-center" data-circle-id="${circleId}" data-tags="${circleDetails.tags.join(',')}">
+                    ${circleDetails.tags.map(t => `
+                        <span class="badge bg-secondary editable-tag" style="font-size: 0.75rem; cursor: pointer;" title="Click to edit tags">
+                            <i class="bi bi-tag-fill"></i> ${t}
                         </span>
                     `).join('')}
-                    ${canManage ? `<button class="btn btn-sm p-0 ms-1" style="font-size: 0.75rem; line-height: 1;" data-action="edit-circle-labels" data-circle-id="${circleId}" title="Edit labels">
+                    <button class="btn btn-sm p-0 ms-1" style="font-size: 0.75rem; line-height: 1;" data-action="edit-circle-tags" data-circle-id="${circleId}" title="Edit tags">
                         <i class="bi bi-pencil-square"></i>
-                    </button>` : ''}
-                   </div>`
-                : canManage ? `<div class="mt-2" data-circle-id="${circleId}" data-labels="">
-                    <button class="btn btn-sm btn-outline-secondary" style="font-size: 0.75rem;" data-action="edit-circle-labels" data-circle-id="${circleId}" title="Add labels">
-                        <i class="bi bi-tag"></i> Add labels
                     </button>
-                   </div>` : '';
+                   </div>`
+                : `<div class="mt-2" data-circle-id="${circleId}" data-tags="">
+                    <button class="btn btn-sm btn-outline-secondary" style="font-size: 0.75rem;" data-action="edit-circle-tags" data-circle-id="${circleId}" title="Add tags">
+                        <i class="bi bi-tag"></i> Add tags
+                    </button>
+                   </div>`;
             
             // Member-specific color picker (available to all members)
             const memberColorPicker = state.currentUser ? `
@@ -1881,16 +1890,21 @@ async function renderCircleFeed(circleId) {
            <div class="flex-grow-1">
               <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
                 ${dicebearImage}
-                <h2 class="mb-0">
+                <h2 class="mb-0 d-flex align-items-center gap-2">
                   ${circleDetails.color ? `<span class="badge rounded-pill me-2" style="background-color: ${circleDetails.color}; width: 20px; height: 20px; padding: 0;" title="${circleDetails.color}"></span>` : ''}
-                  <i class="bi ${headerIconClass}" title="${headerIconTitle}"></i> ${circleDetails.name}
+                  <i class="bi ${headerIconClass}" title="${headerIconTitle}"></i>
+                  <span class="editable-personal-name" data-circle-id="${circleId}" title="Click to edit personal name">${displayName}</span>
+                  ${circleDetails.personal_name ? `<span class="text-muted small" style="font-weight: normal;">(${circleDetails.name})</span>` : ''}
+                  <button class="btn btn-sm p-0 ms-1" style="font-size: 0.75rem; line-height: 1; opacity: 0.5;" data-action="edit-circle-personal-name" data-circle-id="${circleId}" title="Edit personal name">
+                    <i class="bi bi-pencil-square"></i>
+                  </button>
                 </h2>
                 ${directMessageBadge}
                 ${colorBadge}
                 ${circleDetails.is_public ? '<span class="badge bg-info" title="This circle is public"><i class="bi bi-globe"></i> Public</span>' : ''}
               </div>
               <p class="mb-1">${circleDetails.description || defaultDescription}</p>
-              ${labelsHtml}
+              ${tagsHtml}
            </div>
            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
               <a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
@@ -2294,11 +2308,11 @@ title="Open Comments">
             const displayCircleName = circleName || post.circle_name;
             const circleId = post.circle_id;
             const circleColor = getCircleColor(circleId);
-            const circleLabels = getCircleLabels(circleId);
+            const circleTags = getCircleTags(circleId);
             const circleColorStyle = circleColor ? `style="border-left: 4px solid ${circleColor};"` : '';
             const circleColorBadge = circleColor ? `<span class="badge rounded-pill me-1" style="background-color: ${circleColor}; width: 10px; height: 10px; padding: 0;" title="${circleColor}"></span>` : '';
-            const circleLabelsBadges = circleLabels.length > 0 
-                ? `<span class="ms-1">${circleLabels.map(l => `<span class="badge bg-secondary" style="font-size: 0.65rem; padding: 0.15rem 0.35rem;"><i class="bi bi-tag-fill"></i> ${l}</span>`).join(' ')}</span>`
+            const circleTagsBadges = circleTags.length > 0 
+                ? `<span class="ms-1">${circleTags.map(t => `<span class="badge bg-secondary" style="font-size: 0.65rem; padding: 0.15rem 0.35rem;"><i class="bi bi-tag-fill"></i> ${t}</span>`).join(' ')}</span>`
                 : '';
             
             const canModify = state.currentUser && post.author_username === state.currentUser.username;
@@ -2348,7 +2362,7 @@ ${circleColorBadge}
 class="text-reset fw-bold">
 ${displayCircleName}
 </a></span>
-${circleLabelsBadges}
+${circleTagsBadges}
 <span class="ms-2">${new Date(post.created_at).toLocaleString()}</span>
 </small>
 </div>
@@ -2431,17 +2445,14 @@ async function handleCreateCircle() {
     const name = document.getElementById('circleName').value;
     const description = document.getElementById('circleDescription').value;
     const color = document.getElementById('circleColor').value;
-    const labelsInput = document.getElementById('circleLabels').value;
-
     if (!name.trim()) {
         return showStatus('Circle name cannot be empty', 'warning');
     }
 
     const payload = {
         name,
-        description: description || undefined,
-        // Note: color is now member-specific, will be set after circle creation
-        labels: labelsInput ? labelsInput.split(',').map(l => l.trim()).filter(l => l) : undefined
+        description: description || undefined
+        // Note: color and tags are now member-specific, will be set after circle creation
     };
 
     setButtonLoading(btn, true);
@@ -3565,8 +3576,13 @@ function renderCircleManagementUI(circle) {
         if (colorRow) colorRow.style.display = 'none';
     }
     
-    // Set labels
-    document.getElementById('manageCircleLabels').value = circle.labels ? circle.labels.join(', ') : '';
+    // Note: Tags are now member-specific, not circle-level. They can be edited per-user.
+    // Hide or disable labels field in admin settings
+    const labelsField = document.getElementById('manageCircleLabels');
+    if (labelsField) {
+        const labelsRow = labelsField.closest('.row') || labelsField.closest('.mb-3');
+        if (labelsRow) labelsRow.style.display = 'none';
+    }
 
     const membersContainer = document.getElementById('manageCircleMembersContainer');
     if (!circle.members || circle.members.length === 0) {
@@ -3636,14 +3652,12 @@ function renderCircleManagementUI(circle) {
 
 async function handleUpdateCircleSettings(btn) {
     const circleId = document.getElementById('manageCircleId').value;
-    const labelsInput = document.getElementById('manageCircleLabels').value;
     
     const payload = {
         name: document.getElementById('manageCircleName').value,
         description: document.getElementById('manageCircleDescription').value,
-        is_public: document.getElementById('manageCircleIsPublic').checked,
-        // Note: color is now member-specific, not circle-level. Use updateMyCircleColor() instead.
-        labels: labelsInput ? labelsInput.split(',').map(l => l.trim()).filter(l => l) : undefined
+        is_public: document.getElementById('manageCircleIsPublic').checked
+        // Note: color and tags are now member-specific, not circle-level. Use updateMyCircleColor() and editCircleTags() instead.
     };
 
     setButtonLoading(btn, true);
@@ -3730,69 +3744,63 @@ async function updateSidebarCircleColor(circleId) {
     }
 }
 
-async function editCircleLabels(circleId) {
-    // Find the circle to get current labels
+async function editCircleTags(circleId) {
+    // Find the circle to get current tags
     const circle = state.myCircles?.find(c => c._id === circleId) || 
                    (state.circleView.currentCircle?._id === circleId ? state.circleView.currentCircle : null);
     
-    if (!circle) {
-        // Try to fetch circle details
-        try {
-            const circleDetails = await apiFetch(`/circles/${circleId}`);
-            const currentLabels = circleDetails.labels ? circleDetails.labels.join(', ') : '';
-            
-            const labelsInput = prompt('Enter labels (comma-separated):', currentLabels);
-            if (labelsInput === null) return; // User cancelled
-            
-            const labels = labelsInput ? labelsInput.split(',').map(l => l.trim()).filter(l => l) : [];
-            
-            await apiFetch(`/circles/${circleId}`, {
-                method: 'PATCH',
-                body: JSON.stringify({ labels: labels })
-            });
-            
-            showStatus('Labels updated successfully!', 'success');
-            
-            // Update the UI
-            if (state.circleView.currentCircle?._id === circleId) {
-                await resetAndRenderCircleFeed(circleId);
-            }
-            await renderAllSidebarComponents();
-        } catch (e) {
-            if (e.status === 403) {
-                showStatus('Only circle admins can edit labels.', 'warning');
-            } else {
-                showStatus(e.message || 'Failed to update labels', 'danger');
-            }
+    const currentTags = circle?.tags ? circle.tags.join(', ') : '';
+    
+    const tagsInput = prompt('Enter tags (comma-separated):', currentTags);
+    if (tagsInput === null) return; // User cancelled
+    
+    const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+    
+    try {
+        await apiFetch(`/circles/${circleId}/my-tags`, {
+            method: 'PATCH',
+            body: JSON.stringify({ tags: tags })
+        });
+        
+        showStatus('Tags updated successfully!', 'success');
+        
+        // Update the UI
+        if (state.circleView.currentCircle?._id === circleId) {
+            await resetAndRenderCircleFeed(circleId);
         }
-    } else {
-        const currentLabels = circle.labels ? circle.labels.join(', ') : '';
+        await renderAllSidebarComponents();
+    } catch (e) {
+        showStatus(e.message || 'Failed to update tags', 'danger');
+    }
+}
+
+async function editCirclePersonalName(circleId) {
+    // Find the circle to get current personal name
+    const circle = state.myCircles?.find(c => c._id === circleId) || 
+                   (state.circleView.currentCircle?._id === circleId ? state.circleView.currentCircle : null);
+    
+    const currentPersonalName = circle?.personal_name || circle?.name || '';
+    
+    const personalNameInput = prompt('Enter personal name for this circle (leave empty to reset to circle name):', currentPersonalName);
+    if (personalNameInput === null) return; // User cancelled
+    
+    const personalName = personalNameInput.trim() || null;
+    
+    try {
+        await apiFetch(`/circles/${circleId}/my-personal-name`, {
+            method: 'PATCH',
+            body: JSON.stringify({ personal_name: personalName })
+        });
         
-        const labelsInput = prompt('Enter labels (comma-separated):', currentLabels);
-        if (labelsInput === null) return; // User cancelled
+        showStatus('Personal name updated successfully!', 'success');
         
-        const labels = labelsInput ? labelsInput.split(',').map(l => l.trim()).filter(l => l) : [];
-        
-        try {
-            await apiFetch(`/circles/${circleId}`, {
-                method: 'PATCH',
-                body: JSON.stringify({ labels: labels })
-            });
-            
-            showStatus('Labels updated successfully!', 'success');
-            
-            // Update the UI
-            if (state.circleView.currentCircle?._id === circleId) {
-                await resetAndRenderCircleFeed(circleId);
-            }
-            await renderAllSidebarComponents();
-        } catch (e) {
-            if (e.status === 403) {
-                showStatus('Only circle admins can edit labels.', 'warning');
-            } else {
-                showStatus(e.message || 'Failed to update labels', 'danger');
-            }
+        // Update the UI
+        if (state.circleView.currentCircle?._id === circleId) {
+            await resetAndRenderCircleFeed(circleId);
         }
+        await renderAllSidebarComponents();
+    } catch (e) {
+        showStatus(e.message || 'Failed to update personal name', 'danger');
     }
 }
 
@@ -4883,10 +4891,10 @@ ${options.length <= 2 ? 'disabled' : ''}>
         });
     }
 
-    const circleLabelFilter = document.getElementById('circleLabelFilter');
-    if (circleLabelFilter) {
-        circleLabelFilter.addEventListener('change', (e) => {
-            state.circlesPagination.label = e.target.value;
+    const circleTagFilter = document.getElementById('circleTagFilter');
+    if (circleTagFilter) {
+        circleTagFilter.addEventListener('change', (e) => {
+            state.circlesPagination.tag = e.target.value;
             loadCirclesWithFilters(true);
         });
     }
@@ -4992,36 +5000,66 @@ ${options.length <= 2 ? 'disabled' : ''}>
             }
         }
         
-        // Handle label editing from sidebar
-        if (e.target.closest('[data-action="edit-labels"]')) {
-            const btn = e.target.closest('[data-action="edit-labels"]');
+        // Handle tag editing from sidebar
+        if (e.target.closest('[data-action="edit-tags"]')) {
+            const btn = e.target.closest('[data-action="edit-tags"]');
             const circleId = btn.getAttribute('data-circle-id');
             if (circleId) {
                 e.stopPropagation();
-                editCircleLabels(circleId);
+                editCircleTags(circleId);
             }
         }
         
-        // Handle label editing from circle view
-        if (e.target.closest('[data-action="edit-circle-labels"]')) {
-            const btn = e.target.closest('[data-action="edit-circle-labels"]');
+        // Handle tag editing from circle view
+        if (e.target.closest('[data-action="edit-circle-tags"]')) {
+            const btn = e.target.closest('[data-action="edit-circle-tags"]');
             const circleId = btn.getAttribute('data-circle-id');
             if (circleId) {
                 e.stopPropagation();
-                editCircleLabels(circleId);
+                editCircleTags(circleId);
             }
         }
         
-        // Handle clicking on labels to edit (in sidebar and circle view)
-        if (e.target.closest('.editable-label')) {
-            const label = e.target.closest('.editable-label');
-            const labelsContainer = label.closest('[data-circle-id]');
-            if (labelsContainer) {
-                const circleId = labelsContainer.getAttribute('data-circle-id');
+        // Handle clicking on tags to edit (in sidebar and circle view)
+        if (e.target.closest('.editable-tag')) {
+            const tag = e.target.closest('.editable-tag');
+            const tagsContainer = tag.closest('[data-circle-id]');
+            if (tagsContainer) {
+                const circleId = tagsContainer.getAttribute('data-circle-id');
                 if (circleId) {
                     e.stopPropagation();
-                    editCircleLabels(circleId);
+                    editCircleTags(circleId);
                 }
+            }
+        }
+        
+        // Handle personal name editing from sidebar
+        if (e.target.closest('[data-action="edit-personal-name"]')) {
+            const btn = e.target.closest('[data-action="edit-personal-name"]');
+            const circleId = btn.getAttribute('data-circle-id');
+            if (circleId) {
+                e.stopPropagation();
+                editCirclePersonalName(circleId);
+            }
+        }
+        
+        // Handle personal name editing from circle view
+        if (e.target.closest('[data-action="edit-circle-personal-name"]')) {
+            const btn = e.target.closest('[data-action="edit-circle-personal-name"]');
+            const circleId = btn.getAttribute('data-circle-id');
+            if (circleId) {
+                e.stopPropagation();
+                editCirclePersonalName(circleId);
+            }
+        }
+        
+        // Handle clicking on personal name to edit (in sidebar and circle view)
+        if (e.target.closest('.editable-personal-name')) {
+            const nameElement = e.target.closest('.editable-personal-name');
+            const circleId = nameElement.getAttribute('data-circle-id');
+            if (circleId) {
+                e.stopPropagation();
+                editCirclePersonalName(circleId);
             }
         }
     });
