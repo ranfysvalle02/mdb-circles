@@ -299,6 +299,19 @@
                   <p class=" small">
                     Click a circle to view its feed.
                   </p>
+                  <!-- Tabs for Messages and Circles -->
+                  <ul class="nav nav-tabs nav-tabs-sm mb-3" id="circlesTab" role="tablist" style="border-bottom: 1px solid var(--border-color);">
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link active" id="circles-tab" data-bs-toggle="tab" data-bs-target="#circles-pane" type="button" role="tab" aria-controls="circles-pane" aria-selected="true" data-tab="circles">
+                        <i class="bi bi-hash"></i> Circles
+                      </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link" id="dms-tab" data-bs-toggle="tab" data-bs-target="#dms-pane" type="button" role="tab" aria-controls="dms-pane" aria-selected="false" data-tab="dms">
+                        <i class="bi bi-envelope-fill"></i> Messages
+                      </button>
+                    </li>
+                  </ul>
                   <div class="mb-3">
                     <div class="input-group input-group-sm mb-2">
                       <span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);">

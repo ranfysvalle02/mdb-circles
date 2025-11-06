@@ -1202,7 +1202,8 @@ state.circlesPagination = {
     color: '',
     sortBy: 'name',
     total: 0,
-    hasMore: false
+    hasMore: false,
+    activeTab: 'circles' // 'circles' or 'dms'
 };
 
 async function renderAllSidebarComponents() {
@@ -1437,54 +1438,102 @@ function renderMyCircles(circles) {
         circle_id
     } = state.dashboardFeed.filter;
     const createCircleBtn = document.getElementById('createCircleBtn');
+    
+    // Filter circles based on active tab
+    const activeTab = state.circlesPagination.activeTab || 'circles';
+    const filteredCircles = circles.filter(c => {
+        if (activeTab === 'dms') {
+            return c.is_direct_message === true;
+        } else {
+            return c.is_direct_message !== true;
+        }
+    });
 
     let html = `
     <a href="#"
     class="list-group-item clickable list-group-item-action ${!circle_id ? 'active' : ''}"
     data-action="filter-feed" data-circle-id="">
-    <i class="bi bi-collection-fill me-2"></i>All My Circles
+    <i class="bi bi-collection-fill me-2"></i>All My ${activeTab === 'dms' ? 'Messages' : 'Circles'}
     </a>
     `;
 
-    if (circles.length === 0) {
+    if (filteredCircles.length === 0) {
         if (state.circlesPagination.search || state.circlesPagination.label || state.circlesPagination.color) {
             html += `
             <div class="text-center p-3 mt-2">
-            <p class="small">No circles match your filters.</p>
+            <p class="small">No ${activeTab === 'dms' ? 'direct messages' : 'circles'} match your filters.</p>
             <button class="btn btn-sm btn-secondary" onclick="clearCircleFilters()">Clear Filters</button>
             </div>
             `;
         } else {
-            html += `
-            <div class="text-center p-3 mt-2">
-            <h5 class="mb-2"> Welcome to myCircles!</h5>
-            <p class=" small">It looks like you're not in any circles yet.</p>
-            <p class=" small">Get started by creating your own private space. Just click the <strong class="text-success"><i class="bi bi-plus-circle"></i> New Circle</strong> button above!</p>
-            </div>
-            `;
-            createCircleBtn.classList.add('highlight-wiggle');
+            if (activeTab === 'dms') {
+                html += `
+                <div class="text-center p-3 mt-2">
+                <h5 class="mb-2">No Direct Messages</h5>
+                <p class=" small">You don't have any direct messages yet.</p>
+                <p class=" small">Direct messages are created automatically when you start a conversation with another user.</p>
+                </div>
+                `;
+            } else {
+                html += `
+                <div class="text-center p-3 mt-2">
+                <h5 class="mb-2"> Welcome to myCircles!</h5>
+                <p class=" small">It looks like you're not in any circles yet.</p>
+                <p class=" small">Get started by creating your own private space. Just click the <strong class="text-success"><i class="bi bi-plus-circle"></i> New Circle</strong> button above!</p>
+                </div>
+                `;
+                createCircleBtn.classList.add('highlight-wiggle');
+            }
         }
     } else {
-        html += circles.map(c => {
+        html += filteredCircles.map(c => {
             const colorStyle = c.color ? `style="border-left: 5px solid ${c.color}; background: linear-gradient(to right, ${c.color}15 0%, transparent 5%);"` : '';
             const colorBadge = c.color ? `
                 <span class="badge rounded-pill me-2" 
                       style="background-color: ${c.color}; width: 16px; height: 16px; padding: 0; border: 2px solid ${c.color}; box-shadow: 0 0 4px ${c.color}40;" 
                       title="${c.color}"></span>
             ` : '';
+            
+            // Editable labels with click-to-edit
             const labelsHtml = c.labels && c.labels.length > 0 
-                ? `<div class="mt-1 d-flex flex-wrap gap-1">
+                ? `<div class="mt-1 d-flex flex-wrap gap-1 align-items-center" data-circle-id="${c._id}" data-labels="${c.labels.join(',')}">
                     ${c.labels.map(l => `
-                        <span class="badge bg-secondary" style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">
+                        <span class="badge bg-secondary editable-label" style="font-size: 0.7rem; padding: 0.2rem 0.4rem; cursor: pointer;" title="Click to edit labels">
                             <i class="bi bi-tag-fill" style="font-size: 0.6rem;"></i> ${l}
                         </span>
                     `).join('')}
+                    <button class="btn btn-sm p-0 ms-1" style="font-size: 0.7rem; line-height: 1;" data-action="edit-labels" data-circle-id="${c._id}" title="Edit labels">
+                        <i class="bi bi-pencil-square"></i>
+                    </button>
                    </div>`
-                : '';
+                : `<div class="mt-1" data-circle-id="${c._id}" data-labels="">
+                    <button class="btn btn-sm btn-outline-secondary btn-sm p-1" style="font-size: 0.7rem;" data-action="edit-labels" data-circle-id="${c._id}" title="Add labels">
+                        <i class="bi bi-tag"></i> Add labels
+                    </button>
+                   </div>`;
             
             // Use envelope icon for direct messages, hash icon for regular circles
             const iconClass = c.is_direct_message ? 'bi-envelope-fill' : 'bi-hash';
             const iconTitle = c.is_direct_message ? 'Direct Message' : 'Circle';
+            
+            // Compact color picker for homepage
+            const colorPickerHtml = state.currentUser ? `
+                <div class="d-flex align-items-center gap-1 me-2" style="flex-shrink: 0;">
+                    <input type="color" 
+                           class="form-control form-control-color sidebar-circle-color" 
+                           data-circle-id="${c._id}"
+                           value="${c.color || '#3b82f6'}" 
+                           title="Set your color for this circle" 
+                           style="width: 24px; height: 24px; cursor: pointer; border: 1px solid var(--border-color); border-radius: 4px;">
+                    <button class="btn btn-sm p-0" 
+                            style="font-size: 0.7rem; width: 20px; height: 20px; padding: 0;" 
+                            data-action="update-sidebar-color" 
+                            data-circle-id="${c._id}"
+                            title="Update color">
+                        <i class="bi bi-check"></i>
+                    </button>
+                </div>
+            ` : '';
             
             return `
             <div class="list-group-item d-flex justify-content-between align-items-center p-0" ${colorStyle}>
@@ -1500,6 +1549,7 @@ function renderMyCircles(circles) {
             </div>
             </div>
             </a>
+            ${colorPickerHtml}
             </div>
             `;
         }).join('');
@@ -1508,26 +1558,59 @@ function renderMyCircles(circles) {
 
     dom.myCirclesContainer.innerHTML = html;
     initTooltips();
+    
+    // Update tab buttons to show active state
+    const circlesTabBtn = document.getElementById('circles-tab');
+    const dmsTabBtn = document.getElementById('dms-tab');
+    const currentTab = state.circlesPagination.activeTab || 'circles';
+    
+    if (circlesTabBtn && dmsTabBtn) {
+        if (currentTab === 'circles') {
+            circlesTabBtn.classList.add('active');
+            circlesTabBtn.setAttribute('aria-selected', 'true');
+            dmsTabBtn.classList.remove('active');
+            dmsTabBtn.setAttribute('aria-selected', 'false');
+        } else {
+            dmsTabBtn.classList.add('active');
+            dmsTabBtn.setAttribute('aria-selected', 'true');
+            circlesTabBtn.classList.remove('active');
+            circlesTabBtn.setAttribute('aria-selected', 'false');
+        }
+    }
 }
 
 function renderCirclesPagination() {
     const paginationContainer = document.getElementById('circlesPagination');
     if (!paginationContainer) return;
     
-    if (state.circlesPagination.total === 0) {
+    // Filter circles to get actual count for current tab
+    const activeTab = state.circlesPagination.activeTab || 'circles';
+    const filteredCircles = state.myCircles.filter(c => {
+        if (activeTab === 'dms') {
+            return c.is_direct_message === true;
+        } else {
+            return c.is_direct_message !== true;
+        }
+    });
+    
+    const filteredTotal = filteredCircles.length;
+    
+    if (filteredTotal === 0) {
         paginationContainer.innerHTML = '';
         return;
     }
     
     const currentPage = Math.floor(state.circlesPagination.skip / state.circlesPagination.limit) + 1;
-    const totalPages = Math.ceil(state.circlesPagination.total / state.circlesPagination.limit);
+    const totalPages = Math.ceil(filteredTotal / state.circlesPagination.limit);
     const start = state.circlesPagination.skip + 1;
-    const end = Math.min(state.circlesPagination.skip + state.circlesPagination.limit, state.circlesPagination.total);
+    const end = Math.min(state.circlesPagination.skip + state.circlesPagination.limit, filteredTotal);
     
     let html = `
-    <small class="text-muted">Showing ${start}-${end} of ${state.circlesPagination.total}</small>
+    <small class="text-muted">Showing ${start}-${end} of ${filteredTotal}</small>
     <div class="btn-group btn-group-sm">
     `;
+    
+    const hasMore = end < filteredTotal;
     
     if (state.circlesPagination.skip > 0) {
         html += `<button class="btn btn-outline-secondary" onclick="loadPreviousCircles()"><i class="bi bi-chevron-left"></i></button>`;
@@ -1535,7 +1618,7 @@ function renderCirclesPagination() {
         html += `<button class="btn btn-outline-secondary" disabled><i class="bi bi-chevron-left"></i></button>`;
     }
     
-    if (state.circlesPagination.hasMore) {
+    if (hasMore) {
         html += `<button class="btn btn-outline-secondary" onclick="loadNextCircles()"><i class="bi bi-chevron-right"></i></button>`;
     } else {
         html += `<button class="btn btn-outline-secondary" disabled><i class="bi bi-chevron-right"></i></button>`;
@@ -1744,11 +1827,24 @@ async function renderCircleFeed(circleId) {
                 <i class="bi bi-palette-fill"></i> ${circleDetails.color}
               </span>
             ` : '';
+            
+            // Editable labels with click-to-edit
             const labelsHtml = circleDetails.labels && circleDetails.labels.length > 0 
-                ? `<div class="mt-2 d-flex flex-wrap gap-1">
-                    ${circleDetails.labels.map(l => `<span class="badge bg-secondary" style="font-size: 0.75rem;"><i class="bi bi-tag-fill"></i> ${l}</span>`).join('')}
+                ? `<div class="mt-2 d-flex flex-wrap gap-1 align-items-center" data-circle-id="${circleId}" data-labels="${circleDetails.labels.join(',')}">
+                    ${circleDetails.labels.map(l => `
+                        <span class="badge bg-secondary editable-label" style="font-size: 0.75rem; cursor: pointer;" title="Click to edit labels">
+                            <i class="bi bi-tag-fill"></i> ${l}
+                        </span>
+                    `).join('')}
+                    ${canManage ? `<button class="btn btn-sm p-0 ms-1" style="font-size: 0.75rem; line-height: 1;" data-action="edit-circle-labels" data-circle-id="${circleId}" title="Edit labels">
+                        <i class="bi bi-pencil-square"></i>
+                    </button>` : ''}
                    </div>`
-                : '';
+                : canManage ? `<div class="mt-2" data-circle-id="${circleId}" data-labels="">
+                    <button class="btn btn-sm btn-outline-secondary" style="font-size: 0.75rem;" data-action="edit-circle-labels" data-circle-id="${circleId}" title="Add labels">
+                        <i class="bi bi-tag"></i> Add labels
+                    </button>
+                   </div>` : '';
             
             // Member-specific color picker (available to all members)
             const memberColorPicker = state.currentUser ? `
@@ -1768,10 +1864,23 @@ async function renderCircleFeed(circleId) {
             const directMessageBadge = circleDetails.is_direct_message ? '<span class="badge bg-primary" title="Direct Message"><i class="bi bi-envelope-fill"></i> DM</span>' : '';
             const defaultDescription = circleDetails.is_direct_message ? 'A direct message between two members.' : 'A shared space for posts.';
             
+            // Dicebear image with colored border
+            const dicebearUrl = `https://api.dicebear.com/8.x/rings/svg?seed=${circleId}`;
+            const borderColor = circleDetails.color || '#3b82f6';
+            const dicebearImage = `
+              <div class="me-2" style="position: relative; display: inline-block;">
+                <img src="${dicebearUrl}" 
+                     alt="${circleDetails.name}" 
+                     style="width: 48px; height: 48px; border: 3px solid ${borderColor}; border-radius: 50%; padding: 2px; background: ${borderColor}20;"
+                     title="${circleDetails.name}">
+              </div>
+            `;
+            
             dom.circleHeader.innerHTML = `
            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3" ${colorStyle}>
            <div class="flex-grow-1">
               <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                ${dicebearImage}
                 <h2 class="mb-0">
                   ${circleDetails.color ? `<span class="badge rounded-pill me-2" style="background-color: ${circleDetails.color}; width: 20px; height: 20px; padding: 0;" title="${circleDetails.color}"></span>` : ''}
                   <i class="bi ${headerIconClass}" title="${headerIconTitle}"></i> ${circleDetails.name}
@@ -3587,6 +3696,106 @@ async function updateMyCircleColor(circleId) {
     }
 }
 
+async function updateSidebarCircleColor(circleId) {
+    const colorPicker = document.querySelector(`.sidebar-circle-color[data-circle-id="${circleId}"]`);
+    
+    if (!colorPicker) return;
+    
+    const color = colorPicker.value;
+    
+    if (!color) {
+        return showStatus('Please select a color', 'warning');
+    }
+    
+    // Validate hex color format
+    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+        return showStatus('Invalid color format. Please use hex format (e.g., #FF5733)', 'warning');
+    }
+    
+    try {
+        await apiFetch(`/circles/${circleId}/my-color`, {
+            method: 'PATCH',
+            body: JSON.stringify({ color: color })
+        });
+        
+        showStatus('Your circle color updated!', 'success');
+        
+        // Update the UI to reflect the new color
+        if (state.circleView.currentCircle?._id === circleId) {
+            await resetAndRenderCircleFeed(circleId);
+        }
+        await renderAllSidebarComponents();
+    } catch (e) {
+        showStatus(e.message, 'danger');
+    }
+}
+
+async function editCircleLabels(circleId) {
+    // Find the circle to get current labels
+    const circle = state.myCircles?.find(c => c._id === circleId) || 
+                   (state.circleView.currentCircle?._id === circleId ? state.circleView.currentCircle : null);
+    
+    if (!circle) {
+        // Try to fetch circle details
+        try {
+            const circleDetails = await apiFetch(`/circles/${circleId}`);
+            const currentLabels = circleDetails.labels ? circleDetails.labels.join(', ') : '';
+            
+            const labelsInput = prompt('Enter labels (comma-separated):', currentLabels);
+            if (labelsInput === null) return; // User cancelled
+            
+            const labels = labelsInput ? labelsInput.split(',').map(l => l.trim()).filter(l => l) : [];
+            
+            await apiFetch(`/circles/${circleId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ labels: labels })
+            });
+            
+            showStatus('Labels updated successfully!', 'success');
+            
+            // Update the UI
+            if (state.circleView.currentCircle?._id === circleId) {
+                await resetAndRenderCircleFeed(circleId);
+            }
+            await renderAllSidebarComponents();
+        } catch (e) {
+            if (e.status === 403) {
+                showStatus('Only circle admins can edit labels.', 'warning');
+            } else {
+                showStatus(e.message || 'Failed to update labels', 'danger');
+            }
+        }
+    } else {
+        const currentLabels = circle.labels ? circle.labels.join(', ') : '';
+        
+        const labelsInput = prompt('Enter labels (comma-separated):', currentLabels);
+        if (labelsInput === null) return; // User cancelled
+        
+        const labels = labelsInput ? labelsInput.split(',').map(l => l.trim()).filter(l => l) : [];
+        
+        try {
+            await apiFetch(`/circles/${circleId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ labels: labels })
+            });
+            
+            showStatus('Labels updated successfully!', 'success');
+            
+            // Update the UI
+            if (state.circleView.currentCircle?._id === circleId) {
+                await resetAndRenderCircleFeed(circleId);
+            }
+            await renderAllSidebarComponents();
+        } catch (e) {
+            if (e.status === 403) {
+                showStatus('Only circle admins can edit labels.', 'warning');
+            } else {
+                showStatus(e.message || 'Failed to update labels', 'danger');
+            }
+        }
+    }
+}
+
 async function handleManageMemberRole(btn, userId, newRole) {
     const circleId = document.getElementById('manageCircleId').value;
     if (!confirm(`Are you sure you want to change this member's role to ${newRole}?`)) return;
@@ -4698,6 +4907,26 @@ ${options.length <= 2 ? 'disabled' : ''}>
         });
     }
 
+    // Tab switching handlers for Circles/Messages
+    const circlesTab = document.getElementById('circles-tab');
+    const dmsTab = document.getElementById('dms-tab');
+    if (circlesTab) {
+        circlesTab.addEventListener('click', (e) => {
+            e.preventDefault();
+            state.circlesPagination.activeTab = 'circles';
+            state.circlesPagination.skip = 0;
+            loadCirclesWithFilters(false);
+        });
+    }
+    if (dmsTab) {
+        dmsTab.addEventListener('click', (e) => {
+            e.preventDefault();
+            state.circlesPagination.activeTab = 'dms';
+            state.circlesPagination.skip = 0;
+            loadCirclesWithFilters(false);
+        });
+    }
+
     // Color picker sync handlers
     const circleColor = document.getElementById('circleColor');
     const circleColorHex = document.getElementById('circleColorHex');
@@ -4750,6 +4979,49 @@ ${options.length <= 2 ? 'disabled' : ''}>
             const circleId = btn.getAttribute('data-circle-id');
             if (circleId) {
                 updateMyCircleColor(circleId);
+            }
+        }
+        
+        // Handle sidebar color update
+        if (e.target.closest('[data-action="update-sidebar-color"]')) {
+            const btn = e.target.closest('[data-action="update-sidebar-color"]');
+            const circleId = btn.getAttribute('data-circle-id');
+            if (circleId) {
+                e.stopPropagation();
+                updateSidebarCircleColor(circleId);
+            }
+        }
+        
+        // Handle label editing from sidebar
+        if (e.target.closest('[data-action="edit-labels"]')) {
+            const btn = e.target.closest('[data-action="edit-labels"]');
+            const circleId = btn.getAttribute('data-circle-id');
+            if (circleId) {
+                e.stopPropagation();
+                editCircleLabels(circleId);
+            }
+        }
+        
+        // Handle label editing from circle view
+        if (e.target.closest('[data-action="edit-circle-labels"]')) {
+            const btn = e.target.closest('[data-action="edit-circle-labels"]');
+            const circleId = btn.getAttribute('data-circle-id');
+            if (circleId) {
+                e.stopPropagation();
+                editCircleLabels(circleId);
+            }
+        }
+        
+        // Handle clicking on labels to edit (in sidebar and circle view)
+        if (e.target.closest('.editable-label')) {
+            const label = e.target.closest('.editable-label');
+            const labelsContainer = label.closest('[data-circle-id]');
+            if (labelsContainer) {
+                const circleId = labelsContainer.getAttribute('data-circle-id');
+                if (circleId) {
+                    e.stopPropagation();
+                    editCircleLabels(circleId);
+                }
             }
         }
     });
