@@ -47,6 +47,19 @@ class WebRTCManager {
                 })
             });
 
+            // Normalize session ID (handle both id and _id)
+            if (session && !session.id && session._id) {
+                session.id = session._id;
+            }
+
+            // Normalize participant user_ids to strings for consistent comparison
+            if (session && session.participants) {
+                session.participants = session.participants.map(p => ({
+                    ...p,
+                    user_id: String(p.user_id || p.userId || '')
+                }));
+            }
+
             this.currentSession = session;
             this.lastSignalingTimestamp = new Date().toISOString();
 
@@ -63,11 +76,13 @@ class WebRTCManager {
             this.startSignalingPoll();
 
             // Create peer connections for existing participants
+            const myUserId = String(state.currentUser?.id || '');
             for (const participant of session.participants) {
-                if (participant.user_id !== state.currentUser.id) {
-                    await this.createPeerConnection(participant.user_id);
+                const participantUserId = String(participant.user_id || '');
+                if (participantUserId && participantUserId !== myUserId) {
+                    await this.createPeerConnection(participantUserId);
                     // Send offer to existing participants
-                    await this.handleOffer(participant.user_id);
+                    await this.handleOffer(participantUserId);
                 }
             }
 
@@ -81,10 +96,28 @@ class WebRTCManager {
 
     async joinSession(sessionId) {
         try {
+            // Validate sessionId
+            if (!sessionId) {
+                throw new Error('Invalid session ID');
+            }
+
             // Join session
             const session = await apiFetch(`/webrtc/sessions/${sessionId}/join`, {
                 method: 'POST'
             });
+
+            // Normalize session ID (handle both id and _id)
+            if (session && !session.id && session._id) {
+                session.id = session._id;
+            }
+
+            // Normalize participant user_ids to strings for consistent comparison
+            if (session && session.participants) {
+                session.participants = session.participants.map(p => ({
+                    ...p,
+                    user_id: String(p.user_id || p.userId || '')
+                }));
+            }
 
             this.currentSession = session;
             this.lastSignalingTimestamp = new Date().toISOString();
@@ -102,11 +135,13 @@ class WebRTCManager {
             this.startSignalingPoll();
 
             // Create peer connections for existing participants
+            const myUserId = String(state.currentUser?.id || '');
             for (const participant of session.participants) {
-                if (participant.user_id !== state.currentUser.id) {
-                    await this.createPeerConnection(participant.user_id);
+                const participantUserId = String(participant.user_id || '');
+                if (participantUserId && participantUserId !== myUserId) {
+                    await this.createPeerConnection(participantUserId);
                     // Send offer to existing participants
-                    await this.handleOffer(participant.user_id);
+                    await this.handleOffer(participantUserId);
                 }
             }
 
@@ -234,8 +269,14 @@ class WebRTCManager {
     async sendSignaling(type, data, toUserId = null) {
         if (!this.currentSession) return;
 
+        const sessionId = this.currentSession.id || this.currentSession._id;
+        if (!sessionId) {
+            console.error('No session ID available for signaling');
+            return;
+        }
+
         try {
-            await apiFetch(`/webrtc/sessions/${this.currentSession.id}/signaling`, {
+            await apiFetch(`/webrtc/sessions/${sessionId}/signaling`, {
                 method: 'POST',
                 body: JSON.stringify({
                     type: type,
@@ -251,12 +292,23 @@ class WebRTCManager {
     async pollSignaling() {
         if (!this.currentSession) return;
 
+        const sessionId = this.currentSession.id || this.currentSession._id;
+        if (!sessionId) {
+            console.error('No session ID available for polling');
+            return;
+        }
+
         try {
-            const url = `/webrtc/sessions/${this.currentSession.id}/signaling${this.lastSignalingTimestamp ? `?since=${encodeURIComponent(this.lastSignalingTimestamp)}` : ''}`;
+            const url = `/webrtc/sessions/${sessionId}/signaling${this.lastSignalingTimestamp ? `?since=${encodeURIComponent(this.lastSignalingTimestamp)}` : ''}`;
             const messages = await apiFetch(url);
 
             for (const message of messages) {
-                const fromUserId = message.from_user_id;
+                // Normalize from_user_id to string
+                const fromUserId = String(message.from_user_id || '');
+                if (!fromUserId) {
+                    console.warn('Received signaling message with invalid from_user_id');
+                    continue;
+                }
                 
                 switch (message.message_type) {
                     case 'offer':
@@ -280,16 +332,34 @@ class WebRTCManager {
             }
 
             // Update participants list if session changed
-            const updatedSession = await apiFetch(`/webrtc/sessions/${this.currentSession.id}`);
+            const sessionId = this.currentSession.id || this.currentSession._id;
+            if (!sessionId) {
+                console.error('No session ID available');
+                return;
+            }
+            const updatedSession = await apiFetch(`/webrtc/sessions/${sessionId}`);
+            // Normalize session ID
+            if (updatedSession && !updatedSession.id && updatedSession._id) {
+                updatedSession.id = updatedSession._id;
+            }
+            // Normalize participant user_ids
+            if (updatedSession && updatedSession.participants) {
+                updatedSession.participants = updatedSession.participants.map(p => ({
+                    ...p,
+                    user_id: String(p.user_id || p.userId || '')
+                }));
+            }
             if (updatedSession.participants.length !== this.currentSession.participants.length) {
                 this.currentSession = updatedSession;
                 this.updateParticipantsUI(updatedSession);
                 
                 // Create peer connections for new participants
+                const currentUserId = String(state.currentUser?.id || '');
                 for (const participant of updatedSession.participants) {
-                    if (participant.user_id !== state.currentUser.id && !this.peerConnections.has(participant.user_id)) {
-                        await this.createPeerConnection(participant.user_id);
-                        await this.handleOffer(participant.user_id);
+                    const participantUserId = String(participant.user_id || '');
+                    if (participantUserId && participantUserId !== currentUserId && !this.peerConnections.has(participantUserId)) {
+                        await this.createPeerConnection(participantUserId);
+                        await this.handleOffer(participantUserId);
                     }
                 }
             }
@@ -328,12 +398,14 @@ class WebRTCManager {
             document.body.appendChild(modal);
         }
 
+        const currentUserId = String(state.currentUser?.id || '');
         const participantsHtml = session.participants.map(p => {
-            const isCurrentUser = p.user_id === state.currentUser.id;
+            const participantUserId = String(p.user_id || '');
+            const isCurrentUser = participantUserId === currentUserId;
             return `
                 <div class="col-md-6 col-lg-4 mb-3">
                     <div class="card">
-                        <video id="remote-video-${p.user_id}" ${isCurrentUser ? 'muted' : ''} autoplay playsinline class="card-img-top" style="height: 200px; object-fit: cover;"></video>
+                        <video id="remote-video-${participantUserId}" ${isCurrentUser ? 'muted' : ''} autoplay playsinline class="card-img-top" style="height: 200px; object-fit: cover;"></video>
                         <div class="card-body">
                             <h6 class="card-title">${p.username}${isCurrentUser ? ' (You)' : ''}</h6>
                         </div>
@@ -373,7 +445,7 @@ class WebRTCManager {
         bsModal.show();
 
         // Set local video stream
-        const localVideo = document.getElementById(`remote-video-${state.currentUser.id}`);
+        const localVideo = document.getElementById(`remote-video-${currentUserId}`);
         if (localVideo && this.localStream) {
             localVideo.srcObject = this.localStream;
         }
@@ -411,12 +483,14 @@ class WebRTCManager {
         const container = document.getElementById('webrtcParticipants');
         if (!container) return;
 
+        const currentUserId = String(state.currentUser?.id || '');
         const participantsHtml = session.participants.map(p => {
-            const isCurrentUser = p.user_id === state.currentUser.id;
+            const participantUserId = String(p.user_id || '');
+            const isCurrentUser = participantUserId === currentUserId;
             return `
                 <div class="col-md-6 col-lg-4 mb-3">
                     <div class="card">
-                        <video id="remote-video-${p.user_id}" ${isCurrentUser ? 'muted' : ''} autoplay playsinline class="card-img-top" style="height: 200px; object-fit: cover;"></video>
+                        <video id="remote-video-${participantUserId}" ${isCurrentUser ? 'muted' : ''} autoplay playsinline class="card-img-top" style="height: 200px; object-fit: cover;"></video>
                         <div class="card-body">
                             <h6 class="card-title">${p.username}${isCurrentUser ? ' (You)' : ''}</h6>
                         </div>
@@ -428,7 +502,7 @@ class WebRTCManager {
         container.innerHTML = participantsHtml;
 
         // Set local video stream
-        const localVideo = document.getElementById(`remote-video-${state.currentUser.id}`);
+        const localVideo = document.getElementById(`remote-video-${currentUserId}`);
         if (localVideo && this.localStream) {
             localVideo.srcObject = this.localStream;
         }
@@ -450,11 +524,16 @@ class WebRTCManager {
         this.peerConnections.clear();
 
         // End session on server if creator
-        if (this.currentSession && this.currentSession.created_by === state.currentUser.id) {
+        const currentUserId = String(state.currentUser?.id || '');
+        const createdBy = String(this.currentSession?.created_by || '');
+        if (this.currentSession && createdBy === currentUserId) {
             try {
-                await apiFetch(`/webrtc/sessions/${this.currentSession.id}`, {
-                    method: 'DELETE'
-                });
+                const sessionId = this.currentSession.id || this.currentSession._id;
+                if (sessionId) {
+                    await apiFetch(`/webrtc/sessions/${sessionId}`, {
+                        method: 'DELETE'
+                    });
+                }
             } catch (error) {
                 console.error('Error ending session:', error);
             }
@@ -4901,16 +4980,17 @@ Added videos will appear here. You can drag to reorder.
                         // Check if there's an active session first
                         try {
                             const activeSession = await apiFetch(`/webrtc/circles/${circleId}/active-session`);
-                            if (activeSession) {
-                                // Join existing session
-                                await webrtcManager.joinSession(activeSession.id);
+                            if (activeSession && (activeSession.id || activeSession._id)) {
+                                // Join existing session - handle both id and _id
+                                const sessionId = activeSession.id || activeSession._id;
+                                await webrtcManager.joinSession(sessionId);
                             } else {
                                 // Start new session
                                 await webrtcManager.startSession(circleId, sessionType);
                             }
                         } catch (error) {
                             // If no active session, start a new one
-                            if (error.status === 404 || error.message?.includes('not found')) {
+                            if (error.status === 404 || error.message?.includes('not found') || error.message?.includes('Invalid session')) {
                                 await webrtcManager.startSession(circleId, sessionType);
                             } else {
                                 throw error;
