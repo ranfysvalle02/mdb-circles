@@ -2460,17 +2460,36 @@ async def get_friend_status(friend_id: str, current_user: UserInDB = Depends(get
 # ----------------------------------
 # WebRTC
 # ----------------------------------
+def convert_session_doc(session_doc: dict) -> dict:
+    """Convert ObjectIds in session document to strings for serialization."""
+    converted = {
+        "_id": str(session_doc["_id"]),
+        "circle_id": str(session_doc["circle_id"]),
+        "session_type": session_doc["session_type"],
+        "participants": [
+            {
+                "user_id": str(p["user_id"]),
+                "username": p["username"],
+                "joined_at": p["joined_at"]
+            }
+            for p in session_doc.get("participants", [])
+        ],
+        "created_at": session_doc["created_at"],
+        "created_by": str(session_doc["created_by"])
+    }
+    return converted
+
 class WebRTCSessionCreate(BaseModel):
     circle_id: str
     session_type: Literal["dm", "circle"] = "circle"
 
 class WebRTCSessionOut(BaseModel):
-    id: PyObjectId = Field(alias="_id")
-    circle_id: PyObjectId
+    id: str = Field(alias="_id")
+    circle_id: str
     session_type: str
     participants: List[dict]
     created_at: datetime
-    created_by: PyObjectId
+    created_by: str
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 class WebRTCSignalingMessage(BaseModel):
@@ -2478,12 +2497,26 @@ class WebRTCSignalingMessage(BaseModel):
     data: dict
     to_user_id: Optional[str] = None  # If None, broadcast to all participants
 
+def convert_signaling_doc(signaling_doc: dict) -> dict:
+    """Convert ObjectIds in signaling document to strings for serialization."""
+    converted = {
+        "_id": str(signaling_doc["_id"]),
+        "session_id": str(signaling_doc["session_id"]),
+        "from_user_id": str(signaling_doc["from_user_id"]),
+        "from_username": signaling_doc["from_username"],
+        "to_user_id": str(signaling_doc["to_user_id"]) if signaling_doc.get("to_user_id") else None,
+        "message_type": signaling_doc["message_type"],
+        "data": signaling_doc["data"],
+        "created_at": signaling_doc["created_at"]
+    }
+    return converted
+
 class WebRTCSignalingOut(BaseModel):
-    id: PyObjectId = Field(alias="_id")
-    session_id: PyObjectId
-    from_user_id: PyObjectId
+    id: str = Field(alias="_id")
+    session_id: str
+    from_user_id: str
     from_username: str
-    to_user_id: Optional[PyObjectId] = None
+    to_user_id: Optional[str] = None
     message_type: str
     data: dict
     created_at: datetime
@@ -2510,7 +2543,7 @@ async def create_webrtc_session(
     
     if existing_session:
         # Return existing session
-        return WebRTCSessionOut(**existing_session)
+        return WebRTCSessionOut(**convert_session_doc(existing_session))
     
     # Create new session
     now = datetime.now(timezone.utc)
@@ -2549,7 +2582,7 @@ async def create_webrtc_session(
                 }
             )
     
-    return WebRTCSessionOut(**session_doc)
+    return WebRTCSessionOut(**convert_session_doc(session_doc))
 
 @app.get("/webrtc/sessions/{session_id}", response_model=WebRTCSessionOut, tags=["WebRTC"])
 async def get_webrtc_session(
@@ -2570,7 +2603,7 @@ async def get_webrtc_session(
     circle = await get_circle_or_404(str(session["circle_id"]))
     await check_circle_membership(current_user, circle)
     
-    return WebRTCSessionOut(**session)
+    return WebRTCSessionOut(**convert_session_doc(session))
 
 @app.post("/webrtc/sessions/{session_id}/join", response_model=WebRTCSessionOut, tags=["WebRTC"])
 async def join_webrtc_session(
@@ -2594,7 +2627,7 @@ async def join_webrtc_session(
     # Check if user is already a participant
     participant_ids = [p['user_id'] for p in session.get('participants', [])]
     if current_user.id in participant_ids:
-        return WebRTCSessionOut(**session)
+        return WebRTCSessionOut(**convert_session_doc(session))
     
     # Add user to participants
     now = datetime.now(timezone.utc)
@@ -2629,7 +2662,7 @@ async def join_webrtc_session(
     
     # Fetch updated session
     updated_session = webrtc_sessions_collection.find_one({"_id": session_obj_id})
-    return WebRTCSessionOut(**updated_session)
+    return WebRTCSessionOut(**convert_session_doc(updated_session))
 
 @app.post("/webrtc/sessions/{session_id}/signaling", response_model=WebRTCSignalingOut, status_code=201, tags=["WebRTC"])
 async def send_webrtc_signaling(
@@ -2669,7 +2702,7 @@ async def send_webrtc_signaling(
     
     webrtc_signaling_collection.insert_one(signaling_doc)
     
-    return WebRTCSignalingOut(**signaling_doc)
+    return WebRTCSignalingOut(**convert_signaling_doc(signaling_doc))
 
 @app.get("/webrtc/sessions/{session_id}/signaling", response_model=List[WebRTCSignalingOut], tags=["WebRTC"])
 async def get_webrtc_signaling(
@@ -2714,7 +2747,7 @@ async def get_webrtc_signaling(
     
     messages = list(webrtc_signaling_collection.find(query).sort("created_at", ASCENDING))
     
-    return [WebRTCSignalingOut(**msg) for msg in messages]
+    return [WebRTCSignalingOut(**convert_signaling_doc(msg)) for msg in messages]
 
 @app.get("/webrtc/circles/{circle_id}/active-session", response_model=Optional[WebRTCSessionOut], tags=["WebRTC"])
 async def get_active_webrtc_session(
@@ -2737,7 +2770,7 @@ async def get_active_webrtc_session(
     if not session:
         return None
     
-    return WebRTCSessionOut(**session)
+    return WebRTCSessionOut(**convert_session_doc(session))
 
 @app.delete("/webrtc/sessions/{session_id}", status_code=204, tags=["WebRTC"])
 async def end_webrtc_session(
