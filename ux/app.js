@@ -187,9 +187,16 @@ class WebRTCManager {
 
         // Handle remote stream
         pc.ontrack = (event) => {
+            console.log(`Received remote stream from ${userId}`, event.streams);
             const remoteVideo = document.getElementById(`remote-video-${userId}`);
             if (remoteVideo && event.streams[0]) {
                 remoteVideo.srcObject = event.streams[0];
+                console.log(`Remote video stream attached for ${userId}`);
+            } else {
+                console.warn(`Could not find remote video element for ${userId}`, {
+                    remoteVideo: !!remoteVideo,
+                    streams: event.streams.length
+                });
             }
         };
 
@@ -332,11 +339,7 @@ class WebRTCManager {
             }
 
             // Update participants list if session changed
-            const sessionId = this.currentSession.id || this.currentSession._id;
-            if (!sessionId) {
-                console.error('No session ID available');
-                return;
-            }
+            // sessionId already declared above, reuse it
             const updatedSession = await apiFetch(`/webrtc/sessions/${sessionId}`);
             // Normalize session ID
             if (updatedSession && !updatedSession.id && updatedSession._id) {
@@ -396,6 +399,11 @@ class WebRTCManager {
             modal.setAttribute('aria-labelledby', 'webrtcModalLabel');
             modal.setAttribute('aria-hidden', 'true');
             document.body.appendChild(modal);
+        } else {
+            // Remove existing event listeners by cloning
+            const newModal = modal.cloneNode(false);
+            modal.parentNode.replaceChild(newModal, modal);
+            modal = newModal;
         }
 
         const currentUserId = String(state.currentUser?.id || '');
@@ -442,13 +450,24 @@ class WebRTCManager {
         `;
 
         const bsModal = new bootstrap.Modal(modal);
+        
+        // Wait for modal to be shown before setting video streams
+        modal.addEventListener('shown.bs.modal', () => {
+            // Set local video stream after modal is fully shown
+            const localVideo = document.getElementById(`remote-video-${currentUserId}`);
+            if (localVideo && this.localStream) {
+                localVideo.srcObject = this.localStream;
+                console.log('Local video stream attached');
+            } else {
+                console.warn('Could not find local video element or stream not available', {
+                    localVideo: !!localVideo,
+                    stream: !!this.localStream,
+                    currentUserId
+                });
+            }
+        }, { once: true });
+        
         bsModal.show();
-
-        // Set local video stream
-        const localVideo = document.getElementById(`remote-video-${currentUserId}`);
-        if (localVideo && this.localStream) {
-            localVideo.srcObject = this.localStream;
-        }
 
         // Handle modal close
         modal.addEventListener('hidden.bs.modal', () => {
@@ -501,11 +520,14 @@ class WebRTCManager {
 
         container.innerHTML = participantsHtml;
 
-        // Set local video stream
-        const localVideo = document.getElementById(`remote-video-${currentUserId}`);
-        if (localVideo && this.localStream) {
-            localVideo.srcObject = this.localStream;
-        }
+        // Set local video stream after DOM update
+        setTimeout(() => {
+            const localVideo = document.getElementById(`remote-video-${currentUserId}`);
+            if (localVideo && this.localStream) {
+                localVideo.srcObject = this.localStream;
+                console.log('Local video stream attached in updateParticipantsUI');
+            }
+        }, 100);
     }
 
     async endSession() {
