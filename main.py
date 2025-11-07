@@ -97,6 +97,8 @@ notifications_collection = db.get_collection("notifications")
 comments_collection = db.get_collection("comments")
 activity_events_collection = db.get_collection("activity_events")
 friends_collection = db.get_collection("friends")
+webrtc_sessions_collection = db.get_collection("webrtc_sessions")
+webrtc_signaling_collection = db.get_collection("webrtc_signaling")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -129,6 +131,11 @@ async def lifespan(app: FastAPI):
     friends_collection.create_index([("user_id", ASCENDING), ("friend_id", ASCENDING)], unique=True)
     friends_collection.create_index([("user_id", ASCENDING), ("status", ASCENDING)])
     friends_collection.create_index([("friend_id", ASCENDING), ("status", ASCENDING)])
+    webrtc_sessions_collection.create_index([("circle_id", ASCENDING)])
+    webrtc_sessions_collection.create_index([("participants.user_id", ASCENDING)])
+    webrtc_sessions_collection.create_index([("created_at", DESCENDING)])
+    webrtc_signaling_collection.create_index([("session_id", ASCENDING), ("created_at", ASCENDING)])
+    webrtc_signaling_collection.create_index([("session_id", ASCENDING), ("from_user_id", ASCENDING)])
 
     print("Database indexes ensured.")
     yield
@@ -199,6 +206,7 @@ class NotificationTypeEnum(str, Enum):
     new_chat_message = "new_chat_message"
     friend_request_received = "friend_request_received"
     friend_request_accepted = "friend_request_accepted"
+    webrtc_session_started = "webrtc_session_started"
 
 class FriendStatusEnum(str, Enum):
     pending = "pending"
@@ -2448,6 +2456,313 @@ async def get_friend_status(friend_id: str, current_user: UserInDB = Depends(get
         "status": friendship["status"],
         "is_sent_by_me": friendship.get("requested_by") == current_user.id
     }
+
+# ----------------------------------
+# WebRTC
+# ----------------------------------
+class WebRTCSessionCreate(BaseModel):
+    circle_id: str
+    session_type: Literal["dm", "circle"] = "circle"
+
+class WebRTCSessionOut(BaseModel):
+    id: PyObjectId = Field(alias="_id")
+    circle_id: PyObjectId
+    session_type: str
+    participants: List[dict]
+    created_at: datetime
+    created_by: PyObjectId
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+class WebRTCSignalingMessage(BaseModel):
+    type: str  # "offer", "answer", "ice-candidate"
+    data: dict
+    to_user_id: Optional[str] = None  # If None, broadcast to all participants
+
+class WebRTCSignalingOut(BaseModel):
+    id: PyObjectId = Field(alias="_id")
+    session_id: PyObjectId
+    from_user_id: PyObjectId
+    from_username: str
+    to_user_id: Optional[PyObjectId] = None
+    message_type: str
+    data: dict
+    created_at: datetime
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+@app.post("/webrtc/sessions", response_model=WebRTCSessionOut, status_code=201, tags=["WebRTC"])
+async def create_webrtc_session(
+    session_data: WebRTCSessionCreate,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Start a WebRTC session for a DM or Circle."""
+    if not ObjectId.is_valid(session_data.circle_id):
+        raise HTTPException(status_code=400, detail="Invalid circle ID.")
+    
+    circle_id = ObjectId(session_data.circle_id)
+    circle = await get_circle_or_404(str(circle_id))
+    await check_circle_membership(current_user, circle)
+    
+    # Check if there's already an active session for this circle
+    existing_session = webrtc_sessions_collection.find_one({
+        "circle_id": circle_id,
+        "participants.user_id": current_user.id
+    })
+    
+    if existing_session:
+        # Return existing session
+        return WebRTCSessionOut(**existing_session)
+    
+    # Create new session
+    now = datetime.now(timezone.utc)
+    participant_doc = {
+        "user_id": current_user.id,
+        "username": current_user.username,
+        "joined_at": now
+    }
+    
+    session_doc = {
+        "_id": ObjectId(),
+        "circle_id": circle_id,
+        "session_type": session_data.session_type,
+        "participants": [participant_doc],
+        "created_at": now,
+        "created_by": current_user.id
+    }
+    
+    webrtc_sessions_collection.insert_one(session_doc)
+    
+    # Send notifications to other circle members (only for circle sessions, not DMs)
+    if session_data.session_type == "circle":
+        other_member_ids = [
+            member['user_id'] for member in circle.get('members', [])
+            if member['user_id'] != current_user.id
+        ]
+        for member_id in other_member_ids:
+            await create_notification(
+                user_id=member_id,
+                notification_type=NotificationTypeEnum.webrtc_session_started,
+                content={
+                    "circle_id": str(circle_id),
+                    "circle_name": circle["name"],
+                    "session_id": str(session_doc["_id"]),
+                    "initiator_username": current_user.username
+                }
+            )
+    
+    return WebRTCSessionOut(**session_doc)
+
+@app.get("/webrtc/sessions/{session_id}", response_model=WebRTCSessionOut, tags=["WebRTC"])
+async def get_webrtc_session(
+    session_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Get WebRTC session information."""
+    if not ObjectId.is_valid(session_id):
+        raise HTTPException(status_code=400, detail="Invalid session ID.")
+    
+    session_obj_id = ObjectId(session_id)
+    session = webrtc_sessions_collection.find_one({"_id": session_obj_id})
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    
+    # Verify user is a member of the circle
+    circle = await get_circle_or_404(str(session["circle_id"]))
+    await check_circle_membership(current_user, circle)
+    
+    return WebRTCSessionOut(**session)
+
+@app.post("/webrtc/sessions/{session_id}/join", response_model=WebRTCSessionOut, tags=["WebRTC"])
+async def join_webrtc_session(
+    session_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Join an existing WebRTC session."""
+    if not ObjectId.is_valid(session_id):
+        raise HTTPException(status_code=400, detail="Invalid session ID.")
+    
+    session_obj_id = ObjectId(session_id)
+    session = webrtc_sessions_collection.find_one({"_id": session_obj_id})
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    
+    # Verify user is a member of the circle
+    circle = await get_circle_or_404(str(session["circle_id"]))
+    await check_circle_membership(current_user, circle)
+    
+    # Check if user is already a participant
+    participant_ids = [p['user_id'] for p in session.get('participants', [])]
+    if current_user.id in participant_ids:
+        return WebRTCSessionOut(**session)
+    
+    # Add user to participants
+    now = datetime.now(timezone.utc)
+    participant_doc = {
+        "user_id": current_user.id,
+        "username": current_user.username,
+        "joined_at": now
+    }
+    
+    webrtc_sessions_collection.update_one(
+        {"_id": session_obj_id},
+        {"$push": {"participants": participant_doc}}
+    )
+    
+    # Send notifications to other participants (only for circle sessions)
+    if session.get("session_type") == "circle":
+        other_participant_ids = [
+            p['user_id'] for p in session.get('participants', [])
+            if p['user_id'] != current_user.id
+        ]
+        for participant_id in other_participant_ids:
+            await create_notification(
+                user_id=participant_id,
+                notification_type=NotificationTypeEnum.webrtc_session_started,
+                content={
+                    "circle_id": str(session["circle_id"]),
+                    "circle_name": circle["name"],
+                    "session_id": str(session_obj_id),
+                    "joiner_username": current_user.username
+                }
+            )
+    
+    # Fetch updated session
+    updated_session = webrtc_sessions_collection.find_one({"_id": session_obj_id})
+    return WebRTCSessionOut(**updated_session)
+
+@app.post("/webrtc/sessions/{session_id}/signaling", response_model=WebRTCSignalingOut, status_code=201, tags=["WebRTC"])
+async def send_webrtc_signaling(
+    session_id: str,
+    signaling_data: WebRTCSignalingMessage,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Send a WebRTC signaling message (offer, answer, ICE candidate)."""
+    if not ObjectId.is_valid(session_id):
+        raise HTTPException(status_code=400, detail="Invalid session ID.")
+    
+    session_obj_id = ObjectId(session_id)
+    session = webrtc_sessions_collection.find_one({"_id": session_obj_id})
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    
+    # Verify user is a participant
+    participant_ids = [p['user_id'] for p in session.get('participants', [])]
+    if current_user.id not in participant_ids:
+        raise HTTPException(status_code=403, detail="You are not a participant in this session.")
+    
+    # Create signaling message
+    now = datetime.now(timezone.utc)
+    to_user_id = ObjectId(signaling_data.to_user_id) if signaling_data.to_user_id else None
+    
+    signaling_doc = {
+        "_id": ObjectId(),
+        "session_id": session_obj_id,
+        "from_user_id": current_user.id,
+        "from_username": current_user.username,
+        "to_user_id": to_user_id,
+        "message_type": signaling_data.type,
+        "data": signaling_data.data,
+        "created_at": now
+    }
+    
+    webrtc_signaling_collection.insert_one(signaling_doc)
+    
+    return WebRTCSignalingOut(**signaling_doc)
+
+@app.get("/webrtc/sessions/{session_id}/signaling", response_model=List[WebRTCSignalingOut], tags=["WebRTC"])
+async def get_webrtc_signaling(
+    session_id: str,
+    since: Optional[str] = Query(None, description="ISO timestamp to get messages since"),
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Get WebRTC signaling messages for a session."""
+    if not ObjectId.is_valid(session_id):
+        raise HTTPException(status_code=400, detail="Invalid session ID.")
+    
+    session_obj_id = ObjectId(session_id)
+    session = webrtc_sessions_collection.find_one({"_id": session_obj_id})
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    
+    # Verify user is a participant
+    participant_ids = [p['user_id'] for p in session.get('participants', [])]
+    if current_user.id not in participant_ids:
+        raise HTTPException(status_code=403, detail="You are not a participant in this session.")
+    
+    # Build query
+    query = {"session_id": session_obj_id}
+    
+    # Filter messages for this user (messages sent to them or broadcast)
+    query["$or"] = [
+        {"to_user_id": current_user.id},
+        {"to_user_id": None}  # Broadcast messages
+    ]
+    
+    # Exclude messages from this user (they already have them)
+    query["from_user_id"] = {"$ne": current_user.id}
+    
+    # Filter by timestamp if provided
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+            query["created_at"] = {"$gt": since_dt}
+        except:
+            pass
+    
+    messages = list(webrtc_signaling_collection.find(query).sort("created_at", ASCENDING))
+    
+    return [WebRTCSignalingOut(**msg) for msg in messages]
+
+@app.get("/webrtc/circles/{circle_id}/active-session", response_model=Optional[WebRTCSessionOut], tags=["WebRTC"])
+async def get_active_webrtc_session(
+    circle_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Get active WebRTC session for a circle, if any."""
+    if not ObjectId.is_valid(circle_id):
+        raise HTTPException(status_code=400, detail="Invalid circle ID.")
+    
+    circle_obj_id = ObjectId(circle_id)
+    circle = await get_circle_or_404(circle_id)
+    await check_circle_membership(current_user, circle)
+    
+    # Find active session for this circle
+    session = webrtc_sessions_collection.find_one({
+        "circle_id": circle_obj_id
+    }, sort=[("created_at", DESCENDING)])
+    
+    if not session:
+        return None
+    
+    return WebRTCSessionOut(**session)
+
+@app.delete("/webrtc/sessions/{session_id}", status_code=204, tags=["WebRTC"])
+async def end_webrtc_session(
+    session_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """End a WebRTC session (only the creator can end it)."""
+    if not ObjectId.is_valid(session_id):
+        raise HTTPException(status_code=400, detail="Invalid session ID.")
+    
+    session_obj_id = ObjectId(session_id)
+    session = webrtc_sessions_collection.find_one({"_id": session_obj_id})
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    
+    # Only creator can end the session
+    if session.get("created_by") != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the session creator can end the session.")
+    
+    # Delete session and all signaling messages
+    webrtc_sessions_collection.delete_one({"_id": session_obj_id})
+    webrtc_signaling_collection.delete_many({"session_id": session_obj_id})
+    
+    return Response(status_code=204)
 
 # ----------------------------------
 # Static / Frontend

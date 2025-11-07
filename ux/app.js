@@ -25,6 +25,449 @@ class YouTubeMiniApp {
 const ytApp = new YouTubeMiniApp();
 
 // -----------------------------------------------
+// WebRTC Manager
+// -----------------------------------------------
+class WebRTCManager {
+    constructor() {
+        this.currentSession = null;
+        this.peerConnections = new Map(); // Map of user_id -> RTCPeerConnection
+        this.localStream = null;
+        this.signalingInterval = null;
+        this.lastSignalingTimestamp = null;
+    }
+
+    async startSession(circleId, sessionType = 'circle') {
+        try {
+            // Create session
+            const session = await apiFetch('/webrtc/sessions', {
+                method: 'POST',
+                body: JSON.stringify({
+                    circle_id: circleId,
+                    session_type: sessionType
+                })
+            });
+
+            this.currentSession = session;
+            this.lastSignalingTimestamp = new Date().toISOString();
+
+            // Get user media
+            this.localStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
+
+            // Show WebRTC UI
+            this.showWebRTCUI(session);
+
+            // Start polling for signaling messages
+            this.startSignalingPoll();
+
+            // Create peer connections for existing participants
+            for (const participant of session.participants) {
+                if (participant.user_id !== state.currentUser.id) {
+                    await this.createPeerConnection(participant.user_id);
+                    // Send offer to existing participants
+                    await this.handleOffer(participant.user_id);
+                }
+            }
+
+            return session;
+        } catch (error) {
+            console.error('Error starting WebRTC session:', error);
+            showStatus('Failed to start WebRTC session. ' + (error.message || ''), 'danger');
+            throw error;
+        }
+    }
+
+    async joinSession(sessionId) {
+        try {
+            // Join session
+            const session = await apiFetch(`/webrtc/sessions/${sessionId}/join`, {
+                method: 'POST'
+            });
+
+            this.currentSession = session;
+            this.lastSignalingTimestamp = new Date().toISOString();
+
+            // Get user media
+            this.localStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
+
+            // Show WebRTC UI
+            this.showWebRTCUI(session);
+
+            // Start polling for signaling messages
+            this.startSignalingPoll();
+
+            // Create peer connections for existing participants
+            for (const participant of session.participants) {
+                if (participant.user_id !== state.currentUser.id) {
+                    await this.createPeerConnection(participant.user_id);
+                    // Send offer to existing participants
+                    await this.handleOffer(participant.user_id);
+                }
+            }
+
+            return session;
+        } catch (error) {
+            console.error('Error joining WebRTC session:', error);
+            showStatus('Failed to join WebRTC session. ' + (error.message || ''), 'danger');
+            throw error;
+        }
+    }
+
+    async createPeerConnection(userId) {
+        if (this.peerConnections.has(userId)) {
+            return this.peerConnections.get(userId);
+        }
+
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        const pc = new RTCPeerConnection(configuration);
+        
+        // Add local stream tracks
+        if (this.localStream) {
+            this.localStream.getTracks().forEach(track => {
+                pc.addTrack(track, this.localStream);
+            });
+        }
+
+        // Handle ICE candidates
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                this.sendSignaling('ice-candidate', {
+                    candidate: event.candidate.candidate,
+                    sdpMLineIndex: event.candidate.sdpMLineIndex,
+                    sdpMid: event.candidate.sdpMid
+                }, userId);
+            }
+        };
+
+        // Handle remote stream
+        pc.ontrack = (event) => {
+            const remoteVideo = document.getElementById(`remote-video-${userId}`);
+            if (remoteVideo && event.streams[0]) {
+                remoteVideo.srcObject = event.streams[0];
+            }
+        };
+
+        // Handle connection state changes
+        pc.onconnectionstatechange = () => {
+            console.log(`Connection state with ${userId}: ${pc.connectionState}`);
+            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                // Try to reconnect
+                setTimeout(() => {
+                    if (pc.connectionState !== 'connected' && this.currentSession) {
+                        this.createPeerConnection(userId).then(() => {
+                            this.handleOffer(userId);
+                        });
+                    }
+                }, 1000);
+            }
+        };
+
+        this.peerConnections.set(userId, pc);
+        return pc;
+    }
+
+    async handleOffer(userId) {
+        const pc = await this.createPeerConnection(userId);
+        
+        // Create offer
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        // Send offer
+        await this.sendSignaling('offer', {
+            sdp: offer.sdp,
+            type: offer.type
+        }, userId);
+    }
+
+    async handleAnswer(userId, answerData) {
+        const pc = this.peerConnections.get(userId);
+        if (!pc) return;
+
+        await pc.setRemoteDescription(new RTCSessionDescription({
+            type: 'answer',
+            sdp: answerData.sdp
+        }));
+    }
+
+    async handleOfferReceived(fromUserId, offerData) {
+        const pc = await this.createPeerConnection(fromUserId);
+        
+        await pc.setRemoteDescription(new RTCSessionDescription({
+            type: 'offer',
+            sdp: offerData.sdp
+        }));
+
+        // Create answer
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        // Send answer
+        await this.sendSignaling('answer', {
+            sdp: answer.sdp,
+            type: answer.type
+        }, fromUserId);
+    }
+
+    async handleICECandidate(fromUserId, candidateData) {
+        const pc = this.peerConnections.get(fromUserId);
+        if (!pc) return;
+
+        await pc.addIceCandidate(new RTCIceCandidate({
+            candidate: candidateData.candidate,
+            sdpMLineIndex: candidateData.sdpMLineIndex,
+            sdpMid: candidateData.sdpMid
+        }));
+    }
+
+    async sendSignaling(type, data, toUserId = null) {
+        if (!this.currentSession) return;
+
+        try {
+            await apiFetch(`/webrtc/sessions/${this.currentSession.id}/signaling`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    type: type,
+                    data: data,
+                    to_user_id: toUserId
+                })
+            });
+        } catch (error) {
+            console.error('Error sending signaling message:', error);
+        }
+    }
+
+    async pollSignaling() {
+        if (!this.currentSession) return;
+
+        try {
+            const url = `/webrtc/sessions/${this.currentSession.id}/signaling${this.lastSignalingTimestamp ? `?since=${encodeURIComponent(this.lastSignalingTimestamp)}` : ''}`;
+            const messages = await apiFetch(url);
+
+            for (const message of messages) {
+                const fromUserId = message.from_user_id;
+                
+                switch (message.message_type) {
+                    case 'offer':
+                        await this.handleOfferReceived(fromUserId, message.data);
+                        break;
+                    case 'answer':
+                        await this.handleAnswer(fromUserId, message.data);
+                        break;
+                    case 'ice-candidate':
+                        await this.handleICECandidate(fromUserId, message.data);
+                        break;
+                }
+
+                // Update last timestamp
+                if (message.created_at) {
+                    const msgTime = new Date(message.created_at).toISOString();
+                    if (!this.lastSignalingTimestamp || msgTime > this.lastSignalingTimestamp) {
+                        this.lastSignalingTimestamp = msgTime;
+                    }
+                }
+            }
+
+            // Update participants list if session changed
+            const updatedSession = await apiFetch(`/webrtc/sessions/${this.currentSession.id}`);
+            if (updatedSession.participants.length !== this.currentSession.participants.length) {
+                this.currentSession = updatedSession;
+                this.updateParticipantsUI(updatedSession);
+                
+                // Create peer connections for new participants
+                for (const participant of updatedSession.participants) {
+                    if (participant.user_id !== state.currentUser.id && !this.peerConnections.has(participant.user_id)) {
+                        await this.createPeerConnection(participant.user_id);
+                        await this.handleOffer(participant.user_id);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error polling signaling:', error);
+        }
+    }
+
+    startSignalingPoll() {
+        if (this.signalingInterval) {
+            clearInterval(this.signalingInterval);
+        }
+        this.pollSignaling(); // Poll immediately
+        this.signalingInterval = setInterval(() => {
+            this.pollSignaling();
+        }, 1000); // Poll every second
+    }
+
+    stopSignalingPoll() {
+        if (this.signalingInterval) {
+            clearInterval(this.signalingInterval);
+            this.signalingInterval = null;
+        }
+    }
+
+    showWebRTCUI(session) {
+        // Create or show WebRTC modal
+        let modal = document.getElementById('webrtcModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'webrtcModal';
+            modal.className = 'modal fade';
+            modal.setAttribute('tabindex', '-1');
+            modal.setAttribute('aria-labelledby', 'webrtcModalLabel');
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(modal);
+        }
+
+        const participantsHtml = session.participants.map(p => {
+            const isCurrentUser = p.user_id === state.currentUser.id;
+            return `
+                <div class="col-md-6 col-lg-4 mb-3">
+                    <div class="card">
+                        <video id="remote-video-${p.user_id}" ${isCurrentUser ? 'muted' : ''} autoplay playsinline class="card-img-top" style="height: 200px; object-fit: cover;"></video>
+                        <div class="card-body">
+                            <h6 class="card-title">${p.username}${isCurrentUser ? ' (You)' : ''}</h6>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        modal.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="webrtcModalLabel">WebRTC Session</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row" id="webrtcParticipants">
+                            ${participantsHtml}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="toggleVideoBtn">
+                            <i class="bi bi-camera-video"></i> Toggle Video
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="toggleAudioBtn">
+                            <i class="bi bi-mic"></i> Toggle Audio
+                        </button>
+                        <button type="button" class="btn btn-danger" id="endCallBtn">
+                            <i class="bi bi-telephone-x"></i> End Call
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+
+        // Set local video stream
+        const localVideo = document.getElementById(`remote-video-${state.currentUser.id}`);
+        if (localVideo && this.localStream) {
+            localVideo.srcObject = this.localStream;
+        }
+
+        // Handle modal close
+        modal.addEventListener('hidden.bs.modal', () => {
+            this.endSession();
+        });
+
+        // Handle button clicks
+        document.getElementById('toggleVideoBtn').addEventListener('click', () => {
+            if (this.localStream) {
+                const videoTrack = this.localStream.getVideoTracks()[0];
+                if (videoTrack) {
+                    videoTrack.enabled = !videoTrack.enabled;
+                }
+            }
+        });
+
+        document.getElementById('toggleAudioBtn').addEventListener('click', () => {
+            if (this.localStream) {
+                const audioTrack = this.localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioTrack.enabled = !audioTrack.enabled;
+                }
+            }
+        });
+
+        document.getElementById('endCallBtn').addEventListener('click', () => {
+            bsModal.hide();
+        });
+    }
+
+    updateParticipantsUI(session) {
+        const container = document.getElementById('webrtcParticipants');
+        if (!container) return;
+
+        const participantsHtml = session.participants.map(p => {
+            const isCurrentUser = p.user_id === state.currentUser.id;
+            return `
+                <div class="col-md-6 col-lg-4 mb-3">
+                    <div class="card">
+                        <video id="remote-video-${p.user_id}" ${isCurrentUser ? 'muted' : ''} autoplay playsinline class="card-img-top" style="height: 200px; object-fit: cover;"></video>
+                        <div class="card-body">
+                            <h6 class="card-title">${p.username}${isCurrentUser ? ' (You)' : ''}</h6>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = participantsHtml;
+
+        // Set local video stream
+        const localVideo = document.getElementById(`remote-video-${state.currentUser.id}`);
+        if (localVideo && this.localStream) {
+            localVideo.srcObject = this.localStream;
+        }
+    }
+
+    async endSession() {
+        this.stopSignalingPoll();
+
+        // Stop all tracks
+        if (this.localStream) {
+            this.localStream.getTracks().forEach(track => track.stop());
+            this.localStream = null;
+        }
+
+        // Close all peer connections
+        for (const [userId, pc] of this.peerConnections) {
+            pc.close();
+        }
+        this.peerConnections.clear();
+
+        // End session on server if creator
+        if (this.currentSession && this.currentSession.created_by === state.currentUser.id) {
+            try {
+                await apiFetch(`/webrtc/sessions/${this.currentSession.id}`, {
+                    method: 'DELETE'
+                });
+            } catch (error) {
+                console.error('Error ending session:', error);
+            }
+        }
+
+        this.currentSession = null;
+        this.lastSignalingTimestamp = null;
+    }
+}
+
+const webrtcManager = new WebRTCManager();
+
+// -----------------------------------------------
 // Particle configurations (dark mode only):
 const particlesConfigDark = {
     particles: {
@@ -787,6 +1230,15 @@ function renderActivityItems() {
                 case 'friend_request_accepted':
                     contentHtml = `<img src="${generateAvatarUrl(item.type_specific.content.accepter_username)}" class="avatar-small me-2"> <strong>${item.type_specific.content.accepter_username}</strong> accepted your friend request.`;
                     notificationLink = '#'; // No link for friend requests
+                    break;
+                case 'webrtc_session_started':
+                    const initiator = item.type_specific.content.initiator_username || item.type_specific.content.joiner_username;
+                    contentHtml = `<img src="${generateAvatarUrl(initiator)}" class="avatar-small me-2"> <strong>${initiator}</strong> ${item.type_specific.content.joiner_username ? 'joined' : 'started'} a WebRTC session in <strong>${item.type_specific.content.circle_name}</strong>. Join now!`;
+                    if (item.type_specific.content.session_id) {
+                        notificationLink = `javascript:webrtcManager.joinSession('${item.type_specific.content.session_id}').then(() => bootstrap.Modal.getInstance('#notificationsModal')?.hide()).catch(err => showStatus('Failed to join WebRTC session: ' + err.message, 'danger'))`;
+                    } else if (item.type_specific.content.circle_id) {
+                        notificationLink = `#/circle/${item.type_specific.content.circle_id}`;
+                    }
                     break;
                 default:
                     contentHtml = `An unknown notification was received.`;
@@ -1920,6 +2372,9 @@ async function renderCircleFeed(circleId) {
                  </button>
                  ${managementControlsHtml}
               </div>
+              <button class="btn btn-sm btn-info ms-2" data-action="start-webrtc" data-circle-id="${circleId}" data-session-type="${circleDetails.is_direct_message ? 'dm' : 'circle'}" title="${circleDetails.is_direct_message ? 'Start WebRTC Call' : 'Start WebRTC Session'}">
+                 <i class="bi bi-camera-video"></i> ${circleDetails.is_direct_message ? 'Call' : 'WebRTC'}
+              </button>
               <button id="togglePostCreatorCircleBtn" class="btn btn-sm btn-primary ms-2">
                  <i class="bi bi-pencil-square"></i> New Post
               </button>
@@ -4437,6 +4892,38 @@ Added videos will appear here. You can drag to reorder.
             case 'invite-to-circle':
                 handleInviteToCircle(data.circleId);
                 break;
+            case 'start-webrtc':
+                {
+                    const circleId = data.circleId;
+                    const sessionType = data.sessionType || 'circle';
+                    setButtonLoading(target, true);
+                    try {
+                        // Check if there's an active session first
+                        try {
+                            const activeSession = await apiFetch(`/webrtc/circles/${circleId}/active-session`);
+                            if (activeSession) {
+                                // Join existing session
+                                await webrtcManager.joinSession(activeSession.id);
+                            } else {
+                                // Start new session
+                                await webrtcManager.startSession(circleId, sessionType);
+                            }
+                        } catch (error) {
+                            // If no active session, start a new one
+                            if (error.status === 404 || error.message?.includes('not found')) {
+                                await webrtcManager.startSession(circleId, sessionType);
+                            } else {
+                                throw error;
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error starting/joining WebRTC session:', error);
+                        showStatus('Failed to start WebRTC session. ' + (error.message || ''), 'danger');
+                    } finally {
+                        setButtonLoading(target, false);
+                    }
+                    break;
+                }
             case 'open-yt-search':
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('youtubeSearchModal')).show();
                 break;
