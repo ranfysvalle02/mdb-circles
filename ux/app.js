@@ -38,6 +38,11 @@ class WebRTCManager {
 
     async startSession(circleId, sessionType = 'circle') {
         try {
+            // Ensure we have a current user
+            if (!state.currentUser || (!state.currentUser._id && !state.currentUser.id)) {
+                throw new Error('User not authenticated. Please log in.');
+            }
+            
             // Create session
             const session = await apiFetch('/webrtc/sessions', {
                 method: 'POST',
@@ -76,7 +81,7 @@ class WebRTCManager {
             this.startSignalingPoll();
 
             // Create peer connections for existing participants
-            const myUserId = String(state.currentUser?.id || '');
+            const myUserId = String(state.currentUser?._id || state.currentUser?.id || '');
             for (const participant of session.participants) {
                 const participantUserId = String(participant.user_id || '');
                 if (participantUserId && participantUserId !== myUserId) {
@@ -99,6 +104,11 @@ class WebRTCManager {
             // Validate sessionId
             if (!sessionId) {
                 throw new Error('Invalid session ID');
+            }
+
+            // Ensure we have a current user
+            if (!state.currentUser || (!state.currentUser._id && !state.currentUser.id)) {
+                throw new Error('User not authenticated. Please log in.');
             }
 
             // Join session
@@ -135,7 +145,7 @@ class WebRTCManager {
             this.startSignalingPoll();
 
             // Create peer connections for existing participants
-            const myUserId = String(state.currentUser?.id || '');
+            const myUserId = String(state.currentUser?._id || state.currentUser?.id || '');
             for (const participant of session.participants) {
                 const participantUserId = String(participant.user_id || '');
                 if (participantUserId && participantUserId !== myUserId) {
@@ -357,7 +367,7 @@ class WebRTCManager {
                 this.updateParticipantsUI(updatedSession);
                 
                 // Create peer connections for new participants
-                const currentUserId = String(state.currentUser?.id || '');
+                const currentUserId = String(state.currentUser?._id || state.currentUser?.id || '');
                 for (const participant of updatedSession.participants) {
                     const participantUserId = String(participant.user_id || '');
                     if (participantUserId && participantUserId !== currentUserId && !this.peerConnections.has(participantUserId)) {
@@ -406,7 +416,7 @@ class WebRTCManager {
             modal = newModal;
         }
 
-        const currentUserId = String(state.currentUser?.id || '');
+        const currentUserId = String(state.currentUser?._id || state.currentUser?.id || '');
         const participantsHtml = session.participants.map(p => {
             const participantUserId = String(p.user_id || '');
             const isCurrentUser = participantUserId === currentUserId;
@@ -502,7 +512,7 @@ class WebRTCManager {
         const container = document.getElementById('webrtcParticipants');
         if (!container) return;
 
-        const currentUserId = String(state.currentUser?.id || '');
+        const currentUserId = String(state.currentUser?._id || state.currentUser?.id || '');
         const participantsHtml = session.participants.map(p => {
             const participantUserId = String(p.user_id || '');
             const isCurrentUser = participantUserId === currentUserId;
@@ -546,7 +556,7 @@ class WebRTCManager {
         this.peerConnections.clear();
 
         // End session on server if creator
-        const currentUserId = String(state.currentUser?.id || '');
+        const currentUserId = String(state.currentUser?._id || state.currentUser?.id || '');
         const createdBy = String(this.currentSession?.created_by || '');
         if (this.currentSession && createdBy === currentUserId) {
             try {
