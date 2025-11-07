@@ -350,34 +350,53 @@ class WebRTCManager {
 
             // Update participants list if session changed
             // sessionId already declared above, reuse it
-            const updatedSession = await apiFetch(`/webrtc/sessions/${sessionId}`);
-            // Normalize session ID
-            if (updatedSession && !updatedSession.id && updatedSession._id) {
-                updatedSession.id = updatedSession._id;
-            }
-            // Normalize participant user_ids
-            if (updatedSession && updatedSession.participants) {
-                updatedSession.participants = updatedSession.participants.map(p => ({
-                    ...p,
-                    user_id: String(p.user_id || p.userId || '')
-                }));
-            }
-            if (updatedSession.participants.length !== this.currentSession.participants.length) {
-                this.currentSession = updatedSession;
-                this.updateParticipantsUI(updatedSession);
-                
-                // Create peer connections for new participants
-                const currentUserId = String(state.currentUser?._id || state.currentUser?.id || '');
-                for (const participant of updatedSession.participants) {
-                    const participantUserId = String(participant.user_id || '');
-                    if (participantUserId && participantUserId !== currentUserId && !this.peerConnections.has(participantUserId)) {
-                        await this.createPeerConnection(participantUserId);
-                        await this.handleOffer(participantUserId);
+            // Only update if session still exists (might have been deleted)
+            if (this.currentSession) {
+                try {
+                    const updatedSession = await apiFetch(`/webrtc/sessions/${sessionId}`);
+                    // Normalize session ID
+                    if (updatedSession && !updatedSession.id && updatedSession._id) {
+                        updatedSession.id = updatedSession._id;
+                    }
+                    // Normalize participant user_ids
+                    if (updatedSession && updatedSession.participants) {
+                        updatedSession.participants = updatedSession.participants.map(p => ({
+                            ...p,
+                            user_id: String(p.user_id || p.userId || '')
+                        }));
+                    }
+                    if (updatedSession && updatedSession.participants && updatedSession.participants.length !== this.currentSession.participants.length) {
+                        this.currentSession = updatedSession;
+                        this.updateParticipantsUI(updatedSession);
+                        
+                        // Create peer connections for new participants
+                        const currentUserId = String(state.currentUser?._id || state.currentUser?.id || '');
+                        for (const participant of updatedSession.participants) {
+                            const participantUserId = String(participant.user_id || '');
+                            if (participantUserId && participantUserId !== currentUserId && !this.peerConnections.has(participantUserId)) {
+                                await this.createPeerConnection(participantUserId);
+                                await this.handleOffer(participantUserId);
+                            }
+                        }
+                    }
+                } catch (updateError) {
+                    // Session might have been deleted, stop polling
+                    if (updateError.message?.includes('not found') || updateError.status === 404) {
+                        console.log('Session no longer exists, stopping polling');
+                        this.stopSignalingPoll();
+                        this.currentSession = null;
                     }
                 }
             }
         } catch (error) {
-            console.error('Error polling signaling:', error);
+            // If session not found, stop polling
+            if (error.message?.includes('not found') || error.message?.includes('Session not found') || error.status === 404) {
+                console.log('Session not found during polling, stopping');
+                this.stopSignalingPoll();
+                this.currentSession = null;
+            } else {
+                console.error('Error polling signaling:', error);
+            }
         }
     }
 
@@ -541,7 +560,17 @@ class WebRTCManager {
     }
 
     async endSession() {
+        // Stop polling first to prevent errors
         this.stopSignalingPoll();
+
+        // Store session info before clearing
+        const sessionToDelete = this.currentSession;
+        const currentUserId = String(state.currentUser?._id || state.currentUser?.id || '');
+        const createdBy = sessionToDelete ? String(sessionToDelete.created_by || '') : '';
+
+        // Clear session reference immediately to stop polling
+        this.currentSession = null;
+        this.lastSignalingTimestamp = null;
 
         // Stop all tracks
         if (this.localStream) {
@@ -555,24 +584,20 @@ class WebRTCManager {
         }
         this.peerConnections.clear();
 
-        // End session on server if creator
-        const currentUserId = String(state.currentUser?._id || state.currentUser?.id || '');
-        const createdBy = String(this.currentSession?.created_by || '');
-        if (this.currentSession && createdBy === currentUserId) {
+        // End session on server if creator (use stored session info)
+        if (sessionToDelete && createdBy === currentUserId) {
             try {
-                const sessionId = this.currentSession.id || this.currentSession._id;
+                const sessionId = sessionToDelete.id || sessionToDelete._id;
                 if (sessionId) {
                     await apiFetch(`/webrtc/sessions/${sessionId}`, {
                         method: 'DELETE'
                     });
                 }
             } catch (error) {
-                console.error('Error ending session:', error);
+                // Session might already be deleted, ignore error
+                console.log('Session already deleted or error ending session:', error.message);
             }
         }
-
-        this.currentSession = null;
-        this.lastSignalingTimestamp = null;
     }
 }
 
@@ -2109,10 +2134,10 @@ function renderMyCircles(circles) {
             <i class="bi ${iconClass} me-2" style="color: ${c.color || 'inherit'};" title="${iconTitle}"></i>
             <div class="flex-grow-1">
             <div class="fw-semibold d-flex align-items-center gap-2">
-                <span class="editable-personal-name" data-circle-id="${c._id}" title="Click to edit personal name">${displayName}</span>
+                <span class="editable-personal-name" data-circle-id="${c._id}">${displayName}</span>
                 ${c.personal_name ? `<span class="text-muted small" style="font-weight: normal;">(${c.name})</span>` : ''}
-                <button class="btn btn-sm p-0 ms-auto" style="font-size: 0.7rem; line-height: 1; opacity: 0.5;" data-action="edit-personal-name" data-circle-id="${c._id}" title="Edit personal name">
-                    <i class="bi bi-pencil-square"></i>
+                <button class="btn btn-sm btn-outline-secondary ms-auto" style="font-size: 0.7rem;" data-action="edit-personal-name" data-circle-id="${c._id}" title="Rename">
+                    <i class="bi bi-pencil-square"></i> Rename
                 </button>
             </div>
             ${tagsHtml}
@@ -2456,10 +2481,10 @@ async function renderCircleFeed(circleId) {
                 <h2 class="mb-0 d-flex align-items-center gap-2">
                   ${circleDetails.color ? `<span class="badge rounded-pill me-2" style="background-color: ${circleDetails.color}; width: 20px; height: 20px; padding: 0;" title="${circleDetails.color}"></span>` : ''}
                   <i class="bi ${headerIconClass}" title="${headerIconTitle}"></i>
-                  <span class="editable-personal-name" data-circle-id="${circleId}" title="Click to edit personal name">${displayName}</span>
+                  <span class="editable-personal-name" data-circle-id="${circleId}">${displayName}</span>
                   ${circleDetails.personal_name ? `<span class="text-muted small" style="font-weight: normal;">(${circleDetails.name})</span>` : ''}
-                  <button class="btn btn-sm p-0 ms-1" style="font-size: 0.75rem; line-height: 1; opacity: 0.5;" data-action="edit-circle-personal-name" data-circle-id="${circleId}" title="Edit personal name">
-                    <i class="bi bi-pencil-square"></i>
+                  <button class="btn btn-sm btn-outline-secondary ms-2" style="font-size: 0.75rem;" data-action="edit-circle-personal-name" data-circle-id="${circleId}" title="Rename">
+                    <i class="bi bi-pencil-square"></i> Rename
                   </button>
                 </h2>
                 ${directMessageBadge}
@@ -5652,15 +5677,7 @@ ${options.length <= 2 ? 'disabled' : ''}>
             }
         }
         
-        // Handle clicking on personal name to edit (in sidebar and circle view)
-        if (e.target.closest('.editable-personal-name')) {
-            const nameElement = e.target.closest('.editable-personal-name');
-            const circleId = nameElement.getAttribute('data-circle-id');
-            if (circleId) {
-                e.stopPropagation();
-                editCirclePersonalName(circleId);
-            }
-        }
+        // Removed: Clicking on personal name no longer edits it - use the rename button instead
     });
 
     initTheme();
