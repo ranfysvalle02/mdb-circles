@@ -2864,7 +2864,8 @@ ${gameData.game_mode ? `<p class="card-text small">Mode: ${gameData.game_mode}</
 <a href="${gameData.game_url}" target="_blank" rel="noopener noreferrer" 
 class="btn btn-primary"
 data-action="join-game-from-post"
-data-game-url="${gameData.game_url}">
+data-game-url="${gameData.game_url}"
+${gameData.game_type ? `data-game-type="${gameData.game_type}"` : ''}>
 <i class="bi bi-play-fill"></i> Join Game
 </a>
 </div>
@@ -3434,9 +3435,9 @@ async function handleCreateGameFromCircle() {
         // Show success message
         showStatus(`Game lobby created! Opening game...`, 'success');
         
-        // Step 4: Open Game Portal with game ID (player_id is auto-detected by Game Portal)
+        // Step 4: Open Game Portal with game ID and game_type (player_id is auto-detected by Game Portal)
         const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-        const gameUrl = `${gamePortalBaseUrl}/?game=${createData.game_id}`;
+        const gameUrl = `${gamePortalBaseUrl}/?game=${createData.game_id}&game_type=${encodeURIComponent(gameType)}`;
         
         console.log('Opening Game Portal:', gameUrl);
         
@@ -3453,7 +3454,7 @@ async function handleCreateGameFromCircle() {
                 body: JSON.stringify({
                     post_type: 'game',
                     game_data: {
-                        game_id: data.game_id,
+                        game_id: createData.game_id,
                         game_type: gameType,
                         game_mode: gameMode,
                         game_url: gameUrl,
@@ -5502,13 +5503,28 @@ Added videos will appear here. You can drag to reorder.
                 }
             case 'join-game-from-post':
                 {
-                    const gameUrl = data.gameUrl || (data.gameId ? 
-                        `https://apps.oblivio-company.com/experiments/game_portal/?game=${data.gameId}` : 
-                        null);
+                    // Get game URL from data attribute (should already include game_type if set when creating)
+                    let gameUrl = data.gameUrl;
+                    
+                    // If no URL, construct it from gameId and gameType
+                    if (!gameUrl && data.gameId) {
+                        const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
+                        const gameType = data.gameType || '';
+                        if (gameType) {
+                            gameUrl = `${gamePortalBaseUrl}/?game=${data.gameId}&game_type=${encodeURIComponent(gameType)}`;
+                        } else {
+                            gameUrl = `${gamePortalBaseUrl}/?game=${data.gameId}`;
+                        }
+                    }
+                    
                     if (gameUrl) {
                         // Extract game ID from URL if needed
                         const gameIdMatch = gameUrl.match(/[?&]game=([A-Z0-9]+)/i);
                         const gameId = gameIdMatch ? gameIdMatch[1] : data.gameId;
+                        
+                        // Extract game_type from URL if present
+                        const gameTypeMatch = gameUrl.match(/[?&]game_type=([^&]+)/i);
+                        const gameType = gameTypeMatch ? decodeURIComponent(gameTypeMatch[1]) : data.gameType || '';
                         
                         if (gameId && state.currentUser) {
                             // Get player ID from current user
@@ -5526,18 +5542,26 @@ Added videos will appear here. You can drag to reorder.
                                     })
                                 });
                                 
-                                // Then open the game URL (player_id is auto-detected by Game Portal)
+                                // Ensure game_type is in the URL when opening
                                 const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-                                const gameUrl = `${gamePortalBaseUrl}/?game=${gameId}`;
-                                window.open(gameUrl, '_blank');
+                                let finalUrl = `${gamePortalBaseUrl}/?game=${gameId}`;
+                                if (gameType) {
+                                    finalUrl += `&game_type=${encodeURIComponent(gameType)}`;
+                                }
+                                window.open(finalUrl, '_blank');
                             } catch (error) {
                                 console.error('Failed to join game:', error);
                                 showStatus('Failed to join game: ' + (error.message || 'Unknown error'), 'danger');
                                 // Still try to open the URL even if join fails
-                                window.open(gameUrl, '_blank');
+                                const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
+                                let finalUrl = `${gamePortalBaseUrl}/?game=${gameId}`;
+                                if (gameType) {
+                                    finalUrl += `&game_type=${encodeURIComponent(gameType)}`;
+                                }
+                                window.open(finalUrl, '_blank');
                             }
                         } else {
-                            // Fallback: just open the URL
+                            // Fallback: just open the URL (should already have game_type if set when creating)
                             window.open(gameUrl, '_blank');
                         }
                     }
