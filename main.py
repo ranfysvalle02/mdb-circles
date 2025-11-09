@@ -981,7 +981,7 @@ async def get_spotify_metadata(body: SpotifyURLRequest, current_user: UserInDB =
 # Game Portal Proxy
 # ----------------------------------
 class GameCreateRequest(BaseModel):
-    player_id: str
+    player_id: Optional[str] = None  # Optional - Game Portal will auto-detect from session/auth
     game_type: str
     game_mode: str = "classic"
     ai_count: int = 0
@@ -1005,12 +1005,14 @@ async def create_game_proxy(
     if not game_data.game_type:
         raise HTTPException(status_code=400, detail="game_type is required")
     
+    # Build payload - only include player_id if provided (Game Portal will auto-detect from session/auth)
     payload = {
-        "player_id": game_data.player_id,
         "game_type": game_data.game_type,
         "game_mode": game_data.game_mode,
         "ai_count": game_data.ai_count
     }
+    if game_data.player_id:
+        payload["player_id"] = game_data.player_id
     
     # Log the payload for debugging
     import logging
@@ -1049,8 +1051,19 @@ async def create_game_proxy(
                     error_detail = response.text or error_detail
                 
                 # Handle Ray service unavailable error with a more helpful message
-                if "Ray service is unavailable" in str(error_detail) or "Ray cluster" in str(error_detail):
-                    error_detail = "AI game features are temporarily unavailable. Please try creating a game without AI players (ai_count=0) or try again later."
+                # Check if Ray is blocking everything (not just AI features)
+                # The Game Portal blocks ALL requests when Ray is unavailable, even for non-AI games
+                is_ray_blocking_all = ("Ray is globally unavailable" in str(error_detail) or 
+                                     "blocking actor handle request" in str(error_detail) or
+                                     "Ray service is unavailable" in str(error_detail) or
+                                     "Check Ray cluster status" in str(error_detail))
+                is_ray_error = is_ray_blocking_all or "Ray cluster" in str(error_detail)
+                
+                if is_ray_error:
+                    # Ray is blocking everything - Game Portal is completely down
+                    # Note: This is a Game Portal design issue - it blocks ALL requests when Ray is down,
+                    # even when ai_count=0. The fix should be in Game Portal to only require Ray when ai_count > 0
+                    error_detail = "Game Portal service is temporarily unavailable. The game service is currently down. Please try again later."
                 
                 raise HTTPException(status_code=response.status_code, detail=error_detail)
         
@@ -1123,7 +1136,7 @@ async def join_game_proxy(
                 
                 # Handle Ray service unavailable error with a more helpful message
                 if "Ray service is unavailable" in str(error_detail) or "Ray cluster" in str(error_detail):
-                    error_detail = "AI game features are temporarily unavailable. Please try creating a game without AI players (ai_count=0) or try again later."
+                    error_detail = "Game Portal service is temporarily unavailable. Please try again later."
                 
                 raise HTTPException(status_code=response.status_code, detail=error_detail)
         
@@ -1183,7 +1196,7 @@ async def get_game_info(
                 
                 # Handle Ray service unavailable error with a more helpful message
                 if "Ray service is unavailable" in str(error_detail) or "Ray cluster" in str(error_detail):
-                    error_detail = "AI game features are temporarily unavailable. Please try creating a game without AI players (ai_count=0) or try again later."
+                    error_detail = "Game Portal service is temporarily unavailable. Please try again later."
                 
                 raise HTTPException(status_code=response.status_code, detail=error_detail)
         

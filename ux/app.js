@@ -1633,7 +1633,9 @@ async function apiFetch(endpoint, options = {}) {
         const detail = errData.detail || `Error: ${response.status}`;
         const err = new Error(detail);
         err.status = response.status;
-        if (response.status !== 403 && response.status !== 401) {
+        // Don't show error message for 503 errors - let the calling function handle it
+        // This prevents showing the old error message before our custom handling
+        if (response.status !== 403 && response.status !== 401 && response.status !== 503) {
             showStatus(detail, 'danger');
         }
         throw err;
@@ -3349,80 +3351,24 @@ async function handleCreateGameFromCircle() {
         gameMode = blackjackGameMode || 'best_of_5';
     }
 
-    // Validate game_type is set
-    if (!gameType || gameType.trim() === '') {
-        return showStatus('Please select a game type', 'warning');
-    }
-
-    // Generate player ID from user ID (use user's _id as player identifier)
-    const playerId = state.currentUser._id || state.currentUser.id || `user_${Date.now()}`;
-    const username = state.currentUser.username || 'Unknown';
-
     setButtonLoading(btn, true);
     try {
-        // Step 1: Create the game lobby via API
-        const requestPayload = {
-            player_id: playerId,
-            game_type: gameType,  // Ensure game_type is always included
-            game_mode: gameMode,
-            ai_count: aiCount
-        };
+        // Build URL for game creation: /new/gametype?game_mode=mode&ai_count=count
+        // Examples:
+        // /new/dominoes?game_mode=boricua&ai_count=2
+        // /new/blackjack?game_mode=best_of_10&ai_count=1
+        const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
+        const params = new URLSearchParams();
         
-        console.log('Creating game lobby...', requestPayload);
-        
-        // Validate payload before sending
-        if (!requestPayload.game_type) {
-            throw new Error('game_type is required but was not provided');
+        if (gameMode) {
+            params.append('game_mode', gameMode);
+        }
+        if (aiCount > 0) {
+            params.append('ai_count', aiCount.toString());
         }
         
-        const createData = await apiFetch('/game-portal/create', {
-            method: 'POST',
-            body: JSON.stringify(requestPayload)
-        });
-        
-        if (!createData || !createData.game_id) {
-            throw new Error('Failed to create game: No game ID returned');
-        }
-        
-        console.log('Game created successfully:', createData);
-        
-        // Step 2: Auto-join the game (creator is already in, but this ensures proper join)
-        console.log('Auto-joining game...', { game_id: createData.game_id, player_id: playerId });
-        try {
-            const joinData = await apiFetch('/game-portal/join', {
-                method: 'POST',
-                body: JSON.stringify({
-                    game_id: createData.game_id,
-                    player_id: playerId,
-                    username: username
-                })
-            });
-            
-            // Check if join was successful or if we're already in the game
-            if (joinData && (joinData.error && joinData.error.includes('already'))) {
-                console.log('Already in game (expected for creator)');
-            } else if (joinData && joinData.error) {
-                console.warn('Join warning:', joinData.error);
-            } else {
-                console.log('Successfully joined game:', joinData);
-            }
-        } catch (joinError) {
-            // If join fails because we're already in, that's fine - creator is automatically added
-            if (joinError.message && joinError.message.includes('already')) {
-                console.log('Already in game (expected for creator)');
-            } else {
-                console.warn('Join call warning (may be expected):', joinError);
-            }
-        }
-        
-        // Step 3: Verify game exists and get game info
-        console.log('Verifying game...', createData.game_id);
-        try {
-            const gameInfo = await apiFetch(`/game-portal/info?game_id=${createData.game_id}`);
-            console.log('Game info:', gameInfo);
-        } catch (infoError) {
-            console.warn('Could not verify game info:', infoError);
-        }
+        const queryString = params.toString();
+        const gameUrl = `${gamePortalBaseUrl}/new/${gameType}${queryString ? '?' + queryString : ''}`;
         
         // Close modal
         bootstrap.Modal.getInstance('#startGameModal').hide();
@@ -3433,70 +3379,33 @@ async function handleCreateGameFromCircle() {
         document.getElementById('blackjackGameModeContainer').style.display = 'none';
         
         // Show success message
-        showStatus(`Game lobby created! Opening game...`, 'success');
+        showStatus(`Opening game...`, 'success');
         
-        // Step 4: Open Game Portal with game ID and game_type (player_id is auto-detected by Game Portal)
-        const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-        const gameUrl = `${gamePortalBaseUrl}/?game=${createData.game_id}&game_type=${encodeURIComponent(gameType)}`;
-        
-        console.log('Opening Game Portal:', gameUrl);
-        
-        // Small delay to ensure all API calls complete
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
+        // Open Game Portal URL - it will create the game via URL parameters
         window.open(gameUrl, '_blank');
         
-        // Post a game post to the circle
-        try {
-            
-            await apiFetch(`/circles/${circleId}/posts`, {
-                method: 'POST',
-                body: JSON.stringify({
-                    post_type: 'game',
-                    game_data: {
-                        game_id: createData.game_id,
-                        game_type: gameType,
-                        game_mode: gameMode,
-                        game_url: gameUrl,
-                        players: [{
-                            player_id: playerId,
-                            username: username,
-                            joined_at: new Date().toISOString()
-                        }],
-                        status: 'active'
-                    },
-                    type: 'main'
-                })
-            });
-        } catch (postError) {
-            // If posting fails, that's okay - game was still created
-            console.warn('Failed to post game to circle:', postError);
-        }
+        // Post a game post to the circle (optional - don't block on this)
+        // Note: We don't have a game_id yet since creation happens on the Game Portal side
+        // We could potentially extract it from the URL after creation, but for now we'll skip posting
+        // The game can be posted later when the user shares it or when Game Portal notifies us
+        console.log('Game creation URL:', gameUrl);
+        
     } catch (error) {
         console.error('Error creating game:', error);
-        const errorMessage = error.message || 'Unknown error';
-        
-        // Check if error is about Ray service being unavailable and AI players > 0
-        if ((errorMessage.includes('Ray service') || errorMessage.includes('AI game features are temporarily unavailable')) && aiCount > 0) {
-            // Offer to retry with 0 AI players
-            const retryWithNoAI = confirm(
-                'AI game features are temporarily unavailable.\n\n' +
-                'Would you like to create the game without AI players? ' +
-                'You can wait for real players to join instead.\n\n' +
-                'Click OK to retry with 0 AI players, or Cancel to keep your current settings.'
-            );
-            
-            if (retryWithNoAI) {
-                // Set AI count to 0 and retry
-                document.getElementById('startGameAiCount').value = '0';
-                // Retry the function call
-                return handleCreateGameFromCircle();
-            } else {
-                showStatus('Failed to create game: ' + errorMessage, 'danger');
-            }
+        let errorMessage = 'Unknown error';
+        if (error.message) {
+            errorMessage = error.message;
+        } else if (typeof error === 'string') {
+            errorMessage = error;
+        } else if (error.detail) {
+            errorMessage = error.detail;
+        } else if (error.error) {
+            errorMessage = error.error;
         } else {
-            showStatus('Failed to create game: ' + errorMessage, 'danger');
+            errorMessage = JSON.stringify(error);
         }
+        
+        showStatus('Failed to create game: ' + errorMessage, 'danger');
     } finally {
         setButtonLoading(btn, false);
     }
@@ -5525,67 +5434,21 @@ Added videos will appear here. You can drag to reorder.
                 }
             case 'join-game-from-post':
                 {
-                    // Get game URL from data attribute (should already include game_type if set when creating)
-                    let gameUrl = data.gameUrl;
+                    // Get game ID and type from data attributes
+                    const gameId = data.gameId;
+                    const gameType = data.gameType || '';
                     
-                    // If no URL, construct it from gameId and gameType
-                    if (!gameUrl && data.gameId) {
+                    if (gameId) {
+                        // Open Game Portal with gameID and game_type (player_id is auto-detected by Game Portal)
                         const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-                        const gameType = data.gameType || '';
+                        let gameUrl = `${gamePortalBaseUrl}/?game=${gameId}`;
                         if (gameType) {
-                            gameUrl = `${gamePortalBaseUrl}/?game=${data.gameId}&game_type=${encodeURIComponent(gameType)}`;
-                        } else {
-                            gameUrl = `${gamePortalBaseUrl}/?game=${data.gameId}`;
+                            gameUrl += `&game_type=${encodeURIComponent(gameType)}`;
                         }
-                    }
-                    
-                    if (gameUrl) {
-                        // Extract game ID from URL if needed
-                        const gameIdMatch = gameUrl.match(/[?&]game=([A-Z0-9]+)/i);
-                        const gameId = gameIdMatch ? gameIdMatch[1] : data.gameId;
-                        
-                        // Extract game_type from URL if present
-                        const gameTypeMatch = gameUrl.match(/[?&]game_type=([^&]+)/i);
-                        const gameType = gameTypeMatch ? decodeURIComponent(gameTypeMatch[1]) : data.gameType || '';
-                        
-                        if (gameId && state.currentUser) {
-                            // Get player ID from current user
-                            const playerId = state.currentUser._id || state.currentUser.id || `user_${Date.now()}`;
-                            const username = state.currentUser.username || 'Unknown';
-                            
-                            // Join the game via proxy endpoint
-                            try {
-                                await apiFetch(`/game-portal/join`, {
-                                    method: 'POST',
-                                    body: JSON.stringify({
-                                        game_id: gameId,
-                                        player_id: playerId,
-                                        username: username
-                                    })
-                                });
-                                
-                                // Ensure game_type is in the URL when opening
-                                const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-                                let finalUrl = `${gamePortalBaseUrl}/?game=${gameId}`;
-                                if (gameType) {
-                                    finalUrl += `&game_type=${encodeURIComponent(gameType)}`;
-                                }
-                                window.open(finalUrl, '_blank');
-                            } catch (error) {
-                                console.error('Failed to join game:', error);
-                                showStatus('Failed to join game: ' + (error.message || 'Unknown error'), 'danger');
-                                // Still try to open the URL even if join fails
-                                const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-                                let finalUrl = `${gamePortalBaseUrl}/?game=${gameId}`;
-                                if (gameType) {
-                                    finalUrl += `&game_type=${encodeURIComponent(gameType)}`;
-                                }
-                                window.open(finalUrl, '_blank');
-                            }
-                        } else {
-                            // Fallback: just open the URL (should already have game_type if set when creating)
-                            window.open(gameUrl, '_blank');
-                        }
+                        window.open(gameUrl, '_blank');
+                    } else if (data.gameUrl) {
+                        // Fallback: use provided URL
+                        window.open(data.gameUrl, '_blank');
                     }
                     break;
                 }
