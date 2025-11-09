@@ -3153,14 +3153,9 @@ async function handleCreateGameFromCircle() {
 
     setButtonLoading(btn, true);
     try {
-        // Call Game Portal API
-        const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-        const gamePortalApiUrl = `${gamePortalBaseUrl}/backend/api/game/create`;
-        const response = await fetch(gamePortalApiUrl, {
+        // Call Game Portal API through proxy endpoint (avoids CORS issues)
+        const data = await apiFetch('/game-portal/create', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
             body: JSON.stringify({
                 player_id: playerId,
                 game_type: gameType,
@@ -3168,13 +3163,6 @@ async function handleCreateGameFromCircle() {
                 ai_count: aiCount
             })
         });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || errorData.error || 'Failed to create game');
-        }
-
-        const data = await response.json();
         
         // Close modal
         bootstrap.Modal.getInstance('#startGameModal').hide();
@@ -3188,6 +3176,7 @@ async function handleCreateGameFromCircle() {
         showStatus(`Game created! Redirecting to game...`, 'success');
         
         // Redirect to Game Portal with the game ID
+        const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
         const gameUrl = `${gamePortalBaseUrl}/?game=${data.game_id}`;
         window.open(gameUrl, '_blank');
         

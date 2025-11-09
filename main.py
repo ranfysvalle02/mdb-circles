@@ -956,6 +956,50 @@ async def get_spotify_metadata(body: SpotifyURLRequest, current_user: UserInDB =
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
 
 # ----------------------------------
+# Game Portal Proxy
+# ----------------------------------
+class GameCreateRequest(BaseModel):
+    player_id: str
+    game_type: str
+    game_mode: str = "classic"
+    ai_count: int = 0
+
+@app.post("/game-portal/create", tags=["Game Portal"])
+async def create_game_proxy(
+    game_data: GameCreateRequest,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Proxy endpoint to create a game in the Game Portal API."""
+    game_portal_api_url = "https://apps.oblivio-company.com/experiments/game_portal/backend/api/game/create"
+    
+    try:
+        response = requests.post(
+            game_portal_api_url,
+            json={
+                "player_id": game_data.player_id,
+                "game_type": game_data.game_type,
+                "game_mode": game_data.game_mode,
+                "ai_count": game_data.ai_count
+            },
+            headers={"Content-Type": "application/json"},
+            timeout=10
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        error_detail = "Failed to create game"
+        try:
+            error_data = e.response.json()
+            error_detail = error_data.get("detail") or error_data.get("error") or error_detail
+        except:
+            error_detail = e.response.text or error_detail
+        raise HTTPException(status_code=e.response.status_code, detail=error_detail)
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Could not connect to Game Portal API: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
+# ----------------------------------
 # Authentication
 # ----------------------------------
 @app.post("/auth/register", response_model=UserOut, status_code=201, tags=["Authentication"])
