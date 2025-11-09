@@ -226,6 +226,8 @@ class PostTypeEnum(str, Enum):
     wishlist = "wishlist"
     image = "image"
     spotify_playlist = "spotify_playlist"
+    game = "game"
+    webrtc = "webrtc"
 
 class UserRegister(BaseModel):
     username: str = Field(...)
@@ -397,6 +399,20 @@ class SpotifyPlaylistData(BaseModel):
     spotify_url: AnyHttpUrl
     playlist_art_url: Optional[AnyHttpUrl] = None
 
+class GameData(BaseModel):
+    game_id: str
+    game_type: str  # "dominoes" or "blackjack"
+    game_mode: str  # e.g., "classic", "best_of_5"
+    game_url: AnyHttpUrl
+    players: List[dict] = Field(default_factory=list)  # List of player info: {player_id, username, joined_at}
+    status: str = "active"  # "active", "finished", "waiting"
+
+class WebRTCData(BaseModel):
+    session_id: str
+    session_url: AnyHttpUrl
+    participants: List[dict] = Field(default_factory=list)  # List of participant info: {user_id, username, joined_at}
+    status: str = "active"  # "active", "ended"
+
 
 class PostUpdate(BaseModel):
     text: Optional[str] = Field(None, max_length=10000)
@@ -420,6 +436,8 @@ class PostCreate(BaseModel):
     images_data: Optional[List[ImageData]] = Field(default=None, max_length=1)
     poll_duration_hours: Optional[int] = None
     spotify_playlist_data: Optional[SpotifyPlaylistData] = None
+    game_data: Optional[GameData] = None
+    webrtc_data: Optional[WebRTCData] = None
     is_chat_enabled: bool = False
     chat_participant_ids: Optional[List[PyObjectId]] = None
 
@@ -440,6 +458,10 @@ class PostCreate(BaseModel):
             raise ValueError('An image post must contain image_data from an upload or a direct link.')
         if self.post_type == PostTypeEnum.spotify_playlist and not self.link and not self.spotify_playlist_data:
             raise ValueError('A Spotify playlist post must contain a link.')
+        if self.post_type == PostTypeEnum.game and not self.game_data:
+            raise ValueError('A game post must contain game_data.')
+        if self.post_type == PostTypeEnum.webrtc and not self.webrtc_data:
+            raise ValueError('A WebRTC post must contain webrtc_data.')
 
         self.tags = sorted(set(tag.strip().lower() for tag in self.tags if tag.strip()))
         return self
@@ -972,12 +994,11 @@ async def create_game_proxy(
     """Proxy endpoint to create a game in the Game Portal API."""
     game_portal_base = "https://apps.oblivio-company.com/experiments/game_portal"
     
-    # Try different possible API paths
+    # Try different possible API paths (based on Game Portal code structure)
     api_paths = [
-        f"{game_portal_base}/api/game/create",  # Most likely - direct API path
-        f"{game_portal_base}/backend/api/game/create",  # With backend subdirectory
+        f"{game_portal_base}/backend/api/game/create",  # Correct path from Game Portal code
+        f"{game_portal_base}/api/game/create",  # Fallback - direct API path
         f"{game_portal_base}/game/create",  # Alternative path
-        f"{game_portal_base}/backend/game/create",  # Alternative with backend
     ]
     
     payload = {
@@ -1027,6 +1048,74 @@ async def create_game_proxy(
     
     # If all paths failed, raise error
     raise HTTPException(status_code=404, detail=f"Game Portal API not found. Tried: {', '.join(api_paths)}. Last error: {last_error}")
+
+class GameJoinRequest(BaseModel):
+    game_id: str
+    player_id: str
+    username: Optional[str] = None
+
+@app.post("/game-portal/join", tags=["Game Portal"])
+async def join_game_proxy(
+    join_data: GameJoinRequest,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Proxy endpoint to join a game in the Game Portal API."""
+    game_portal_base = "https://apps.oblivio-company.com/experiments/game_portal"
+    
+    # Try different possible API paths for joining (based on Game Portal code structure)
+    api_paths = [
+        f"{game_portal_base}/backend/api/game/{join_data.game_id}/join",  # Correct path from Game Portal code
+        f"{game_portal_base}/api/game/{join_data.game_id}/join",  # Fallback - direct API path
+        f"{game_portal_base}/game/{join_data.game_id}/join",  # Alternative path
+    ]
+    
+    # Match Game Portal's JoinGameRequest model structure
+    payload = {
+        "player_id": join_data.player_id,
+        "replace_ai": None,  # Optional: AI player ID to replace
+        "as_spectator": False  # Optional: Join as spectator
+    }
+    
+    last_error = None
+    for game_portal_api_url in api_paths:
+        try:
+            response = requests.post(
+                game_portal_api_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            
+            # If we get a 404, try the next path
+            if response.status_code == 404:
+                last_error = f"404 Not Found at {game_portal_api_url}"
+                continue
+            
+            # Check if response is successful
+            if response.status_code >= 200 and response.status_code < 300:
+                try:
+                    return response.json()
+                except (ValueError, json.JSONDecodeError):
+                    # If response is not JSON, return success
+                    return {"status": "success", "message": "Joined game successfully"}
+            else:
+                # Handle error responses
+                error_detail = f"Game Portal API returned status {response.status_code}"
+                try:
+                    error_data = response.json()
+                    error_detail = error_data.get("detail") or error_data.get("error") or error_detail
+                except (ValueError, json.JSONDecodeError):
+                    error_detail = response.text or error_detail
+                raise HTTPException(status_code=response.status_code, detail=error_detail)
+        
+        except HTTPException:
+            raise
+        except requests.exceptions.RequestException as e:
+            last_error = f"Request failed for {game_portal_api_url}: {str(e)}"
+            continue
+    
+    # If all paths failed, raise error
+    raise HTTPException(status_code=404, detail=f"Game Portal join API not found. Tried: {', '.join(api_paths)}. Last error: {last_error}")
 
 # ----------------------------------
 # Authentication
@@ -1924,6 +2013,12 @@ async def create_post_in_circle(circle_id: str, post_data: PostCreate, current_u
     return PostOut(**created_post, circle_name=circle["name"], is_seen_by_user=False)
 
 
+
+@app.get("/posts/{post_id}", response_model=PostOut, tags=["Posts"])
+async def get_post(post_id: str, current_user: UserInDB = Depends(get_current_user)):
+    """Get a single post by ID."""
+    post = await get_post_and_check_membership(post_id, current_user)
+    return PostOut(**post)
 
 @app.post("/posts/{post_id}/seen", status_code=204, tags=["Posts"])
 async def mark_post_as_seen(post_id: str, current_user: UserInDB = Depends(get_current_user)):

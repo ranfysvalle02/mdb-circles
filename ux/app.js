@@ -2816,6 +2816,120 @@ loading="lazy">
                         }
                         break;
                     }
+                case 'game':
+                    {
+                        const gameData = post.content.game_data;
+                        if (gameData) {
+                            const gameTypeDisplay = gameData.game_type ? 
+                                gameData.game_type.charAt(0).toUpperCase() + gameData.game_type.slice(1) : 
+                                'Game';
+                            const players = gameData.players || [];
+                            const playerCount = players.length;
+                            const status = gameData.status || 'active';
+                            
+                            // Build players list HTML
+                            let playersHtml = '';
+                            if (players.length > 0) {
+                                playersHtml = `
+<div class="mt-2">
+<small class="text-muted">Players (${playerCount}):</small>
+<div class="d-flex flex-wrap gap-2 mt-1">
+${players.map(player => `
+<span class="badge bg-primary">
+<i class="bi bi-person-fill"></i> ${player.username || 'Unknown'}
+</span>
+`).join('')}
+</div>
+</div>
+`;
+                            }
+                            
+                            const statusBadge = status === 'active' ? 
+                                '<span class="badge bg-success">Active</span>' : 
+                                status === 'finished' ? 
+                                '<span class="badge bg-secondary">Finished</span>' : 
+                                '<span class="badge bg-warning">Waiting</span>';
+                            
+                            contentHtml = `
+<div class="card mt-3" style="background-color: var(--form-input-bg); border-color: var(--border-color);" data-post-type="game" data-post-id="${postId}">
+<div class="card-body">
+<h5 class="card-title">
+<i class="bi bi-controller"></i> ${gameTypeDisplay} Game
+${statusBadge}
+</h5>
+<p class="card-text small text-muted">Game ID: ${gameData.game_id}</p>
+${gameData.game_mode ? `<p class="card-text small">Mode: ${gameData.game_mode}</p>` : ''}
+<div class="game-players-container">${playersHtml}</div>
+<div class="mt-3">
+<a href="${gameData.game_url}" target="_blank" rel="noopener noreferrer" 
+class="btn btn-primary"
+data-action="join-game-from-post"
+data-game-url="${gameData.game_url}">
+<i class="bi bi-play-fill"></i> Join Game
+</a>
+</div>
+</div>
+</div>
+`;
+                        } else {
+                            contentHtml = `<p class="">Game data not available.</p>`;
+                        }
+                        break;
+                    }
+                case 'webrtc':
+                    {
+                        const webrtcData = post.content.webrtc_data;
+                        if (webrtcData) {
+                            const participants = webrtcData.participants || [];
+                            const participantCount = participants.length;
+                            const status = webrtcData.status || 'active';
+                            
+                            // Build participants list HTML
+                            let participantsHtml = '';
+                            if (participants.length > 0) {
+                                participantsHtml = `
+<div class="mt-2">
+<small class="text-muted">Participants (${participantCount}):</small>
+<div class="d-flex flex-wrap gap-2 mt-1">
+${participants.map(participant => `
+<span class="badge bg-info">
+<i class="bi bi-camera-video-fill"></i> ${participant.username || 'Unknown'}
+</span>
+`).join('')}
+</div>
+</div>
+`;
+                            }
+                            
+                            const statusBadge = status === 'active' ? 
+                                '<span class="badge bg-success">Active</span>' : 
+                                '<span class="badge bg-secondary">Ended</span>';
+                            
+                            contentHtml = `
+<div class="card mt-3" style="background-color: var(--form-input-bg); border-color: var(--border-color);" data-post-type="webrtc" data-post-id="${postId}">
+<div class="card-body">
+<h5 class="card-title">
+<i class="bi bi-camera-video"></i> WebRTC Session
+${statusBadge}
+</h5>
+<p class="card-text small text-muted">Session ID: ${webrtcData.session_id}</p>
+<div class="webrtc-participants-container">${participantsHtml}</div>
+<div class="mt-3">
+<a href="${webrtcData.session_url}" target="_blank" rel="noopener noreferrer" 
+class="btn btn-info"
+data-action="join-webrtc-from-post"
+data-session-url="${webrtcData.session_url}">
+<i class="bi bi-camera-video-fill"></i> Join Session
+</a>
+</div>
+</div>
+</div>
+`;
+                        } else {
+                            contentHtml = `<p class="">WebRTC data not available.</p>`;
+                        }
+                        break;
+                    }
                 default:
                     {
                         if (post.content.text) {
@@ -2862,21 +2976,6 @@ data-action="filter-by-tag" data-tag="${tag}">
 ${tag}
 </span>
 `).join(' ')}
-</div>
-`;
-            }
-            
-            // Add "Join Game" button if game ID is detected
-            let gameJoinButton = '';
-            if (gameId) {
-                gameJoinButton = `
-<div class="mt-3">
-<button class="btn btn-warning btn-sm" 
-        data-action="join-game-from-post" 
-        data-game-id="${gameId}"
-        style="font-weight: 600;">
-<i class="bi bi-controller"></i> Join Game
-</button>
 </div>
 `;
             }
@@ -3000,7 +3099,6 @@ ${circleTagsBadges}
 ${dropdownMenu}
 </div>
 <div class="mt-3">${contentHtml}</div>
-${gameJoinButton}
 ${postFooter}
 </div>
 </div>
@@ -3016,6 +3114,108 @@ ${postFooter}
         postObserver.observe(el);
     });
     initTooltips();
+    
+    // Start polling for game and webrtc posts
+    startGamePostPolling(container);
+}
+
+// Polling mechanism for game and webrtc posts
+let gamePostPollingInterval = null;
+
+function startGamePostPolling(container) {
+    // Clear existing interval if any
+    if (gamePostPollingInterval) {
+        clearInterval(gamePostPollingInterval);
+    }
+    
+    // Poll every 5 seconds for game and webrtc posts
+    gamePostPollingInterval = setInterval(() => {
+        updateGameAndWebRTCPosts(container);
+    }, 5000);
+    
+    // Initial update
+    updateGameAndWebRTCPosts(container);
+}
+
+async function updateGameAndWebRTCPosts(container) {
+    const gamePosts = container.querySelectorAll('[data-post-type="game"]');
+    const webrtcPosts = container.querySelectorAll('[data-post-type="webrtc"]');
+    
+    // Update game posts
+    for (const postEl of gamePosts) {
+        const postId = postEl.dataset.postId;
+        if (!postId) continue;
+        
+        try {
+            // Fetch updated post data
+            const post = await apiFetch(`/posts/${postId}`);
+            if (post && post.content && post.content.game_data) {
+                const gameData = post.content.game_data;
+                const playersContainer = postEl.querySelector('.game-players-container');
+                if (playersContainer) {
+                    const players = gameData.players || [];
+                    const playerCount = players.length;
+                    
+                    if (players.length > 0) {
+                        playersContainer.innerHTML = `
+<div class="mt-2">
+<small class="text-muted">Players (${playerCount}):</small>
+<div class="d-flex flex-wrap gap-2 mt-1">
+${players.map(player => `
+<span class="badge bg-primary">
+<i class="bi bi-person-fill"></i> ${player.username || 'Unknown'}
+</span>
+`).join('')}
+</div>
+</div>
+`;
+                    } else {
+                        playersContainer.innerHTML = '';
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to update game post:', error);
+        }
+    }
+    
+    // Update webrtc posts
+    for (const postEl of webrtcPosts) {
+        const postId = postEl.dataset.postId;
+        if (!postId) continue;
+        
+        try {
+            // Fetch updated post data
+            const post = await apiFetch(`/posts/${postId}`);
+            if (post && post.content && post.content.webrtc_data) {
+                const webrtcData = post.content.webrtc_data;
+                const participantsContainer = postEl.querySelector('.webrtc-participants-container');
+                if (participantsContainer) {
+                    const participants = webrtcData.participants || [];
+                    const participantCount = participants.length;
+                    
+                    if (participants.length > 0) {
+                        participantsContainer.innerHTML = `
+<div class="mt-2">
+<small class="text-muted">Participants (${participantCount}):</small>
+<div class="d-flex flex-wrap gap-2 mt-1">
+${participants.map(participant => `
+<span class="badge bg-info">
+<i class="bi bi-camera-video-fill"></i> ${participant.username || 'Unknown'}
+</span>
+`).join('')}
+</div>
+</div>
+`;
+                    } else {
+                        participantsContainer.innerHTML = '';
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to update webrtc post:', error);
+        }
+    }
 }
 
 const observer = new IntersectionObserver((entries) => {
@@ -3175,26 +3375,36 @@ async function handleCreateGameFromCircle() {
         // Show success message
         showStatus(`Game created! Redirecting to game...`, 'success');
         
-        // Redirect to Game Portal with the game ID
+        // Redirect to Game Portal with the game ID and player ID
         const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-        const gameUrl = `${gamePortalBaseUrl}/?game=${data.game_id}`;
+        const gameUrl = `${gamePortalBaseUrl}/?game=${data.game_id}&player_id=${playerId}`;
         window.open(gameUrl, '_blank');
         
-        // Optionally, also post a message to the circle about the game
+        // Post a game post to the circle
         try {
+            
             await apiFetch(`/circles/${circleId}/posts`, {
                 method: 'POST',
                 body: JSON.stringify({
-                    content: {
-                        text: `🎮 Started a ${gameType.charAt(0).toUpperCase() + gameType.slice(1)} game! Join here: ${gameUrl}`,
-                        post_type: 'standard'
+                    post_type: 'game',
+                    game_data: {
+                        game_id: data.game_id,
+                        game_type: gameType,
+                        game_mode: gameMode,
+                        game_url: gameUrl,
+                        players: [{
+                            player_id: playerId,
+                            username: username,
+                            joined_at: new Date().toISOString()
+                        }],
+                        status: 'active'
                     },
                     type: 'main'
                 })
             });
         } catch (postError) {
             // If posting fails, that's okay - game was still created
-            console.warn('Failed to post game link to circle:', postError);
+            console.warn('Failed to post game to circle:', postError);
         }
     } catch (error) {
         console.error('Error creating game:', error);
@@ -5227,11 +5437,52 @@ Added videos will appear here. You can drag to reorder.
                 }
             case 'join-game-from-post':
                 {
-                    const gameId = data.gameId;
-                    if (gameId) {
-                        const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-                        const gameUrl = `${gamePortalBaseUrl}/?game=${gameId}`;
-                        window.open(gameUrl, '_blank');
+                    const gameUrl = data.gameUrl || (data.gameId ? 
+                        `https://apps.oblivio-company.com/experiments/game_portal/?game=${data.gameId}` : 
+                        null);
+                    if (gameUrl) {
+                        // Extract game ID from URL if needed
+                        const gameIdMatch = gameUrl.match(/[?&]game=([A-Z0-9]+)/i);
+                        const gameId = gameIdMatch ? gameIdMatch[1] : data.gameId;
+                        
+                        if (gameId && state.currentUser) {
+                            // Get player ID from current user
+                            const playerId = state.currentUser._id || state.currentUser.id || `user_${Date.now()}`;
+                            const username = state.currentUser.username || 'Unknown';
+                            
+                            // Join the game via proxy endpoint
+                            try {
+                                await apiFetch(`/game-portal/join`, {
+                                    method: 'POST',
+                                    body: JSON.stringify({
+                                        game_id: gameId,
+                                        player_id: playerId,
+                                        username: username
+                                    })
+                                });
+                                
+                                // Then open the game URL with player_id parameter
+                                const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
+                                const urlWithPlayer = `${gamePortalBaseUrl}/?game=${gameId}&player_id=${playerId}`;
+                                window.open(urlWithPlayer, '_blank');
+                            } catch (error) {
+                                console.error('Failed to join game:', error);
+                                showStatus('Failed to join game: ' + (error.message || 'Unknown error'), 'danger');
+                                // Still try to open the URL even if join fails
+                                window.open(gameUrl, '_blank');
+                            }
+                        } else {
+                            // Fallback: just open the URL
+                            window.open(gameUrl, '_blank');
+                        }
+                    }
+                    break;
+                }
+            case 'join-webrtc-from-post':
+                {
+                    const sessionUrl = data.sessionUrl;
+                    if (sessionUrl) {
+                        window.open(sessionUrl, '_blank');
                     }
                     break;
                 }
