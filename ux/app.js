@@ -3350,11 +3350,13 @@ async function handleCreateGameFromCircle() {
 
     // Generate player ID from user ID (use user's _id as player identifier)
     const playerId = state.currentUser._id || state.currentUser.id || `user_${Date.now()}`;
+    const username = state.currentUser.username || 'Unknown';
 
     setButtonLoading(btn, true);
     try {
-        // Call Game Portal API through proxy endpoint (avoids CORS issues)
-        const data = await apiFetch('/game-portal/create', {
+        // Step 1: Create the game lobby via API
+        console.log('Creating game lobby...', { player_id: playerId, game_type: gameType, game_mode: gameMode, ai_count: aiCount });
+        const createData = await apiFetch('/game-portal/create', {
             method: 'POST',
             body: JSON.stringify({
                 player_id: playerId,
@@ -3364,20 +3366,48 @@ async function handleCreateGameFromCircle() {
             })
         });
         
-        // The creator is automatically added to the game, but let's ensure they're joined
-        // (this also helps if the Game Portal frontend needs the join call)
+        if (!createData || !createData.game_id) {
+            throw new Error('Failed to create game: No game ID returned');
+        }
+        
+        console.log('Game created successfully:', createData);
+        
+        // Step 2: Auto-join the game (creator is already in, but this ensures proper join)
+        console.log('Auto-joining game...', { game_id: createData.game_id, player_id: playerId });
         try {
-            await apiFetch('/game-portal/join', {
+            const joinData = await apiFetch('/game-portal/join', {
                 method: 'POST',
                 body: JSON.stringify({
-                    game_id: data.game_id,
+                    game_id: createData.game_id,
                     player_id: playerId,
                     username: username
                 })
             });
+            
+            // Check if join was successful or if we're already in the game
+            if (joinData && (joinData.error && joinData.error.includes('already'))) {
+                console.log('Already in game (expected for creator)');
+            } else if (joinData && joinData.error) {
+                console.warn('Join warning:', joinData.error);
+            } else {
+                console.log('Successfully joined game:', joinData);
+            }
         } catch (joinError) {
-            // If join fails (e.g., already in game), that's okay - creator is already in
-            console.warn('Join call after create failed (this is usually fine):', joinError);
+            // If join fails because we're already in, that's fine - creator is automatically added
+            if (joinError.message && joinError.message.includes('already')) {
+                console.log('Already in game (expected for creator)');
+            } else {
+                console.warn('Join call warning (may be expected):', joinError);
+            }
+        }
+        
+        // Step 3: Verify game exists and get game info
+        console.log('Verifying game...', createData.game_id);
+        try {
+            const gameInfo = await apiFetch(`/game-portal/info?game_id=${createData.game_id}`);
+            console.log('Game info:', gameInfo);
+        } catch (infoError) {
+            console.warn('Could not verify game info:', infoError);
         }
         
         // Close modal
@@ -3389,15 +3419,16 @@ async function handleCreateGameFromCircle() {
         document.getElementById('blackjackGameModeContainer').style.display = 'none';
         
         // Show success message
-        showStatus(`Game created! Redirecting to game...`, 'success');
+        showStatus(`Game lobby created! Opening game...`, 'success');
         
-        // Redirect to Game Portal with the game ID and player ID
-        // Note: The Game Portal frontend needs to detect these URL parameters and auto-join
+        // Step 4: Open Game Portal with game ID and player ID
         const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-        const gameUrl = `${gamePortalBaseUrl}/?game=${data.game_id}&player_id=${playerId}`;
+        const gameUrl = `${gamePortalBaseUrl}/?game=${createData.game_id}&player_id=${playerId}`;
         
-        // Small delay to ensure join call completes before opening URL
-        await new Promise(resolve => setTimeout(resolve, 100));
+        console.log('Opening Game Portal:', gameUrl);
+        
+        // Small delay to ensure all API calls complete
+        await new Promise(resolve => setTimeout(resolve, 200));
         
         window.open(gameUrl, '_blank');
         

@@ -1117,6 +1117,61 @@ async def join_game_proxy(
     # If all paths failed, raise error
     raise HTTPException(status_code=404, detail=f"Game Portal join API not found. Tried: {', '.join(api_paths)}. Last error: {last_error}")
 
+@app.get("/game-portal/info", tags=["Game Portal"])
+async def get_game_info(
+    game_id: str = Query(..., description="Game ID to get information for"),
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Get game information from the Game Portal API."""
+    
+    game_portal_base = "https://apps.oblivio-company.com/experiments/game_portal"
+    
+    # Try different possible API paths for getting game info
+    api_paths = [
+        f"{game_portal_base}/backend/api/game/{game_id}",  # Correct path from Game Portal code
+        f"{game_portal_base}/api/game/{game_id}",  # Fallback - direct API path
+        f"{game_portal_base}/game/{game_id}",  # Alternative path
+    ]
+    
+    last_error = None
+    for game_portal_api_url in api_paths:
+        try:
+            response = requests.get(
+                game_portal_api_url,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            
+            # If we get a 404, try the next path
+            if response.status_code == 404:
+                last_error = f"404 Not Found at {game_portal_api_url}"
+                continue
+            
+            # Check if response is successful
+            if response.status_code >= 200 and response.status_code < 300:
+                try:
+                    return response.json()
+                except (ValueError, json.JSONDecodeError):
+                    return {"detail": response.text, "status_code": response.status_code}
+            else:
+                # Handle error responses
+                error_detail = f"Game Portal API returned status {response.status_code}"
+                try:
+                    error_data = response.json()
+                    error_detail = error_data.get("detail") or error_data.get("error") or error_detail
+                except (ValueError, json.JSONDecodeError):
+                    error_detail = response.text or error_detail
+                raise HTTPException(status_code=response.status_code, detail=error_detail)
+        
+        except HTTPException:
+            raise
+        except requests.exceptions.RequestException as e:
+            last_error = f"Request failed for {game_portal_api_url}: {str(e)}"
+            continue
+    
+    # If all paths failed, raise error
+    raise HTTPException(status_code=404, detail=f"Game Portal info API not found. Tried: {', '.join(api_paths)}. Last error: {last_error}")
+
 # ----------------------------------
 # Authentication
 # ----------------------------------
