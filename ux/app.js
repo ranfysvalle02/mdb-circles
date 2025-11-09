@@ -2502,8 +2502,9 @@ async function renderCircleFeed(circleId) {
                     // Start polling if we have a game_id
                     if (lobby.game_id) {
                         // Start polling after a short delay to avoid race conditions
+                        // Use game_id as the key for polling
                         setTimeout(() => {
-                            startGamePolling(lobby.id, lobby.game_id);
+                            startGamePolling(lobby.game_id, lobby.game_id);
                         }, 1000);
                     }
                     
@@ -2516,7 +2517,7 @@ async function renderCircleFeed(circleId) {
                                     data-game-url="${gameUrl || ''}"
                                     title="${gameTypeLabel} - ${gameModeLabel} (${participantCount} ${participantCount === 1 ? 'player' : 'players'})">
                                 <i class="bi bi-controller"></i> ${gameTypeLabel}${isParticipant ? ' (Joined)' : ''}
-                                <span class="badge bg-dark ms-1">${participantCount}</span>
+                                <span class="badge bg-dark ms-1" id="lobby-badge-${lobby.game_id || lobby.id}">${participantCount}</span>
                             </button>
                         </div>
                     `;
@@ -2562,8 +2563,11 @@ async function renderCircleFeed(circleId) {
                  <i class="bi bi-camera-video"></i> ${circleDetails.is_direct_message ? 'Call' : 'WebRTC'}
               </button>
               ${gameLobbiesHtml}
-              <button class="btn btn-sm btn-warning ms-2" data-action="start-game" data-circle-id="${circleId}" title="Start a Game (Blackjack or Dominoes)">
-                 <i class="bi bi-controller"></i> Start Game
+              <button class="btn btn-sm btn-warning ms-2" data-action="start-game-lobby" data-circle-id="${circleId}" data-game-type="dominoes" title="Start Dominoes Lobby">
+                 <i class="bi bi-controller"></i> Start Dominoes Lobby
+              </button>
+              <button class="btn btn-sm btn-warning ms-2" data-action="start-game-lobby" data-circle-id="${circleId}" data-game-type="blackjack" title="Start Blackjack Lobby">
+                 <i class="bi bi-controller"></i> Start Blackjack Lobby
               </button>
               <button id="togglePostCreatorCircleBtn" class="btn btn-sm btn-primary ms-2">
                  <i class="bi bi-pencil-square"></i> New Post
@@ -3376,144 +3380,119 @@ async function handleCreateCircle() {
 
 // -----------------------------------------------
 // Game Portal integration:
-async function handleCreateGameFromCircle() {
-    const btn = document.getElementById('createGameBtn');
-    const circleId = document.getElementById('startGameCircleId').value;
-    const gameType = document.getElementById('startGameType').value;
-    const dominoGameMode = document.getElementById('dominoGameMode').value;
-    const blackjackGameMode = document.getElementById('blackjackGameMode').value;
-    const aiCount = parseInt(document.getElementById('startGameAiCount').value) || 0;
-
-    if (!gameType) {
-        return showStatus('Please select a game type', 'warning');
+// Generate browser fingerprint for player_id
+async function generateFingerprint() {
+    // Create a simple fingerprint from browser characteristics
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.textBaseline = 'top';
+    ctx.font = '14px Arial';
+    ctx.fillText('Fingerprint', 2, 2);
+    
+    const fingerprint = [
+        navigator.userAgent,
+        navigator.language,
+        screen.width + 'x' + screen.height,
+        new Date().getTimezoneOffset(),
+        canvas.toDataURL()
+    ].join('|');
+    
+    // Create a hash-like string from the fingerprint
+    let hash = 0;
+    for (let i = 0; i < fingerprint.length; i++) {
+        const char = fingerprint.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
     }
+    
+    return 'player_' + Math.abs(hash).toString(36);
+}
 
+async function handleStartGameLobby(circleId, gameType) {
     if (!state.currentUser) {
         return showStatus('You must be logged in to start a game', 'warning');
     }
 
-    // Determine game mode based on game type
-    let gameMode = 'classic';
-    if (gameType === 'dominoes') {
-        gameMode = dominoGameMode || 'classic';
-    } else if (gameType === 'blackjack') {
-        gameMode = blackjackGameMode || 'best_of_5';
+    if (!gameType || (gameType !== 'dominoes' && gameType !== 'blackjack')) {
+        return showStatus('Invalid game type', 'warning');
     }
 
-    setButtonLoading(btn, true);
+    // Find the button that was clicked to show loading state
+    const button = document.querySelector(`[data-action="start-game-lobby"][data-circle-id="${circleId}"][data-game-type="${gameType}"]`);
+    if (button) {
+        setButtonLoading(button, true);
+    }
+    
     try {
-        // Create or get existing game lobby (one per game type per circle)
-        let lobby;
-        let gameId = null;
-        let gameUrl = null;
+        // Generate player_id from browser fingerprint
+        const playerId = await generateFingerprint();
         
+        // Use the new Game Portal lobby endpoint to create or join a lobby
+        const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
+        const lobbyUrl = `${gamePortalApiUrl}/lobby/${circleId}/${gameType}`;
+        
+        const response = await fetch(lobbyUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ player_id: playerId })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to create/join lobby: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        const gameId = result.game_id;
+        const action = result.action || 'created';
+        const playerCount = result.player_count || 0;
+        
+        // Show status message
+        if (action === 'joined') {
+            showStatus(`Joined existing ${gameType} lobby!`, 'info');
+        } else {
+            showStatus(`Created ${gameType} lobby!`, 'success');
+        }
+        
+        // Store lobby info in our backend (optional - for tracking)
         try {
             // Check if there's already an active lobby for this circle and game type
             const activeLobbies = await apiFetch(`/game-lobbies/circles/${circleId}/active-lobbies`);
             const existingLobby = activeLobbies.find(l => l.game_type === gameType);
             
             if (existingLobby) {
-                // Join existing lobby
-                lobby = await apiFetch(`/game-lobbies/${existingLobby.id}/join`, {
-                    method: 'POST'
-                });
-                showStatus(`Joining existing ${gameType} lobby...`, 'info');
-                
-                // If lobby already has a game_id, use it
-                if (lobby.game_id) {
-                    gameId = lobby.game_id;
-                    gameUrl = lobby.game_url || `https://apps.oblivio-company.com/experiments/game_portal?game=${gameId}`;
-                }
+                // Update existing lobby with game_id if needed
+                // Note: We'd need a PATCH endpoint to update, but for now we'll just track it
+                console.log('Lobby exists in our system:', existingLobby.id);
             } else {
-                // Create new lobby first
-                lobby = await apiFetch('/game-lobbies', {
+                // Create lobby in our system for tracking
+                await apiFetch('/game-lobbies', {
                     method: 'POST',
                     body: JSON.stringify({
                         circle_id: circleId,
                         game_type: gameType,
-                        game_mode: gameMode
+                        game_id: gameId,
+                        game_url: `https://apps.oblivio-company.com/experiments/game_portal?game=${gameId}&replace_placeholder=true`
                     })
                 });
-                showStatus(`Created ${gameType} lobby!`, 'success');
             }
         } catch (lobbyError) {
-            console.warn('Failed to create/join lobby:', lobbyError);
-            showStatus('Opening game...', 'info');
+            // Non-critical - just log it
+            console.warn('Failed to sync lobby with our backend:', lobbyError);
         }
         
-        // Create game via Game Portal API if we don't have a game_id yet
-        if (!gameId) {
-            try {
-                // Use the Game Portal API to create the game
-                const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
-                const params = new URLSearchParams();
-                
-                if (gameMode) {
-                    params.append('game_mode', gameMode);
-                }
-                if (aiCount > 0) {
-                    params.append('ai_count', aiCount.toString());
-                }
-                
-                const queryString = params.toString();
-                const createGameUrl = `${gamePortalApiUrl}/new/${gameType}${queryString ? '?' + queryString : ''}`;
-                
-                const gameResponse = await fetch(createGameUrl, { method: 'GET' });
-                
-                if (!gameResponse.ok) {
-                    throw new Error(`Failed to create game: ${gameResponse.status}`);
-                }
-                
-                const gameData = await gameResponse.json();
-                gameId = gameData.game_id;
-                gameUrl = `https://apps.oblivio-company.com/experiments/game_portal?game=${gameId}`;
-                
-                // Update lobby with game_id and game_url
-                if (lobby && lobby.id) {
-                    try {
-                        // Note: We'd need a PATCH endpoint to update the lobby, but for now we'll just store it
-                        // The lobby will be updated when we poll for game updates
-                        console.log('Game created:', gameId);
-                    } catch (updateError) {
-                        console.warn('Failed to update lobby with game_id:', updateError);
-                    }
-                }
-            } catch (gameError) {
-                console.error('Failed to create game via Game Portal API:', gameError);
-                // Fallback: still open the game creation URL
-                const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-                const params = new URLSearchParams();
-                if (gameMode) {
-                    params.append('game_mode', gameMode);
-                }
-                if (aiCount > 0) {
-                    params.append('ai_count', aiCount.toString());
-                }
-                const queryString = params.toString();
-                gameUrl = `${gamePortalBaseUrl}/new/${gameType}${queryString ? '?' + queryString : ''}`;
-            }
-        }
+        // Open Game Portal with replace_placeholder=true
+        const gameUrl = `https://apps.oblivio-company.com/experiments/game_portal?game=${gameId}&replace_placeholder=true`;
+        window.open(gameUrl, '_blank');
         
-        // Close modal
-        bootstrap.Modal.getInstance('#startGameModal').hide();
+        // Start polling for game updates to show participant count
+        // We'll use the game_id to track this lobby
+        startGamePolling(gameId, gameId);
         
-        // Reset form
-        document.getElementById('startGameType').value = '';
-        document.getElementById('dominoGameModeContainer').style.display = 'none';
-        document.getElementById('blackjackGameModeContainer').style.display = 'none';
-        
-        // Open Game Portal URL
-        if (gameUrl) {
-            window.open(gameUrl, '_blank');
-        }
-        
-        // Start polling for game updates if we have a game_id
-        if (gameId && lobby && lobby.id) {
-            startGamePolling(lobby.id, gameId);
-        }
+        // Refresh the circle view to update lobby buttons
+        await resetAndRenderCircleFeed(circleId);
         
     } catch (error) {
-        console.error('Error creating game:', error);
+        console.error('Error creating/joining game lobby:', error);
         let errorMessage = 'Unknown error';
         if (error.message) {
             errorMessage = error.message;
@@ -3527,9 +3506,11 @@ async function handleCreateGameFromCircle() {
             errorMessage = JSON.stringify(error);
         }
         
-        showStatus('Failed to create game: ' + errorMessage, 'danger');
+        showStatus('Failed to create/join game lobby: ' + errorMessage, 'danger');
     } finally {
-        setButtonLoading(btn, false);
+        if (button) {
+            setButtonLoading(button, false);
+        }
     }
 }
 
@@ -3593,8 +3574,12 @@ function stopGamePolling(lobbyId) {
 }
 
 function updateLobbyDisplay(lobbyId, gameUpdates) {
-    // Find the lobby button in the circle header
-    const lobbyButton = document.querySelector(`[data-lobby-id="${lobbyId}"]`);
+    // Find the lobby button in the circle header - can be by lobby_id or game_id
+    let lobbyButton = document.querySelector(`[data-lobby-id="${lobbyId}"]`);
+    if (!lobbyButton && gameUpdates.game_id) {
+        // Try to find by game_id if we're tracking by game_id
+        lobbyButton = document.querySelector(`[data-game-id="${gameUpdates.game_id}"]`);
+    }
     if (!lobbyButton) return;
     
     // Update button with game status
@@ -3602,8 +3587,15 @@ function updateLobbyDisplay(lobbyId, gameUpdates) {
     const playerCount = gameUpdates.player_count || 0;
     const maxPlayers = gameUpdates.max_players || 4;
     
-    // Update badge with player count
-    const badge = lobbyButton.querySelector('.badge');
+    // Update badge with player count from polling
+    // Try to find badge by ID first, then fall back to querySelector
+    let badge = null;
+    if (gameUpdates.game_id) {
+        badge = document.getElementById(`lobby-badge-${gameUpdates.game_id}`);
+    }
+    if (!badge) {
+        badge = lobbyButton.querySelector('.badge');
+    }
     if (badge) {
         badge.textContent = `${playerCount}/${maxPlayers}`;
     }
@@ -5625,18 +5617,11 @@ Added videos will appear here. You can drag to reorder.
                     }
                     break;
                 }
-            case 'start-game':
+            case 'start-game-lobby':
                 {
                     const circleId = data.circleId;
-                    // Open the game selection modal
-                    document.getElementById('startGameCircleId').value = circleId;
-                    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('startGameModal'));
-                    modal.show();
-                    break;
-                }
-            case 'create-game-from-circle':
-                {
-                    await handleCreateGameFromCircle();
+                    const gameType = data.gameType;
+                    await handleStartGameLobby(circleId, gameType);
                     break;
                 }
             case 'join-game-lobby':
@@ -5647,60 +5632,43 @@ Added videos will appear here. You can drag to reorder.
                     
                     setButtonLoading(target, true);
                     try {
-                        // Join the lobby
-                        const lobby = await apiFetch(`/game-lobbies/${lobbyId}/join`, {
-                            method: 'POST'
+                        // Generate player_id from browser fingerprint
+                        const playerId = await generateFingerprint();
+                        
+                        // Get lobby info from our backend
+                        const lobby = await apiFetch(`/game-lobbies/${lobbyId}`);
+                        const circleId = lobby.circle_id;
+                        const gameType = lobby.game_type;
+                        
+                        // Use the Game Portal lobby endpoint to join
+                        const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
+                        const lobbyUrl = `${gamePortalApiUrl}/lobby/${circleId}/${gameType}`;
+                        
+                        const response = await fetch(lobbyUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ player_id: playerId })
                         });
                         
-                        showStatus(`Joined ${lobby.game_type} lobby!`, 'success');
-                        
-                        // Determine the game URL to open
-                        let urlToOpen = gameUrl;
-                        if (!urlToOpen && lobby.game_url) {
-                            urlToOpen = lobby.game_url;
-                        } else if (!urlToOpen && (gameId || lobby.game_id)) {
-                            const finalGameId = gameId || lobby.game_id;
-                            urlToOpen = `https://apps.oblivio-company.com/experiments/game_portal?game=${finalGameId}`;
-                        } else if (!urlToOpen) {
-                            // Fallback: create new game if no game_id exists
-                            const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
-                            const params = new URLSearchParams();
-                            if (lobby.game_mode) {
-                                params.append('game_mode', lobby.game_mode);
-                            }
-                            const queryString = params.toString();
-                            urlToOpen = `${gamePortalApiUrl}/new/${lobby.game_type}${queryString ? '?' + queryString : ''}`;
-                            
-                            // Try to create the game and get game_id
-                            try {
-                                const gameResponse = await fetch(urlToOpen, { method: 'GET' });
-                                if (gameResponse.ok) {
-                                    const gameData = await gameResponse.json();
-                                    urlToOpen = `https://apps.oblivio-company.com/experiments/game_portal?game=${gameData.game_id}`;
-                                    
-                                    // Start polling for the new game
-                                    if (lobby.id && gameData.game_id) {
-                                        startGamePolling(lobby.id, gameData.game_id);
-                                    }
-                                }
-                            } catch (gameError) {
-                                console.warn('Failed to create game, opening URL directly:', gameError);
-                            }
+                        if (!response.ok) {
+                            throw new Error(`Failed to join lobby: ${response.status}`);
                         }
                         
-                        // Open the game URL
-                        if (urlToOpen) {
-                            window.open(urlToOpen, '_blank');
-                        }
+                        const result = await response.json();
+                        const finalGameId = result.game_id || gameId || lobby.game_id;
+                        
+                        showStatus(`Joined ${gameType} lobby!`, 'success');
+                        
+                        // Open Game Portal with replace_placeholder=true
+                        const urlToOpen = `https://apps.oblivio-company.com/experiments/game_portal?game=${finalGameId}&replace_placeholder=true`;
+                        window.open(urlToOpen, '_blank');
                         
                         // Start polling if we have a game_id
-                        const finalGameId = gameId || lobby.game_id;
-                        if (finalGameId && lobby.id) {
-                            startGamePolling(lobby.id, finalGameId);
+                        if (finalGameId) {
+                            startGamePolling(finalGameId, finalGameId);
                         }
                         
                         // Refresh the circle view to update lobby buttons
-                        const circleId = window.location.hash.match(/circle\/([^\/]+)/)?.[1];
                         if (circleId) {
                             await resetAndRenderCircleFeed(circleId);
                         }
