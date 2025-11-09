@@ -2511,6 +2511,9 @@ async function renderCircleFeed(circleId) {
               <button class="btn btn-sm btn-info ms-2" data-action="start-webrtc" data-circle-id="${circleId}" data-session-type="${circleDetails.is_direct_message ? 'dm' : 'circle'}" title="${circleDetails.is_direct_message ? 'Start WebRTC Call' : 'Start WebRTC Session'}">
                  <i class="bi bi-camera-video"></i> ${circleDetails.is_direct_message ? 'Call' : 'WebRTC'}
               </button>
+              <button class="btn btn-sm btn-warning ms-2" data-action="start-game" data-circle-id="${circleId}" title="Start a Game (Blackjack or Dominoes)">
+                 <i class="bi bi-controller"></i> Start Game
+              </button>
               <button id="togglePostCreatorCircleBtn" class="btn btn-sm btn-primary ms-2">
                  <i class="bi bi-pencil-square"></i> New Post
               </button>
@@ -2606,6 +2609,27 @@ function appendPosts(posts, container, circleName = null) {
             const postType = post.content.post_type || 'standard';
             const postId = post.id || post._id;
             const hasNewActivity = state.newActivityPostIds.has(postId);
+            
+            // Helper function to extract game ID from content
+            const extractGameId = (content) => {
+                if (!content) return null;
+                // Look for game portal URLs with game parameter
+                const gameUrlMatch = content.match(/\/experiments\/game_portal\/\?game=([A-Z0-9]+)/i) || 
+                                     content.match(/experiments\/game_portal\/\?game=([A-Z0-9]+)/i) ||
+                                     content.match(/game_portal\/\?game=([A-Z0-9]+)/i);
+                if (gameUrlMatch) {
+                    return gameUrlMatch[1];
+                }
+                // Also check for just the game ID pattern
+                const gameIdMatch = content.match(/game[=:]?([A-Z0-9]{6})/i);
+                if (gameIdMatch) {
+                    return gameIdMatch[1];
+                }
+                return null;
+            };
+            
+            // Check if post contains a game link
+            const gameId = extractGameId(post.content.text || post.content.content || '');
 
             switch (postType) {
                 case 'yt-playlist':
@@ -2841,6 +2865,21 @@ ${tag}
 </div>
 `;
             }
+            
+            // Add "Join Game" button if game ID is detected
+            let gameJoinButton = '';
+            if (gameId) {
+                gameJoinButton = `
+<div class="mt-3">
+<button class="btn btn-warning btn-sm" 
+        data-action="join-game-from-post" 
+        data-game-id="${gameId}"
+        style="font-weight: 600;">
+<i class="bi bi-controller"></i> Join Game
+</button>
+</div>
+`;
+            }
 
             const seenByUsers = post.seen_by_user_objects || [];
             const seenCount = post.seen_by_count;
@@ -2961,6 +3000,7 @@ ${circleTagsBadges}
 ${dropdownMenu}
 </div>
 <div class="mt-3">${contentHtml}</div>
+${gameJoinButton}
 ${postFooter}
 </div>
 </div>
@@ -3077,6 +3117,99 @@ async function handleCreateCircle() {
         window.location.hash = `#/circle/${newCircle._id}`;
     } catch (error) {
         // Error is shown by apiFetch
+    } finally {
+        setButtonLoading(btn, false);
+    }
+}
+
+// -----------------------------------------------
+// Game Portal integration:
+async function handleCreateGameFromCircle() {
+    const btn = document.getElementById('createGameBtn');
+    const circleId = document.getElementById('startGameCircleId').value;
+    const gameType = document.getElementById('startGameType').value;
+    const dominoGameMode = document.getElementById('dominoGameMode').value;
+    const blackjackGameMode = document.getElementById('blackjackGameMode').value;
+    const aiCount = parseInt(document.getElementById('startGameAiCount').value) || 0;
+
+    if (!gameType) {
+        return showStatus('Please select a game type', 'warning');
+    }
+
+    if (!state.currentUser) {
+        return showStatus('You must be logged in to start a game', 'warning');
+    }
+
+    // Determine game mode based on game type
+    let gameMode = 'classic';
+    if (gameType === 'dominoes') {
+        gameMode = dominoGameMode || 'classic';
+    } else if (gameType === 'blackjack') {
+        gameMode = blackjackGameMode || 'best_of_5';
+    }
+
+    // Generate player ID from user ID (use user's _id as player identifier)
+    const playerId = state.currentUser._id || state.currentUser.id || `user_${Date.now()}`;
+
+    setButtonLoading(btn, true);
+    try {
+        // Call Game Portal API
+        const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
+        const gamePortalApiUrl = `${gamePortalBaseUrl}/backend/api/game/create`;
+        const response = await fetch(gamePortalApiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                player_id: playerId,
+                game_type: gameType,
+                game_mode: gameMode,
+                ai_count: aiCount
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || errorData.error || 'Failed to create game');
+        }
+
+        const data = await response.json();
+        
+        // Close modal
+        bootstrap.Modal.getInstance('#startGameModal').hide();
+        
+        // Reset form
+        document.getElementById('startGameType').value = '';
+        document.getElementById('dominoGameModeContainer').style.display = 'none';
+        document.getElementById('blackjackGameModeContainer').style.display = 'none';
+        
+        // Show success message
+        showStatus(`Game created! Redirecting to game...`, 'success');
+        
+        // Redirect to Game Portal with the game ID
+        const gameUrl = `${gamePortalBaseUrl}/?game=${data.game_id}`;
+        window.open(gameUrl, '_blank');
+        
+        // Optionally, also post a message to the circle about the game
+        try {
+            await apiFetch(`/circles/${circleId}/posts`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    content: {
+                        text: `🎮 Started a ${gameType.charAt(0).toUpperCase() + gameType.slice(1)} game! Join here: ${gameUrl}`,
+                        post_type: 'standard'
+                    },
+                    type: 'main'
+                })
+            });
+        } catch (postError) {
+            // If posting fails, that's okay - game was still created
+            console.warn('Failed to post game link to circle:', postError);
+        }
+    } catch (error) {
+        console.error('Error creating game:', error);
+        showStatus('Failed to create game: ' + (error.message || 'Unknown error'), 'danger');
     } finally {
         setButtonLoading(btn, false);
     }
@@ -4577,7 +4710,8 @@ document.addEventListener('DOMContentLoaded', () => {
         '#helpModal',
         '#chatParticipantSelectorModal',
         '#chatModal',
-        '#editPostModal'
+        '#editPostModal',
+        '#startGameModal'
     ].forEach(id => {
         const modalEl = document.querySelector(id);
         if (modalEl) {
@@ -4604,6 +4738,33 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('commentsModal') ?.addEventListener('shown.bs.modal', () => {
         document.getElementById('commentInput') ?.focus();
     });
+    document.getElementById('startGameModal') ?.addEventListener('shown.bs.modal', () => {
+        // Reset form when modal opens
+        document.getElementById('startGameType').value = '';
+        document.getElementById('dominoGameModeContainer').style.display = 'none';
+        document.getElementById('blackjackGameModeContainer').style.display = 'none';
+    });
+    
+    // Handle game type selection to show/hide game mode selectors
+    const startGameTypeSelect = document.getElementById('startGameType');
+    if (startGameTypeSelect) {
+        startGameTypeSelect.addEventListener('change', function() {
+            const gameType = this.value;
+            const dominoContainer = document.getElementById('dominoGameModeContainer');
+            const blackjackContainer = document.getElementById('blackjackGameModeContainer');
+            
+            if (gameType === 'dominoes') {
+                dominoContainer.style.display = 'block';
+                blackjackContainer.style.display = 'none';
+            } else if (gameType === 'blackjack') {
+                dominoContainer.style.display = 'none';
+                blackjackContainer.style.display = 'block';
+            } else {
+                dominoContainer.style.display = 'none';
+                blackjackContainer.style.display = 'none';
+            }
+        });
+    }
 
     document.getElementById('commentForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -5058,6 +5219,30 @@ Added videos will appear here. You can drag to reorder.
                         showStatus('Failed to start WebRTC session. ' + (error.message || ''), 'danger');
                     } finally {
                         setButtonLoading(target, false);
+                    }
+                    break;
+                }
+            case 'start-game':
+                {
+                    const circleId = data.circleId;
+                    // Open the game selection modal
+                    document.getElementById('startGameCircleId').value = circleId;
+                    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('startGameModal'));
+                    modal.show();
+                    break;
+                }
+            case 'create-game-from-circle':
+                {
+                    await handleCreateGameFromCircle();
+                    break;
+                }
+            case 'join-game-from-post':
+                {
+                    const gameId = data.gameId;
+                    if (gameId) {
+                        const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
+                        const gameUrl = `${gamePortalBaseUrl}/?game=${gameId}`;
+                        window.open(gameUrl, '_blank');
                     }
                     break;
                 }
