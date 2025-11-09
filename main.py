@@ -964,7 +964,7 @@ class GameCreateRequest(BaseModel):
     game_mode: str = "classic"
     ai_count: int = 0
 
-@app.post("/game-portal/create", tags=["Game Portal"], response_model=Dict[str, Any])
+@app.post("/game-portal/create", tags=["Game Portal"])
 async def create_game_proxy(
     game_data: GameCreateRequest,
     current_user: UserInDB = Depends(get_current_user)
@@ -972,15 +972,17 @@ async def create_game_proxy(
     """Proxy endpoint to create a game in the Game Portal API."""
     game_portal_api_url = "https://apps.oblivio-company.com/experiments/game_portal/backend/api/game/create"
     
+    payload = {
+        "player_id": game_data.player_id,
+        "game_type": game_data.game_type,
+        "game_mode": game_data.game_mode,
+        "ai_count": game_data.ai_count
+    }
+    
     try:
         response = requests.post(
             game_portal_api_url,
-            json={
-                "player_id": game_data.player_id,
-                "game_type": game_data.game_type,
-                "game_mode": game_data.game_mode,
-                "ai_count": game_data.ai_count
-            },
+            json=payload,
             headers={"Content-Type": "application/json"},
             timeout=10
         )
@@ -989,37 +991,37 @@ async def create_game_proxy(
         if response.status_code >= 200 and response.status_code < 300:
             try:
                 return response.json()
-            except ValueError:
+            except (ValueError, json.JSONDecodeError):
                 # If response is not JSON, return the text
                 return {"detail": response.text, "status_code": response.status_code}
         else:
             # Handle error responses
-            error_detail = "Failed to create game"
+            error_detail = f"Game Portal API returned status {response.status_code}"
             try:
                 error_data = response.json()
                 error_detail = error_data.get("detail") or error_data.get("error") or error_detail
-            except:
+            except (ValueError, json.JSONDecodeError):
                 error_detail = response.text or error_detail
             raise HTTPException(status_code=response.status_code, detail=error_detail)
             
-    except requests.exceptions.HTTPError as e:
-        error_detail = "Failed to create game"
-        try:
-            error_data = e.response.json()
-            error_detail = error_data.get("detail") or error_data.get("error") or error_detail
-        except:
-            error_detail = e.response.text if hasattr(e, 'response') and e.response else str(e)
-        raise HTTPException(status_code=e.response.status_code if hasattr(e, 'response') and e.response else 500, detail=error_detail)
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=502, detail=f"Could not connect to Game Portal API: {str(e)}")
     except HTTPException:
         raise
+    except requests.exceptions.RequestException as e:
+        error_msg = str(e)
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                error_data = e.response.json()
+                error_msg = error_data.get("detail") or error_data.get("error") or error_msg
+            except:
+                error_msg = e.response.text or error_msg
+        raise HTTPException(status_code=502, detail=f"Could not connect to Game Portal API: {error_msg}")
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
-        print(f"Game Portal proxy error: {str(e)}")
+        error_msg = str(e)
+        print(f"Game Portal proxy error: {error_msg}")
         print(f"Traceback: {error_trace}")
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {error_msg}")
 
 # ----------------------------------
 # Authentication
