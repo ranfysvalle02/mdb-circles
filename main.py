@@ -1047,6 +1047,11 @@ async def create_game_proxy(
                     error_detail = error_data.get("detail") or error_data.get("error") or error_detail
                 except (ValueError, json.JSONDecodeError):
                     error_detail = response.text or error_detail
+                
+                # Handle Ray service unavailable error with a more helpful message
+                if "Ray service is unavailable" in str(error_detail) or "Ray cluster" in str(error_detail):
+                    error_detail = "AI game features are temporarily unavailable. Please try creating a game without AI players (ai_count=0) or try again later."
+                
                 raise HTTPException(status_code=response.status_code, detail=error_detail)
         
         except HTTPException:
@@ -1115,6 +1120,11 @@ async def join_game_proxy(
                     error_detail = error_data.get("detail") or error_data.get("error") or error_detail
                 except (ValueError, json.JSONDecodeError):
                     error_detail = response.text or error_detail
+                
+                # Handle Ray service unavailable error with a more helpful message
+                if "Ray service is unavailable" in str(error_detail) or "Ray cluster" in str(error_detail):
+                    error_detail = "AI game features are temporarily unavailable. Please try creating a game without AI players (ai_count=0) or try again later."
+                
                 raise HTTPException(status_code=response.status_code, detail=error_detail)
         
         except HTTPException:
@@ -1170,6 +1180,11 @@ async def get_game_info(
                     error_detail = error_data.get("detail") or error_data.get("error") or error_detail
                 except (ValueError, json.JSONDecodeError):
                     error_detail = response.text or error_detail
+                
+                # Handle Ray service unavailable error with a more helpful message
+                if "Ray service is unavailable" in str(error_detail) or "Ray cluster" in str(error_detail):
+                    error_detail = "AI game features are temporarily unavailable. Please try creating a game without AI players (ai_count=0) or try again later."
+                
                 raise HTTPException(status_code=response.status_code, detail=error_detail)
         
         except HTTPException:
