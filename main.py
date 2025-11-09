@@ -3108,18 +3108,45 @@ async def create_game_lobby(
             for p in existing_lobby.get("participants", [])
         )
         
+        # Prepare update operations
+        update_ops = {}
+        
+        # Update game_id if provided and not already set
+        if lobby_data.game_id and not existing_lobby.get("game_id"):
+            update_ops["game_id"] = lobby_data.game_id
+        
+        # Update game_url if provided and not already set
+        if lobby_data.game_url and not existing_lobby.get("game_url"):
+            update_ops["game_url"] = lobby_data.game_url
+        
+        # Update game_mode if provided and different
+        if lobby_data.game_mode and existing_lobby.get("game_mode") != lobby_data.game_mode:
+            update_ops["game_mode"] = lobby_data.game_mode
+        
+        # Add user to existing lobby if not already a participant
         if not user_already_participant:
-            # Add user to existing lobby
             now = datetime.now(timezone.utc)
             participant_doc = {
                 "user_id": current_user.id,
                 "username": current_user.username,
                 "joined_at": now
             }
-            game_lobbies_collection.update_one(
-                {"_id": existing_lobby["_id"]},
-                {"$push": {"participants": participant_doc}}
-            )
+            update_ops["$push"] = {"participants": participant_doc}
+        
+        # Apply updates if any
+        if update_ops:
+            # Separate $push from other updates
+            push_op = update_ops.pop("$push", None)
+            if update_ops:
+                game_lobbies_collection.update_one(
+                    {"_id": existing_lobby["_id"]},
+                    {"$set": update_ops}
+                )
+            if push_op:
+                game_lobbies_collection.update_one(
+                    {"_id": existing_lobby["_id"]},
+                    {"$push": push_op}
+                )
             existing_lobby = game_lobbies_collection.find_one({"_id": existing_lobby["_id"]})
         
         return GameLobbyOut(**convert_game_lobby_doc(existing_lobby))

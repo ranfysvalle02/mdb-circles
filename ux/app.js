@@ -3424,47 +3424,75 @@ async function handleStartGameLobby(circleId, gameType) {
     }
     
     try {
+        // First, check if there's already an active lobby for this circle and game type in our backend
+        let existingLobby = null;
+        try {
+            const activeLobbies = await apiFetch(`/game-lobbies/circles/${circleId}/active-lobbies`);
+            existingLobby = activeLobbies.find(l => l.game_type === gameType);
+        } catch (error) {
+            console.warn('Failed to check existing lobbies:', error);
+        }
+        
         // Generate player_id from browser fingerprint
         const playerId = await generateFingerprint();
         
-        // Use the new Game Portal lobby endpoint to create or join a lobby
-        const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
-        const lobbyUrl = `${gamePortalApiUrl}/lobby/${circleId}/${gameType}`;
+        let gameId = null;
+        let action = 'created';
+        let playerCount = 0;
         
-        const response = await fetch(lobbyUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ player_id: playerId })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Failed to create/join lobby: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        const gameId = result.game_id;
-        const action = result.action || 'created';
-        const playerCount = result.player_count || 0;
-        
-        // Show status message
-        if (action === 'joined') {
-            showStatus(`Joined existing ${gameType} lobby!`, 'info');
-        } else {
-            showStatus(`Created ${gameType} lobby!`, 'success');
-        }
-        
-        // Store lobby info in our backend (optional - for tracking)
-        try {
-            // Check if there's already an active lobby for this circle and game type
-            const activeLobbies = await apiFetch(`/game-lobbies/circles/${circleId}/active-lobbies`);
-            const existingLobby = activeLobbies.find(l => l.game_type === gameType);
+        // If we have an existing lobby with a game_id, use it
+        if (existingLobby && existingLobby.game_id) {
+            // Join the existing lobby via Game Portal
+            gameId = existingLobby.game_id;
+            action = 'joined';
             
-            if (existingLobby) {
-                // Update existing lobby with game_id if needed
-                // Note: We'd need a PATCH endpoint to update, but for now we'll just track it
-                console.log('Lobby exists in our system:', existingLobby.id);
-            } else {
-                // Create lobby in our system for tracking
+            // Join our backend lobby if not already a participant
+            try {
+                const updatedLobby = await apiFetch(`/game-lobbies/${existingLobby.id}/join`, {
+                    method: 'POST'
+                });
+                playerCount = updatedLobby.participants ? updatedLobby.participants.length : 0;
+            } catch (joinError) {
+                console.warn('Failed to join backend lobby:', joinError);
+            }
+            
+            // Poll Game Portal to get current player count
+            try {
+                const pollResponse = await fetch(
+                    `https://apps.oblivio-company.com/experiments/game_portal/backend/game/${gameId}/poll`,
+                    { method: 'GET' }
+                );
+                if (pollResponse.ok) {
+                    const pollData = await pollResponse.json();
+                    playerCount = pollData.player_count || playerCount;
+                }
+            } catch (pollError) {
+                console.warn('Failed to poll game for player count:', pollError);
+            }
+        } else {
+            // No existing lobby - create or join via Game Portal
+            const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
+            const lobbyUrl = `${gamePortalApiUrl}/lobby/${circleId}/${gameType}`;
+            
+            const response = await fetch(lobbyUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: playerId })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to create/join lobby: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            gameId = result.game_id;
+            action = result.action || 'created';
+            playerCount = result.player_count || 0;
+            
+            // Sync lobby info to our backend
+            // Always call POST endpoint - it will return existing lobby or create new one
+            // If existing, it will update game_id if not already set
+            try {
                 await apiFetch('/game-lobbies', {
                     method: 'POST',
                     body: JSON.stringify({
@@ -3474,10 +3502,17 @@ async function handleStartGameLobby(circleId, gameType) {
                         game_url: `https://apps.oblivio-company.com/experiments/game_portal?game=${gameId}&replace_placeholder=true`
                     })
                 });
+            } catch (lobbyError) {
+                // Non-critical - just log it
+                console.warn('Failed to sync lobby with our backend:', lobbyError);
             }
-        } catch (lobbyError) {
-            // Non-critical - just log it
-            console.warn('Failed to sync lobby with our backend:', lobbyError);
+        }
+        
+        // Show status message
+        if (action === 'joined') {
+            showStatus(`Joined existing ${gameType} lobby!`, 'info');
+        } else {
+            showStatus(`Created ${gameType} lobby!`, 'success');
         }
         
         // Open Game Portal with replace_placeholder=true
@@ -3549,6 +3584,11 @@ function startGamePolling(lobbyId, gameId) {
         try {
             const updates = await pollGameUpdates(gameId);
             if (updates) {
+                // Ensure game_id is included in updates for display lookup
+                if (!updates.game_id) {
+                    updates.game_id = gameId;
+                }
+                
                 // Update lobby display if needed
                 updateLobbyDisplay(lobbyId, updates);
                 
