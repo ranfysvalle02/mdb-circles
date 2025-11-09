@@ -99,6 +99,7 @@ activity_events_collection = db.get_collection("activity_events")
 friends_collection = db.get_collection("friends")
 webrtc_sessions_collection = db.get_collection("webrtc_sessions")
 webrtc_signaling_collection = db.get_collection("webrtc_signaling")
+game_lobbies_collection = db.get_collection("game_lobbies")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -136,6 +137,9 @@ async def lifespan(app: FastAPI):
     webrtc_sessions_collection.create_index([("created_at", DESCENDING)])
     webrtc_signaling_collection.create_index([("session_id", ASCENDING), ("created_at", ASCENDING)])
     webrtc_signaling_collection.create_index([("session_id", ASCENDING), ("from_user_id", ASCENDING)])
+    game_lobbies_collection.create_index([("circle_id", ASCENDING), ("game_type", ASCENDING)], unique=True)
+    game_lobbies_collection.create_index([("circle_id", ASCENDING)])
+    game_lobbies_collection.create_index([("created_at", DESCENDING)])
 
     print("Database indexes ensured.")
     yield
@@ -3032,6 +3036,227 @@ async def get_active_webrtc_session(
         return None
     
     return WebRTCSessionOut(**convert_session_doc(session))
+
+# ==============================================================================
+# GAME LOBBIES (Similar to WebRTC Sessions - One per game type per circle)
+# ==============================================================================
+
+def convert_game_lobby_doc(lobby_doc: dict) -> dict:
+    """Convert ObjectIds in game lobby document to strings for serialization."""
+    converted = {
+        "_id": str(lobby_doc["_id"]),
+        "circle_id": str(lobby_doc["circle_id"]),
+        "game_type": lobby_doc["game_type"],
+        "game_mode": lobby_doc.get("game_mode", "classic"),
+        "game_url": lobby_doc.get("game_url", ""),
+        "game_id": lobby_doc.get("game_id", ""),
+        "participants": [
+            {
+                "user_id": str(p["user_id"]),
+                "username": p["username"],
+                "joined_at": p["joined_at"]
+            }
+            for p in lobby_doc.get("participants", [])
+        ],
+        "created_at": lobby_doc["created_at"],
+        "created_by": str(lobby_doc["created_by"])
+    }
+    return converted
+
+class GameLobbyCreate(BaseModel):
+    circle_id: str
+    game_type: str  # "dominoes" or "blackjack"
+    game_mode: str = "classic"
+    game_url: Optional[str] = None
+    game_id: Optional[str] = None
+
+class GameLobbyOut(BaseModel):
+    id: str = Field(alias="_id")
+    circle_id: str
+    game_type: str
+    game_mode: str
+    game_url: Optional[str] = None
+    game_id: Optional[str] = None
+    participants: List[dict]
+    created_at: datetime
+    created_by: str
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+@app.post("/game-lobbies", response_model=GameLobbyOut, status_code=201, tags=["Game Lobbies"])
+async def create_game_lobby(
+    lobby_data: GameLobbyCreate,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Create or get existing game lobby for a circle and game type."""
+    if not ObjectId.is_valid(lobby_data.circle_id):
+        raise HTTPException(status_code=400, detail="Invalid circle ID.")
+    
+    circle_id = ObjectId(lobby_data.circle_id)
+    circle = await get_circle_or_404(str(circle_id))
+    await check_circle_membership(current_user, circle)
+    
+    # Check if there's already an active lobby for this circle and game type
+    existing_lobby = game_lobbies_collection.find_one({
+        "circle_id": circle_id,
+        "game_type": lobby_data.game_type
+    })
+    
+    if existing_lobby:
+        # Check if user is already a participant
+        user_already_participant = any(
+            str(p.get("user_id")) == str(current_user.id) 
+            for p in existing_lobby.get("participants", [])
+        )
+        
+        if not user_already_participant:
+            # Add user to existing lobby
+            now = datetime.now(timezone.utc)
+            participant_doc = {
+                "user_id": current_user.id,
+                "username": current_user.username,
+                "joined_at": now
+            }
+            game_lobbies_collection.update_one(
+                {"_id": existing_lobby["_id"]},
+                {"$push": {"participants": participant_doc}}
+            )
+            existing_lobby = game_lobbies_collection.find_one({"_id": existing_lobby["_id"]})
+        
+        return GameLobbyOut(**convert_game_lobby_doc(existing_lobby))
+    
+    # Create new lobby
+    now = datetime.now(timezone.utc)
+    participant_doc = {
+        "user_id": current_user.id,
+        "username": current_user.username,
+        "joined_at": now
+    }
+    
+    lobby_doc = {
+        "_id": ObjectId(),
+        "circle_id": circle_id,
+        "game_type": lobby_data.game_type,
+        "game_mode": lobby_data.game_mode,
+        "game_url": lobby_data.game_url,
+        "game_id": lobby_data.game_id,
+        "participants": [participant_doc],
+        "created_at": now,
+        "created_by": current_user.id
+    }
+    
+    game_lobbies_collection.insert_one(lobby_doc)
+    
+    return GameLobbyOut(**convert_game_lobby_doc(lobby_doc))
+
+@app.get("/game-lobbies/{lobby_id}", response_model=GameLobbyOut, tags=["Game Lobbies"])
+async def get_game_lobby(
+    lobby_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Get game lobby information."""
+    if not ObjectId.is_valid(lobby_id):
+        raise HTTPException(status_code=400, detail="Invalid lobby ID.")
+    
+    lobby_obj_id = ObjectId(lobby_id)
+    lobby = game_lobbies_collection.find_one({"_id": lobby_obj_id})
+    
+    if not lobby:
+        raise HTTPException(status_code=404, detail="Lobby not found.")
+    
+    # Verify user is a member of the circle
+    circle = await get_circle_or_404(str(lobby["circle_id"]))
+    await check_circle_membership(current_user, circle)
+    
+    return GameLobbyOut(**convert_game_lobby_doc(lobby))
+
+@app.post("/game-lobbies/{lobby_id}/join", response_model=GameLobbyOut, tags=["Game Lobbies"])
+async def join_game_lobby(
+    lobby_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Join an existing game lobby."""
+    if not ObjectId.is_valid(lobby_id):
+        raise HTTPException(status_code=400, detail="Invalid lobby ID.")
+    
+    lobby_obj_id = ObjectId(lobby_id)
+    lobby = game_lobbies_collection.find_one({"_id": lobby_obj_id})
+    
+    if not lobby:
+        raise HTTPException(status_code=404, detail="Lobby not found.")
+    
+    # Verify user is a member of the circle
+    circle = await get_circle_or_404(str(lobby["circle_id"]))
+    await check_circle_membership(current_user, circle)
+    
+    # Check if user is already a participant
+    user_id_str = str(current_user.id)
+    user_already_participant = any(
+        str(p.get("user_id")) == user_id_str 
+        for p in lobby.get("participants", [])
+    )
+    
+    if user_already_participant:
+        # Return existing lobby
+        return GameLobbyOut(**convert_game_lobby_doc(lobby))
+    
+    # Add user to lobby
+    now = datetime.now(timezone.utc)
+    participant_doc = {
+        "user_id": current_user.id,
+        "username": current_user.username,
+        "joined_at": now
+    }
+    
+    game_lobbies_collection.update_one(
+        {"_id": lobby_obj_id},
+        {"$push": {"participants": participant_doc}}
+    )
+    
+    # Get updated lobby
+    updated_lobby = game_lobbies_collection.find_one({"_id": lobby_obj_id})
+    return GameLobbyOut(**convert_game_lobby_doc(updated_lobby))
+
+@app.get("/game-lobbies/circles/{circle_id}/active-lobbies", response_model=List[GameLobbyOut], tags=["Game Lobbies"])
+async def get_active_game_lobbies(
+    circle_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Get all active game lobbies for a circle (one per game type)."""
+    if not ObjectId.is_valid(circle_id):
+        raise HTTPException(status_code=400, detail="Invalid circle ID.")
+    
+    circle_obj_id = ObjectId(circle_id)
+    circle = await get_circle_or_404(circle_id)
+    await check_circle_membership(current_user, circle)
+    
+    # Find all active lobbies for this circle
+    lobbies = game_lobbies_collection.find({
+        "circle_id": circle_obj_id
+    }, sort=[("created_at", DESCENDING)])
+    
+    return [GameLobbyOut(**convert_game_lobby_doc(lobby)) for lobby in lobbies]
+
+@app.delete("/game-lobbies/{lobby_id}", status_code=204, tags=["Game Lobbies"])
+async def end_game_lobby(
+    lobby_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """End a game lobby (only the creator can end it)."""
+    if not ObjectId.is_valid(lobby_id):
+        raise HTTPException(status_code=400, detail="Invalid lobby ID.")
+    
+    lobby_obj_id = ObjectId(lobby_id)
+    lobby = game_lobbies_collection.find_one({"_id": lobby_obj_id})
+    
+    if not lobby:
+        raise HTTPException(status_code=404, detail="Lobby not found.")
+    
+    # Verify user is the creator
+    if str(lobby["created_by"]) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Only the lobby creator can end it.")
+    
+    game_lobbies_collection.delete_one({"_id": lobby_obj_id})
+    return Response(status_code=204)
 
 @app.delete("/webrtc/sessions/{session_id}", status_code=204, tags=["WebRTC"])
 async def end_webrtc_session(

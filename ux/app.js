@@ -2475,6 +2475,54 @@ async function renderCircleFeed(circleId) {
               </div>
             `;
             
+            // Fetch active game lobbies for this circle
+            let activeGameLobbies = [];
+            try {
+                activeGameLobbies = await apiFetch(`/game-lobbies/circles/${circleId}/active-lobbies`);
+            } catch (error) {
+                console.warn('Failed to fetch active game lobbies:', error);
+            }
+            
+            // Build game lobby buttons HTML
+            let gameLobbiesHtml = '';
+            if (activeGameLobbies && activeGameLobbies.length > 0) {
+                gameLobbiesHtml = activeGameLobbies.map(lobby => {
+                    const gameTypeLabel = lobby.game_type === 'dominoes' ? '🎲 Dominoes' : '🃏 Blackjack';
+                    const gameModeLabel = lobby.game_mode || 'classic';
+                    const participantCount = lobby.participants ? lobby.participants.length : 0;
+                    const myUserId = state.currentUser ? String(state.currentUser._id || state.currentUser.id) : '';
+                    const isParticipant = lobby.participants && lobby.participants.some(p => String(p.user_id) === myUserId);
+                    
+                    // Build game URL - use stored game_url or construct from game_id
+                    let gameUrl = lobby.game_url;
+                    if (!gameUrl && lobby.game_id) {
+                        gameUrl = `https://apps.oblivio-company.com/experiments/game_portal?game=${lobby.game_id}`;
+                    }
+                    
+                    // Start polling if we have a game_id
+                    if (lobby.game_id) {
+                        // Start polling after a short delay to avoid race conditions
+                        setTimeout(() => {
+                            startGamePolling(lobby.id, lobby.game_id);
+                        }, 1000);
+                    }
+                    
+                    return `
+                        <div class="btn-group ms-2" role="group">
+                            <button class="btn btn-sm btn-warning" 
+                                    data-action="join-game-lobby" 
+                                    data-lobby-id="${lobby.id}"
+                                    data-game-id="${lobby.game_id || ''}"
+                                    data-game-url="${gameUrl || ''}"
+                                    title="${gameTypeLabel} - ${gameModeLabel} (${participantCount} ${participantCount === 1 ? 'player' : 'players'})">
+                                <i class="bi bi-controller"></i> ${gameTypeLabel}${isParticipant ? ' (Joined)' : ''}
+                                <span class="badge bg-dark ms-1">${participantCount}</span>
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
             dom.circleHeader.innerHTML = `
            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3" ${colorStyle}>
            <div class="flex-grow-1">
@@ -2513,6 +2561,7 @@ async function renderCircleFeed(circleId) {
               <button class="btn btn-sm btn-info ms-2" data-action="start-webrtc" data-circle-id="${circleId}" data-session-type="${circleDetails.is_direct_message ? 'dm' : 'circle'}" title="${circleDetails.is_direct_message ? 'Start WebRTC Call' : 'Start WebRTC Session'}">
                  <i class="bi bi-camera-video"></i> ${circleDetails.is_direct_message ? 'Call' : 'WebRTC'}
               </button>
+              ${gameLobbiesHtml}
               <button class="btn btn-sm btn-warning ms-2" data-action="start-game" data-circle-id="${circleId}" title="Start a Game (Blackjack or Dominoes)">
                  <i class="bi bi-controller"></i> Start Game
               </button>
@@ -3353,22 +3402,97 @@ async function handleCreateGameFromCircle() {
 
     setButtonLoading(btn, true);
     try {
-        // Build URL for game creation: /new/gametype?game_mode=mode&ai_count=count
-        // Examples:
-        // /new/dominoes?game_mode=boricua&ai_count=2
-        // /new/blackjack?game_mode=best_of_10&ai_count=1
-        const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-        const params = new URLSearchParams();
+        // Create or get existing game lobby (one per game type per circle)
+        let lobby;
+        let gameId = null;
+        let gameUrl = null;
         
-        if (gameMode) {
-            params.append('game_mode', gameMode);
-        }
-        if (aiCount > 0) {
-            params.append('ai_count', aiCount.toString());
+        try {
+            // Check if there's already an active lobby for this circle and game type
+            const activeLobbies = await apiFetch(`/game-lobbies/circles/${circleId}/active-lobbies`);
+            const existingLobby = activeLobbies.find(l => l.game_type === gameType);
+            
+            if (existingLobby) {
+                // Join existing lobby
+                lobby = await apiFetch(`/game-lobbies/${existingLobby.id}/join`, {
+                    method: 'POST'
+                });
+                showStatus(`Joining existing ${gameType} lobby...`, 'info');
+                
+                // If lobby already has a game_id, use it
+                if (lobby.game_id) {
+                    gameId = lobby.game_id;
+                    gameUrl = lobby.game_url || `https://apps.oblivio-company.com/experiments/game_portal?game=${gameId}`;
+                }
+            } else {
+                // Create new lobby first
+                lobby = await apiFetch('/game-lobbies', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        circle_id: circleId,
+                        game_type: gameType,
+                        game_mode: gameMode
+                    })
+                });
+                showStatus(`Created ${gameType} lobby!`, 'success');
+            }
+        } catch (lobbyError) {
+            console.warn('Failed to create/join lobby:', lobbyError);
+            showStatus('Opening game...', 'info');
         }
         
-        const queryString = params.toString();
-        const gameUrl = `${gamePortalBaseUrl}/new/${gameType}${queryString ? '?' + queryString : ''}`;
+        // Create game via Game Portal API if we don't have a game_id yet
+        if (!gameId) {
+            try {
+                // Use the Game Portal API to create the game
+                const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
+                const params = new URLSearchParams();
+                
+                if (gameMode) {
+                    params.append('game_mode', gameMode);
+                }
+                if (aiCount > 0) {
+                    params.append('ai_count', aiCount.toString());
+                }
+                
+                const queryString = params.toString();
+                const createGameUrl = `${gamePortalApiUrl}/new/${gameType}${queryString ? '?' + queryString : ''}`;
+                
+                const gameResponse = await fetch(createGameUrl, { method: 'GET' });
+                
+                if (!gameResponse.ok) {
+                    throw new Error(`Failed to create game: ${gameResponse.status}`);
+                }
+                
+                const gameData = await gameResponse.json();
+                gameId = gameData.game_id;
+                gameUrl = `https://apps.oblivio-company.com/experiments/game_portal?game=${gameId}`;
+                
+                // Update lobby with game_id and game_url
+                if (lobby && lobby.id) {
+                    try {
+                        // Note: We'd need a PATCH endpoint to update the lobby, but for now we'll just store it
+                        // The lobby will be updated when we poll for game updates
+                        console.log('Game created:', gameId);
+                    } catch (updateError) {
+                        console.warn('Failed to update lobby with game_id:', updateError);
+                    }
+                }
+            } catch (gameError) {
+                console.error('Failed to create game via Game Portal API:', gameError);
+                // Fallback: still open the game creation URL
+                const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
+                const params = new URLSearchParams();
+                if (gameMode) {
+                    params.append('game_mode', gameMode);
+                }
+                if (aiCount > 0) {
+                    params.append('ai_count', aiCount.toString());
+                }
+                const queryString = params.toString();
+                gameUrl = `${gamePortalBaseUrl}/new/${gameType}${queryString ? '?' + queryString : ''}`;
+            }
+        }
         
         // Close modal
         bootstrap.Modal.getInstance('#startGameModal').hide();
@@ -3378,17 +3502,15 @@ async function handleCreateGameFromCircle() {
         document.getElementById('dominoGameModeContainer').style.display = 'none';
         document.getElementById('blackjackGameModeContainer').style.display = 'none';
         
-        // Show success message
-        showStatus(`Opening game...`, 'success');
+        // Open Game Portal URL
+        if (gameUrl) {
+            window.open(gameUrl, '_blank');
+        }
         
-        // Open Game Portal URL - it will create the game via URL parameters
-        window.open(gameUrl, '_blank');
-        
-        // Post a game post to the circle (optional - don't block on this)
-        // Note: We don't have a game_id yet since creation happens on the Game Portal side
-        // We could potentially extract it from the URL after creation, but for now we'll skip posting
-        // The game can be posted later when the user shares it or when Game Portal notifies us
-        console.log('Game creation URL:', gameUrl);
+        // Start polling for game updates if we have a game_id
+        if (gameId && lobby && lobby.id) {
+            startGamePolling(lobby.id, gameId);
+        }
         
     } catch (error) {
         console.error('Error creating game:', error);
@@ -3408,6 +3530,91 @@ async function handleCreateGameFromCircle() {
         showStatus('Failed to create game: ' + errorMessage, 'danger');
     } finally {
         setButtonLoading(btn, false);
+    }
+}
+
+// -----------------------------------------------
+// Game Polling (for Game Portal integration)
+// -----------------------------------------------
+const gamePollingIntervals = new Map(); // Map of lobby_id -> interval
+
+async function pollGameUpdates(gameId) {
+    try {
+        const response = await fetch(
+            `https://apps.oblivio-company.com/experiments/game_portal/backend/game/${gameId}/poll`,
+            { method: 'GET' }
+        );
+        
+        if (!response.ok) {
+            throw new Error(`Failed to poll game: ${response.status}`);
+        }
+        
+        const updates = await response.json();
+        return updates;
+    } catch (error) {
+        console.error('Error polling game updates:', error);
+        return null;
+    }
+}
+
+function startGamePolling(lobbyId, gameId) {
+    // Stop existing polling for this lobby if any
+    if (gamePollingIntervals.has(lobbyId)) {
+        clearInterval(gamePollingIntervals.get(lobbyId));
+    }
+    
+    // Poll every 2-3 seconds for game updates
+    const interval = setInterval(async () => {
+        try {
+            const updates = await pollGameUpdates(gameId);
+            if (updates) {
+                // Update lobby display if needed
+                updateLobbyDisplay(lobbyId, updates);
+                
+                // Stop polling if game is finished
+                if (updates.is_finished) {
+                    clearInterval(interval);
+                    gamePollingIntervals.delete(lobbyId);
+                }
+            }
+        } catch (error) {
+            console.error('Error in game polling:', error);
+        }
+    }, 2500); // Poll every 2.5 seconds
+    
+    gamePollingIntervals.set(lobbyId, interval);
+}
+
+function stopGamePolling(lobbyId) {
+    if (gamePollingIntervals.has(lobbyId)) {
+        clearInterval(gamePollingIntervals.get(lobbyId));
+        gamePollingIntervals.delete(lobbyId);
+    }
+}
+
+function updateLobbyDisplay(lobbyId, gameUpdates) {
+    // Find the lobby button in the circle header
+    const lobbyButton = document.querySelector(`[data-lobby-id="${lobbyId}"]`);
+    if (!lobbyButton) return;
+    
+    // Update button with game status
+    const status = gameUpdates.status || 'waiting';
+    const playerCount = gameUpdates.player_count || 0;
+    const maxPlayers = gameUpdates.max_players || 4;
+    
+    // Update badge with player count
+    const badge = lobbyButton.querySelector('.badge');
+    if (badge) {
+        badge.textContent = `${playerCount}/${maxPlayers}`;
+    }
+    
+    // Update title with status
+    if (gameUpdates.is_started) {
+        lobbyButton.title = `Game in progress - Round ${gameUpdates.game_state_summary?.round_number || 1}`;
+    } else if (gameUpdates.can_start) {
+        lobbyButton.title = `Ready to start (${playerCount}/${maxPlayers} players)`;
+    } else {
+        lobbyButton.title = `Waiting for players (${playerCount}/${gameUpdates.min_players || 2} needed)`;
     }
 }
 
@@ -5430,6 +5637,79 @@ Added videos will appear here. You can drag to reorder.
             case 'create-game-from-circle':
                 {
                     await handleCreateGameFromCircle();
+                    break;
+                }
+            case 'join-game-lobby':
+                {
+                    const lobbyId = data.lobbyId;
+                    const gameId = data.gameId;
+                    const gameUrl = data.gameUrl;
+                    
+                    setButtonLoading(target, true);
+                    try {
+                        // Join the lobby
+                        const lobby = await apiFetch(`/game-lobbies/${lobbyId}/join`, {
+                            method: 'POST'
+                        });
+                        
+                        showStatus(`Joined ${lobby.game_type} lobby!`, 'success');
+                        
+                        // Determine the game URL to open
+                        let urlToOpen = gameUrl;
+                        if (!urlToOpen && lobby.game_url) {
+                            urlToOpen = lobby.game_url;
+                        } else if (!urlToOpen && (gameId || lobby.game_id)) {
+                            const finalGameId = gameId || lobby.game_id;
+                            urlToOpen = `https://apps.oblivio-company.com/experiments/game_portal?game=${finalGameId}`;
+                        } else if (!urlToOpen) {
+                            // Fallback: create new game if no game_id exists
+                            const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
+                            const params = new URLSearchParams();
+                            if (lobby.game_mode) {
+                                params.append('game_mode', lobby.game_mode);
+                            }
+                            const queryString = params.toString();
+                            urlToOpen = `${gamePortalApiUrl}/new/${lobby.game_type}${queryString ? '?' + queryString : ''}`;
+                            
+                            // Try to create the game and get game_id
+                            try {
+                                const gameResponse = await fetch(urlToOpen, { method: 'GET' });
+                                if (gameResponse.ok) {
+                                    const gameData = await gameResponse.json();
+                                    urlToOpen = `https://apps.oblivio-company.com/experiments/game_portal?game=${gameData.game_id}`;
+                                    
+                                    // Start polling for the new game
+                                    if (lobby.id && gameData.game_id) {
+                                        startGamePolling(lobby.id, gameData.game_id);
+                                    }
+                                }
+                            } catch (gameError) {
+                                console.warn('Failed to create game, opening URL directly:', gameError);
+                            }
+                        }
+                        
+                        // Open the game URL
+                        if (urlToOpen) {
+                            window.open(urlToOpen, '_blank');
+                        }
+                        
+                        // Start polling if we have a game_id
+                        const finalGameId = gameId || lobby.game_id;
+                        if (finalGameId && lobby.id) {
+                            startGamePolling(lobby.id, finalGameId);
+                        }
+                        
+                        // Refresh the circle view to update lobby buttons
+                        const circleId = window.location.hash.match(/circle\/([^\/]+)/)?.[1];
+                        if (circleId) {
+                            await resetAndRenderCircleFeed(circleId);
+                        }
+                    } catch (error) {
+                        console.error('Error joining game lobby:', error);
+                        showStatus('Failed to join game lobby: ' + (error.message || ''), 'danger');
+                    } finally {
+                        setButtonLoading(target, false);
+                    }
                     break;
                 }
             case 'join-game-from-post':
