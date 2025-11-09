@@ -97,3 +97,164 @@ After adding the script:
 - It works with both HTTP and HTTPS (automatically uses WSS for HTTPS)
 - The script is non-intrusive and won't affect normal Game Portal usage when URL parameters aren't present
 
+---
+
+## MyCircles-Specific Endpoints
+
+For seamless integration with MyCircles, use these dedicated endpoints that simplify the game lobby workflow.
+
+### 8. MyCircles Quick Join Endpoint
+
+**Endpoint:** `POST /mycircles/join/{circle_id}/{game_type}`
+
+**Description:** One-liner for MyCircles integration. Gets/creates the persistent lobby for a circle and game type, joins the player automatically, and returns a redirect URL.
+
+**Request:**
+```json
+{
+  "player_id": "unique_player_id"
+}
+```
+
+**Response:**
+```json
+{
+  "game_id": "game_12345",
+  "redirect_url": "https://apps.oblivio-company.com/experiments/game_portal?game=game_12345&replace_placeholder=true",
+  "player_count": 2,
+  "action": "joined"
+}
+```
+
+**Features:**
+- One lobby per circle per game type (stable lobby IDs based on `circle_id + game_type` hash)
+- Persistent lobbies (always exist, can have 0-4 players)
+- Auto-join (player joins automatically if not already in lobby)
+- Redirect URL (ready-to-use URL for redirecting to the game portal)
+- No placeholders (clean player list, no placeholder players)
+
+**Example Usage:**
+```javascript
+// When user clicks "Play Blackjack" in a circle
+async function playGameInCircle(circleId, gameType, userId) {
+  const response = await fetch(
+    `https://apps.oblivio-company.com/experiments/game_portal/backend/mycircles/join/${circleId}/${gameType}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_id: userId })
+    }
+  );
+  
+  const result = await response.json();
+  
+  // Automatically redirect to game portal
+  window.location.href = result.redirect_url;
+}
+```
+
+### 9. MyCircles Get Lobby Status Endpoint
+
+**Endpoint:** `GET /mycircles/lobby/{circle_id}/{game_type}`
+
+**Description:** Get lobby status without joining. Use to show "X players waiting" in the UI.
+
+**Response:**
+```json
+{
+  "circle_id": "circle_12345",
+  "game_type": "blackjack",
+  "player_count": 2,
+  "can_join": true,
+  "game_id": "game_12345",
+  "status": "waiting"
+}
+```
+
+**Status Values:**
+- `"waiting"` - Lobby exists and is waiting for players
+- `"full"` - Lobby has 4 players (maximum)
+- `"in_progress"` - Game has started (game_id is set)
+
+**Example Usage:**
+```javascript
+// Show "X players waiting" in circle UI
+async function displayLobbyStatus(circleId, gameType) {
+  const lobby = await fetch(
+    `https://apps.oblivio-company.com/experiments/game_portal/backend/mycircles/lobby/${circleId}/${gameType}`
+  ).then(r => r.json());
+  
+  if (lobby.status === 'waiting') {
+    console.log(`${lobby.player_count} players waiting`);
+  } else if (lobby.status === 'full') {
+    console.log('Lobby is full');
+  } else if (lobby.status === 'in_progress') {
+    console.log('Game in progress');
+  }
+}
+```
+
+### Integration Workflow
+
+**Complete Example:**
+```javascript
+class GamePortalClient {
+  constructor(baseUrl) {
+    this.baseUrl = baseUrl || 'https://apps.oblivio-company.com/experiments/game_portal/backend';
+  }
+  
+  // Quick join - one-liner for MyCircles integration
+  async joinGame(circleId, gameType, playerId) {
+    const response = await fetch(
+      `${this.baseUrl}/mycircles/join/${circleId}/${gameType}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player_id: playerId })
+      }
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Failed to join game: ${response.status}`);
+    }
+    
+    return await response.json();
+  }
+  
+  // Get lobby status without joining
+  async getLobbyStatus(circleId, gameType) {
+    const response = await fetch(
+      `${this.baseUrl}/mycircles/lobby/${circleId}/${gameType}`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get lobby status: ${response.status}`);
+    }
+    
+    return await response.json();
+  }
+}
+
+// Usage
+const client = new GamePortalClient();
+
+// Display lobby status in UI
+const status = await client.getLobbyStatus('circle_123', 'blackjack');
+console.log(`${status.player_count} players waiting`);
+
+// Join game when user clicks "Play"
+const result = await client.joinGame('circle_123', 'blackjack', 'user_456');
+window.location.href = result.redirect_url;
+```
+
+### Key Features
+
+- **One lobby per circle per game type**: Stable lobby IDs based on `circle_id + game_type` hash
+- **Persistent lobbies**: Always exist, can have 0-4 players
+- **Auto-join**: Player joins automatically if not already in lobby
+- **Redirect URL**: Ready-to-use URL for redirecting to the game portal
+- **No placeholders**: Clean player list, no placeholder players
+- **Auto-fill on start**: Missing players are filled with AI when the game starts
+
+The system ensures one lobby per circle per game type. When a user clicks "Play Blackjack" in a circle, they join the same lobby as other players in that circle.
+

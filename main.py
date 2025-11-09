@@ -1287,6 +1287,22 @@ class LobbyResponse(BaseModel):
     player_count: int
     replaced_ai: Optional[str] = None  # AI player ID that was replaced, if any
 
+class MyCirclesJoinResponse(BaseModel):
+    """Response for MyCircles quick join endpoint."""
+    game_id: Optional[str] = None
+    redirect_url: str
+    player_count: int
+    action: str  # "created" or "joined"
+
+class MyCirclesLobbyStatusResponse(BaseModel):
+    """Response for MyCircles lobby status endpoint."""
+    circle_id: str
+    game_type: str
+    player_count: int
+    can_join: bool
+    game_id: Optional[str] = None
+    status: str  # "waiting", "full", "in_progress"
+
 @app.get("/lobby/{circle_id}/{game_type}", tags=["Game Portal"])
 async def get_lobby(
     circle_id: str = Path(..., description="Circle ID"),
@@ -1397,6 +1413,134 @@ async def join_lobby(
         action=action,
         player_count=len(participants),
         replaced_ai=None
+    )
+
+@app.post("/mycircles/join/{circle_id}/{game_type}", response_model=MyCirclesJoinResponse, tags=["MyCircles"])
+async def mycircles_join_lobby(
+    circle_id: str = Path(..., description="Circle ID"),
+    game_type: str = Path(..., description="Game type (dominoes or blackjack)"),
+    join_data: LobbyJoinRequest = Body(...)
+):
+    """
+    MyCircles-specific endpoint for seamless game lobby integration.
+    
+    One-liner for MyCircles integration:
+    - Gets/creates the persistent lobby for circle_id + game_type
+    - Joins the player automatically
+    - Returns game_id and redirect_url
+    - Ensures one lobby per circle per game type
+    """
+    if game_type not in ["dominoes", "blackjack"]:
+        raise HTTPException(status_code=400, detail="Invalid game type. Must be 'dominoes' or 'blackjack'.")
+    
+    if not join_data.player_id:
+        raise HTTPException(status_code=400, detail="player_id is required.")
+    
+    # Verify circle exists
+    circle = await get_circle_or_404(circle_id)
+    
+    # Get or create lobby
+    lobby = get_or_create_lobby(circle_id, game_type)
+    
+    # Filter placeholders before processing
+    participants = filter_placeholders(lobby.get("participants", []))
+    
+    # Check if player is already in lobby
+    player_already_joined = any(
+        str(p.get("player_id")) == str(join_data.player_id) 
+        for p in participants
+    )
+    
+    action = "joined" if player_already_joined else "created"
+    
+    # Add player if not already joined
+    if not player_already_joined:
+        # Check if lobby is full (max 4 players)
+        if len(participants) >= 4:
+            raise HTTPException(status_code=400, detail="Lobby is full (maximum 4 players).")
+        
+        now = datetime.now(timezone.utc)
+        participant_doc = {
+            "player_id": join_data.player_id,
+            "joined_at": now
+        }
+        
+        # Set created_by if this is the first player
+        update_ops = {
+            "$push": {"participants": participant_doc}
+        }
+        
+        if not lobby.get("created_by"):
+            update_ops["$set"] = {"created_by": join_data.player_id}
+        
+        game_lobbies_collection.update_one(
+            {"_id": lobby["_id"]},
+            update_ops
+        )
+        
+        # Refresh lobby
+        lobby = game_lobbies_collection.find_one({"_id": lobby["_id"]})
+        participants = filter_placeholders(lobby.get("participants", []))
+        action = "joined"
+    
+    # Build redirect URL
+    game_id = lobby.get("game_id")
+    if game_id:
+        redirect_url = f"https://apps.oblivio-company.com/experiments/game_portal?game={game_id}&replace_placeholder=true"
+    else:
+        # If no game_id yet, still provide a URL that will work when game is created
+        redirect_url = f"https://apps.oblivio-company.com/experiments/game_portal?circle={circle_id}&game_type={game_type}"
+    
+    return MyCirclesJoinResponse(
+        game_id=game_id,
+        redirect_url=redirect_url,
+        player_count=len(participants),
+        action=action
+    )
+
+@app.get("/mycircles/lobby/{circle_id}/{game_type}", response_model=MyCirclesLobbyStatusResponse, tags=["MyCircles"])
+async def mycircles_get_lobby_status(
+    circle_id: str = Path(..., description="Circle ID"),
+    game_type: str = Path(..., description="Game type (dominoes or blackjack)")
+):
+    """
+    MyCircles-specific endpoint to get lobby status without joining.
+    
+    Use to show "X players waiting" in the UI.
+    Returns player count, status, and can_join flag.
+    """
+    if game_type not in ["dominoes", "blackjack"]:
+        raise HTTPException(status_code=400, detail="Invalid game type. Must be 'dominoes' or 'blackjack'.")
+    
+    # Verify circle exists
+    circle = await get_circle_or_404(circle_id)
+    
+    # Get or create lobby (this ensures lobby exists)
+    lobby = get_or_create_lobby(circle_id, game_type)
+    
+    # Filter placeholders from participants
+    participants = filter_placeholders(lobby.get("participants", []))
+    player_count = len(participants)
+    
+    # Determine status and can_join
+    game_id = lobby.get("game_id")
+    if game_id:
+        status_str = "in_progress"
+        can_join = player_count < 4
+    elif player_count >= 4:
+        status_str = "full"
+        can_join = False
+    else:
+        status_str = "waiting"
+        can_join = True
+    
+    return MyCirclesLobbyStatusResponse(
+        circle_id=str(circle_id),
+        game_type=game_type,
+        player_count=player_count,
+        can_join=can_join,
+        game_id=game_id,
+        status=status_str
     )
 
 # ----------------------------------

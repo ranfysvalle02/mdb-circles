@@ -2563,12 +2563,6 @@ async function renderCircleFeed(circleId) {
                  <i class="bi bi-camera-video"></i> ${circleDetails.is_direct_message ? 'Call' : 'WebRTC'}
               </button>
               ${gameLobbiesHtml}
-              <button class="btn btn-sm btn-warning ms-2" data-action="start-game-lobby" data-circle-id="${circleId}" data-game-type="dominoes" title="Start Dominoes Lobby">
-                 <i class="bi bi-controller"></i> Start Dominoes Lobby
-              </button>
-              <button class="btn btn-sm btn-warning ms-2" data-action="start-game-lobby" data-circle-id="${circleId}" data-game-type="blackjack" title="Start Blackjack Lobby">
-                 <i class="bi bi-controller"></i> Start Blackjack Lobby
-              </button>
               <button id="togglePostCreatorCircleBtn" class="btn btn-sm btn-primary ms-2">
                  <i class="bi bi-pencil-square"></i> New Post
               </button>
@@ -5655,13 +5649,6 @@ Added videos will appear here. You can drag to reorder.
                     } finally {
                         setButtonLoading(target, false);
                     }
-                    break;
-                }
-            case 'start-game-lobby':
-                {
-                    const circleId = data.circleId;
-                    const gameType = data.gameType;
-                    await handleStartGameLobby(circleId, gameType);
                     break;
                 }
             case 'join-game-lobby':
