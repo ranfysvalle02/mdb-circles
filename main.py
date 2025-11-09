@@ -1012,7 +1012,13 @@ async def create_game_proxy(
         raise HTTPException(status_code=e.response.status_code if hasattr(e, 'response') and e.response else 500, detail=error_detail)
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=502, detail=f"Could not connect to Game Portal API: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Game Portal proxy error: {str(e)}")
+        print(f"Traceback: {error_trace}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 # ----------------------------------
