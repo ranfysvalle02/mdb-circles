@@ -2,20 +2,20 @@
  * Simple Game Portal Auto-Join Script
  * 
  * Add this to your Game Portal's index.html template or main JavaScript file.
- * It automatically detects game and player_id URL parameters and joins the game.
+ * It automatically detects game URL parameter and joins the game.
+ * player_id is auto-detected by the Game Portal backend from session/auth.
  */
 
 // Wait for page to load
 window.addEventListener('DOMContentLoaded', function() {
     const urlParams = new URLSearchParams(window.location.search);
     const gameId = urlParams.get('game');
-    const playerId = urlParams.get('player_id');
 
-    if (!gameId || !playerId) {
+    if (!gameId) {
         return; // No auto-join needed
     }
 
-    console.log(`Auto-joining game ${gameId} as player ${playerId}`);
+    console.log(`Auto-joining game ${gameId} (player_id will be auto-detected by backend)`);
 
     // Hide generic interface elements
     const createForm = document.querySelector('#createGameForm, .create-game-form');
@@ -27,23 +27,46 @@ window.addEventListener('DOMContentLoaded', function() {
     // Show loading state
     showLoading(`Joining game ${gameId}...`);
 
-    // Auto-join the game
-    joinGame(gameId, playerId);
+    // Auto-join the game (player_id will be auto-detected by backend from session/auth)
+    joinGame(gameId);
 });
 
-async function joinGame(gameId, playerId) {
+async function joinGame(gameId) {
     try {
         const baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, '');
         const joinUrl = `${baseUrl}/backend/api/game/${gameId}/join`;
 
+        // Get player_id from Game Portal's session/auth (if available)
+        // The backend should auto-detect it, but we can try to get it from common places
+        let playerId = null;
+        
+        // Try to get from localStorage/sessionStorage (if Game Portal stores it there)
+        if (typeof localStorage !== 'undefined') {
+            playerId = localStorage.getItem('player_id') || localStorage.getItem('userId') || localStorage.getItem('user_id');
+        }
+        if (!playerId && typeof sessionStorage !== 'undefined') {
+            playerId = sessionStorage.getItem('player_id') || sessionStorage.getItem('userId') || sessionStorage.getItem('user_id');
+        }
+        
+        // If still no player_id, the backend should extract it from auth token/session
+        const requestBody = {
+            replace_ai: null,
+            as_spectator: false
+        };
+        
+        // Only include player_id if we found it, otherwise let backend auto-detect
+        if (playerId) {
+            requestBody.player_id = playerId;
+            console.log(`Using player_id from storage: ${playerId}`);
+        } else {
+            console.log('No player_id in storage - backend will auto-detect from session/auth');
+        }
+
         const response = await fetch(joinUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                player_id: playerId,
-                replace_ai: null,
-                as_spectator: false
-            })
+            credentials: 'include', // Include cookies for session/auth
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
@@ -57,11 +80,18 @@ async function joinGame(gameId, playerId) {
             throw new Error(result.error);
         }
 
+        // Get player_id from response if backend provided it
+        const actualPlayerId = result.player_id || playerId;
+        
+        if (!actualPlayerId) {
+            throw new Error('Could not determine player_id. Please ensure you are authenticated.');
+        }
+
         console.log('Successfully joined game:', result);
         hideLoading();
 
-        // Connect via WebSocket
-        connectWebSocket(gameId, playerId);
+        // Connect via WebSocket (player_id should be available now)
+        connectWebSocket(gameId, actualPlayerId);
 
     } catch (error) {
         console.error('Failed to join game:', error);

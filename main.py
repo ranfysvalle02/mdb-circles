@@ -1001,12 +1001,21 @@ async def create_game_proxy(
         f"{game_portal_base}/game/create",  # Alternative path
     ]
     
+    # Ensure game_type is always included
+    if not game_data.game_type:
+        raise HTTPException(status_code=400, detail="game_type is required")
+    
     payload = {
         "player_id": game_data.player_id,
         "game_type": game_data.game_type,
         "game_mode": game_data.game_mode,
         "ai_count": game_data.ai_count
     }
+    
+    # Log the payload for debugging
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Game Portal create request payload: {payload}")
     
     last_error = None
     for game_portal_api_url in api_paths:

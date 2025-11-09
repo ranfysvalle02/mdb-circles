@@ -3348,6 +3348,11 @@ async function handleCreateGameFromCircle() {
         gameMode = blackjackGameMode || 'best_of_5';
     }
 
+    // Validate game_type is set
+    if (!gameType || gameType.trim() === '') {
+        return showStatus('Please select a game type', 'warning');
+    }
+
     // Generate player ID from user ID (use user's _id as player identifier)
     const playerId = state.currentUser._id || state.currentUser.id || `user_${Date.now()}`;
     const username = state.currentUser.username || 'Unknown';
@@ -3355,15 +3360,23 @@ async function handleCreateGameFromCircle() {
     setButtonLoading(btn, true);
     try {
         // Step 1: Create the game lobby via API
-        console.log('Creating game lobby...', { player_id: playerId, game_type: gameType, game_mode: gameMode, ai_count: aiCount });
+        const requestPayload = {
+            player_id: playerId,
+            game_type: gameType,  // Ensure game_type is always included
+            game_mode: gameMode,
+            ai_count: aiCount
+        };
+        
+        console.log('Creating game lobby...', requestPayload);
+        
+        // Validate payload before sending
+        if (!requestPayload.game_type) {
+            throw new Error('game_type is required but was not provided');
+        }
+        
         const createData = await apiFetch('/game-portal/create', {
             method: 'POST',
-            body: JSON.stringify({
-                player_id: playerId,
-                game_type: gameType,
-                game_mode: gameMode,
-                ai_count: aiCount
-            })
+            body: JSON.stringify(requestPayload)
         });
         
         if (!createData || !createData.game_id) {
@@ -3421,9 +3434,9 @@ async function handleCreateGameFromCircle() {
         // Show success message
         showStatus(`Game lobby created! Opening game...`, 'success');
         
-        // Step 4: Open Game Portal with game ID and player ID
+        // Step 4: Open Game Portal with game ID (player_id is auto-detected by Game Portal)
         const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-        const gameUrl = `${gamePortalBaseUrl}/?game=${createData.game_id}&player_id=${playerId}`;
+        const gameUrl = `${gamePortalBaseUrl}/?game=${createData.game_id}`;
         
         console.log('Opening Game Portal:', gameUrl);
         
@@ -5513,10 +5526,10 @@ Added videos will appear here. You can drag to reorder.
                                     })
                                 });
                                 
-                                // Then open the game URL with player_id parameter
+                                // Then open the game URL (player_id is auto-detected by Game Portal)
                                 const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
-                                const urlWithPlayer = `${gamePortalBaseUrl}/?game=${gameId}&player_id=${playerId}`;
-                                window.open(urlWithPlayer, '_blank');
+                                const gameUrl = `${gamePortalBaseUrl}/?game=${gameId}`;
+                                window.open(gameUrl, '_blank');
                             } catch (error) {
                                 console.error('Failed to join game:', error);
                                 showStatus('Failed to join game: ' + (error.message || 'Unknown error'), 'danger');

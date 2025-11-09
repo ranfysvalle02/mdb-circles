@@ -1,7 +1,7 @@
 # Game Portal Changes Required
 
 ## Overview
-The Game Portal needs to detect URL parameters (`game` and `player_id`) and automatically join the game when users click "Start Game" or "Join Game" from myCircles.
+The Game Portal needs to detect the `game` URL parameter and automatically join the game when users click "Start Game" or "Join Game" from myCircles. The `player_id` is **auto-detected** by the Game Portal backend from the session/authentication, so it should NOT be passed in the URL.
 
 ## Required Changes
 
@@ -30,13 +30,12 @@ Add this directly to your `templates/index.html`:
 window.addEventListener('DOMContentLoaded', function() {
     const urlParams = new URLSearchParams(window.location.search);
     const gameId = urlParams.get('game');
-    const playerId = urlParams.get('player_id');
 
-    if (!gameId || !playerId) {
+    if (!gameId) {
         return; // No auto-join needed
     }
 
-    console.log(`Auto-joining game ${gameId} as player ${playerId}`);
+    console.log(`Auto-joining game ${gameId} (player_id will be auto-detected by backend)`);
 
     // Hide generic interface elements
     const createForm = document.querySelector('#createGameForm, .create-game-form');
@@ -48,23 +47,37 @@ window.addEventListener('DOMContentLoaded', function() {
     // Show loading state
     showLoading(`Joining game ${gameId}...`);
 
-    // Auto-join the game
-    joinGame(gameId, playerId);
+    // Auto-join the game (player_id will be auto-detected by backend from session/auth)
+    joinGame(gameId);
 });
 
-async function joinGame(gameId, playerId) {
+async function joinGame(gameId) {
     try {
         const baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, '');
         const joinUrl = `${baseUrl}/backend/api/game/${gameId}/join`;
 
+        // Get player_id from Game Portal's session/auth (if available)
+        // The backend should auto-detect it, but we can try to get it from common places
+        let playerId = null;
+        if (typeof localStorage !== 'undefined') {
+            playerId = localStorage.getItem('player_id') || localStorage.getItem('userId');
+        }
+        
+        const requestBody = {
+            replace_ai: null,
+            as_spectator: false
+        };
+        
+        // Only include player_id if we found it, otherwise let backend auto-detect
+        if (playerId) {
+            requestBody.player_id = playerId;
+        }
+
         const response = await fetch(joinUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                player_id: playerId,
-                replace_ai: null,
-                as_spectator: false
-            })
+            credentials: 'include', // Include cookies for session/auth
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
@@ -81,8 +94,15 @@ async function joinGame(gameId, playerId) {
         console.log('Successfully joined game:', result);
         hideLoading();
 
+        // Get player_id from response if backend provided it
+        const actualPlayerId = result.player_id || playerId;
+        
+        if (!actualPlayerId) {
+            throw new Error('Could not determine player_id. Please ensure you are authenticated.');
+        }
+
         // Connect via WebSocket
-        connectWebSocket(gameId, playerId);
+        connectWebSocket(gameId, actualPlayerId);
 
     } catch (error) {
         console.error('Failed to join game:', error);
