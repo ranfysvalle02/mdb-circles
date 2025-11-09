@@ -2513,6 +2513,8 @@ async function renderCircleFeed(circleId) {
                             <button class="btn btn-sm btn-warning" 
                                     data-action="join-game-lobby" 
                                     data-lobby-id="${lobby.id}"
+                                    data-circle-id="${circleId}"
+                                    data-game-type="${lobby.game_type}"
                                     data-game-id="${lobby.game_id || ''}"
                                     data-game-url="${gameUrl || ''}"
                                     title="${gameTypeLabel} - ${gameModeLabel} (${participantCount} ${participantCount === 1 ? 'player' : 'players'})">
@@ -5653,41 +5655,43 @@ Added videos will appear here. You can drag to reorder.
                 }
             case 'join-game-lobby':
                 {
-                    const lobbyId = data.lobbyId;
+                    // Get circle_id and game_type directly from data attributes (more reliable)
+                    const circleId = data.circleId;
+                    const gameType = data.gameType;
                     const gameId = data.gameId;
-                    const gameUrl = data.gameUrl;
+                    
+                    if (!circleId || !gameType) {
+                        showStatus('Missing circle ID or game type', 'danger');
+                        break;
+                    }
                     
                     setButtonLoading(target, true);
                     try {
                         // Generate player_id from browser fingerprint
                         const playerId = await generateFingerprint();
                         
-                        // Get lobby info from our backend
-                        const lobby = await apiFetch(`/game-lobbies/${lobbyId}`);
-                        const circleId = lobby.circle_id;
-                        const gameType = lobby.game_type;
-                        
-                        // Use the Game Portal lobby endpoint to join
+                        // Use MyCircles endpoint to join
                         const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
-                        const lobbyUrl = `${gamePortalApiUrl}/lobby/${circleId}/${gameType}`;
+                        const joinUrl = `${gamePortalApiUrl}/mycircles/join/${circleId}/${gameType}`;
                         
-                        const response = await fetch(lobbyUrl, {
+                        const response = await fetch(joinUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ player_id: playerId })
                         });
                         
                         if (!response.ok) {
-                            throw new Error(`Failed to join lobby: ${response.status}`);
+                            const errorText = await response.text();
+                            throw new Error(`Failed to join lobby: ${response.status} - ${errorText}`);
                         }
                         
                         const result = await response.json();
-                        const finalGameId = result.game_id || gameId || lobby.game_id;
+                        const finalGameId = result.game_id || gameId;
                         
                         showStatus(`Joined ${gameType} lobby!`, 'success');
                         
-                        // Open Game Portal with replace_placeholder=true
-                        const urlToOpen = `https://apps.oblivio-company.com/experiments/game_portal?game=${finalGameId}&replace_placeholder=true`;
+                        // Redirect using the redirect_url from the response
+                        const urlToOpen = result.redirect_url || `https://apps.oblivio-company.com/experiments/game_portal?game=${finalGameId}&replace_placeholder=true`;
                         window.open(urlToOpen, '_blank');
                         
                         // Start polling if we have a game_id
@@ -5696,9 +5700,7 @@ Added videos will appear here. You can drag to reorder.
                         }
                         
                         // Refresh the circle view to update lobby buttons
-                        if (circleId) {
-                            await resetAndRenderCircleFeed(circleId);
-                        }
+                        await resetAndRenderCircleFeed(circleId);
                     } catch (error) {
                         console.error('Error joining game lobby:', error);
                         showStatus('Failed to join game lobby: ' + (error.message || ''), 'danger');

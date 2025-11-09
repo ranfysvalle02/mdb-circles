@@ -1276,7 +1276,14 @@ def filter_placeholders(players: List[dict]) -> List[dict]:
     """Filter out placeholder players from a players list."""
     if not players:
         return []
-    return [p for p in players if not p.get("is_placeholder", False) and not p.get("player_id", "").startswith("player_")]
+    return [
+        p for p in players 
+        if not p.get("is_placeholder", False) 
+        and not p.get("player_id", "").startswith("player_")
+        and (p.get("user_id") or p.get("player_id"))  # Must have either user_id or player_id
+        and str(p.get("user_id", "")).strip() != ""  # user_id must not be empty string
+        and str(p.get("player_id", "")).strip() != ""  # player_id must not be empty string
+    ]
 
 class LobbyJoinRequest(BaseModel):
     player_id: str
