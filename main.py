@@ -984,16 +984,32 @@ async def create_game_proxy(
             headers={"Content-Type": "application/json"},
             timeout=10
         )
-        response.raise_for_status()
-        return response.json()
+        
+        # Check if response is successful
+        if response.status_code >= 200 and response.status_code < 300:
+            try:
+                return response.json()
+            except ValueError:
+                # If response is not JSON, return the text
+                return {"detail": response.text, "status_code": response.status_code}
+        else:
+            # Handle error responses
+            error_detail = "Failed to create game"
+            try:
+                error_data = response.json()
+                error_detail = error_data.get("detail") or error_data.get("error") or error_detail
+            except:
+                error_detail = response.text or error_detail
+            raise HTTPException(status_code=response.status_code, detail=error_detail)
+            
     except requests.exceptions.HTTPError as e:
         error_detail = "Failed to create game"
         try:
             error_data = e.response.json()
             error_detail = error_data.get("detail") or error_data.get("error") or error_detail
         except:
-            error_detail = e.response.text or error_detail
-        raise HTTPException(status_code=e.response.status_code, detail=error_detail)
+            error_detail = e.response.text if hasattr(e, 'response') and e.response else str(e)
+        raise HTTPException(status_code=e.response.status_code if hasattr(e, 'response') and e.response else 500, detail=error_detail)
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=502, detail=f"Could not connect to Game Portal API: {str(e)}")
     except Exception as e:
