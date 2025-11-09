@@ -964,7 +964,7 @@ class GameCreateRequest(BaseModel):
     game_mode: str = "classic"
     ai_count: int = 0
 
-@app.post("/game-portal/create", tags=["Game Portal"])
+@app.post("/game-portal/create", tags=["Game Portal"], response_model=Dict[str, Any])
 async def create_game_proxy(
     game_data: GameCreateRequest,
     current_user: UserInDB = Depends(get_current_user)
