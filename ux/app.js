@@ -3364,6 +3364,22 @@ async function handleCreateGameFromCircle() {
             })
         });
         
+        // The creator is automatically added to the game, but let's ensure they're joined
+        // (this also helps if the Game Portal frontend needs the join call)
+        try {
+            await apiFetch('/game-portal/join', {
+                method: 'POST',
+                body: JSON.stringify({
+                    game_id: data.game_id,
+                    player_id: playerId,
+                    username: username
+                })
+            });
+        } catch (joinError) {
+            // If join fails (e.g., already in game), that's okay - creator is already in
+            console.warn('Join call after create failed (this is usually fine):', joinError);
+        }
+        
         // Close modal
         bootstrap.Modal.getInstance('#startGameModal').hide();
         
@@ -3376,8 +3392,13 @@ async function handleCreateGameFromCircle() {
         showStatus(`Game created! Redirecting to game...`, 'success');
         
         // Redirect to Game Portal with the game ID and player ID
+        // Note: The Game Portal frontend needs to detect these URL parameters and auto-join
         const gamePortalBaseUrl = 'https://apps.oblivio-company.com/experiments/game_portal';
         const gameUrl = `${gamePortalBaseUrl}/?game=${data.game_id}&player_id=${playerId}`;
+        
+        // Small delay to ensure join call completes before opening URL
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         window.open(gameUrl, '_blank');
         
         // Post a game post to the circle
