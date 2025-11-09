@@ -2082,7 +2082,8 @@ async def create_post_in_circle(circle_id: str, post_data: PostCreate, current_u
 async def get_post(post_id: str, current_user: UserInDB = Depends(get_current_user)):
     """Get a single post by ID."""
     post = await get_post_and_check_membership(post_id, current_user)
-    return PostOut(**post)
+    circle = await get_circle_or_404(str(post["circle_id"]))
+    return PostOut(**post, circle_name=circle["name"])
 
 @app.post("/posts/{post_id}/seen", status_code=204, tags=["Posts"])
 async def mark_post_as_seen(post_id: str, current_user: UserInDB = Depends(get_current_user)):
