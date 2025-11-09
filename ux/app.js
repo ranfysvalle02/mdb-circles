@@ -3474,7 +3474,29 @@ async function handleCreateGameFromCircle() {
         }
     } catch (error) {
         console.error('Error creating game:', error);
-        showStatus('Failed to create game: ' + (error.message || 'Unknown error'), 'danger');
+        const errorMessage = error.message || 'Unknown error';
+        
+        // Check if error is about Ray service being unavailable and AI players > 0
+        if ((errorMessage.includes('Ray service') || errorMessage.includes('AI game features are temporarily unavailable')) && aiCount > 0) {
+            // Offer to retry with 0 AI players
+            const retryWithNoAI = confirm(
+                'AI game features are temporarily unavailable.\n\n' +
+                'Would you like to create the game without AI players? ' +
+                'You can wait for real players to join instead.\n\n' +
+                'Click OK to retry with 0 AI players, or Cancel to keep your current settings.'
+            );
+            
+            if (retryWithNoAI) {
+                // Set AI count to 0 and retry
+                document.getElementById('startGameAiCount').value = '0';
+                // Retry the function call
+                return handleCreateGameFromCircle();
+            } else {
+                showStatus('Failed to create game: ' + errorMessage, 'danger');
+            }
+        } else {
+            showStatus('Failed to create game: ' + errorMessage, 'danger');
+        }
     } finally {
         setButtonLoading(btn, false);
     }
