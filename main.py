@@ -4,6 +4,7 @@ import secrets
 import json
 import time
 import base64
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Optional, Union, Callable, Literal, Dict
 from contextlib import asynccontextmanager
@@ -1212,6 +1213,191 @@ async def get_game_info(
     
     # If all paths failed, raise error
     raise HTTPException(status_code=404, detail=f"Game Portal info API not found. Tried: {', '.join(api_paths)}. Last error: {last_error}")
+
+# ----------------------------------
+# Persistent Lobby System (1 lobby per game type per circle)
+# ----------------------------------
+
+def generate_lobby_id(circle_id: str, game_type: str) -> str:
+    """Generate a stable lobby ID based on circle_id and game_type."""
+    combined = f"{circle_id}:{game_type}"
+    return hashlib.sha256(combined.encode()).hexdigest()[:24]
+
+def get_or_create_lobby(circle_id: str, game_type: str) -> dict:
+    """
+    Get or create a persistent lobby for a circle and game type.
+    Always returns a lobby (can have 0-4 players, no placeholders).
+    """
+    if not ObjectId.is_valid(circle_id):
+        raise HTTPException(status_code=400, detail="Invalid circle ID.")
+    
+    circle_obj_id = ObjectId(circle_id)
+    
+    # Check if lobby exists
+    existing_lobby = game_lobbies_collection.find_one({
+        "circle_id": circle_obj_id,
+        "game_type": game_type
+    })
+    
+    if existing_lobby:
+        return existing_lobby
+    
+    # Create new lobby with stable ID
+    now = datetime.now(timezone.utc)
+    lobby_id = generate_lobby_id(circle_id, game_type)
+    
+    lobby_doc = {
+        "_id": ObjectId(lobby_id),
+        "circle_id": circle_obj_id,
+        "game_type": game_type,
+        "game_mode": "classic",
+        "game_url": None,
+        "game_id": None,
+        "participants": [],  # Can have 0-4 players, no placeholders
+        "created_at": now,
+        "created_by": None  # No creator until first player joins
+    }
+    
+    try:
+        game_lobbies_collection.insert_one(lobby_doc)
+    except Exception:
+        # If insert fails (e.g., duplicate key), fetch existing lobby
+        existing_lobby = game_lobbies_collection.find_one({
+            "circle_id": circle_obj_id,
+            "game_type": game_type
+        })
+        if existing_lobby:
+            return existing_lobby
+        raise
+    
+    return lobby_doc
+
+def filter_placeholders(players: List[dict]) -> List[dict]:
+    """Filter out placeholder players from a players list."""
+    if not players:
+        return []
+    return [p for p in players if not p.get("is_placeholder", False) and not p.get("player_id", "").startswith("player_")]
+
+class LobbyJoinRequest(BaseModel):
+    player_id: str
+
+class LobbyResponse(BaseModel):
+    game_id: Optional[str] = None
+    action: str  # "created" or "joined"
+    player_count: int
+    replaced_ai: Optional[str] = None  # AI player ID that was replaced, if any
+
+@app.get("/lobby/{circle_id}/{game_type}", tags=["Game Portal"])
+async def get_lobby(
+    circle_id: str = Path(..., description="Circle ID"),
+    game_type: str = Path(..., description="Game type (dominoes or blackjack)"),
+    current_user: Optional[UserInDB] = Depends(get_optional_current_user)
+):
+    """
+    Get or create a persistent lobby for a circle and game type.
+    Always returns a lobby (can have 0-4 players, no placeholders).
+    """
+    if game_type not in ["dominoes", "blackjack"]:
+        raise HTTPException(status_code=400, detail="Invalid game type. Must be 'dominoes' or 'blackjack'.")
+    
+    # Verify circle exists
+    circle = await get_circle_or_404(circle_id)
+    
+    # Check membership if user is authenticated
+    if current_user:
+        await check_circle_membership(current_user, circle)
+    
+    # Get or create lobby
+    lobby = get_or_create_lobby(circle_id, game_type)
+    
+    # Filter placeholders from participants
+    filtered_participants = filter_placeholders(lobby.get("participants", []))
+    
+    return {
+        "game_id": lobby.get("game_id"),
+        "circle_id": str(lobby["circle_id"]),
+        "game_type": lobby["game_type"],
+        "game_mode": lobby.get("game_mode", "classic"),
+        "game_url": lobby.get("game_url"),
+        "participants": filtered_participants,
+        "player_count": len(filtered_participants),
+        "created_at": lobby["created_at"].isoformat() if lobby.get("created_at") else None
+    }
+
+@app.post("/lobby/{circle_id}/{game_type}", tags=["Game Portal"])
+async def join_lobby(
+    circle_id: str = Path(..., description="Circle ID"),
+    game_type: str = Path(..., description="Game type (dominoes or blackjack)"),
+    join_data: LobbyJoinRequest = Body(...),
+    current_user: Optional[UserInDB] = Depends(get_optional_current_user)
+):
+    """
+    Join a persistent lobby for a circle and game type.
+    Creates lobby if it doesn't exist. Returns lobby state with action (created/joined).
+    """
+    if game_type not in ["dominoes", "blackjack"]:
+        raise HTTPException(status_code=400, detail="Invalid game type. Must be 'dominoes' or 'blackjack'.")
+    
+    if not join_data.player_id:
+        raise HTTPException(status_code=400, detail="player_id is required.")
+    
+    # Verify circle exists
+    circle = await get_circle_or_404(circle_id)
+    
+    # Check membership if user is authenticated
+    if current_user:
+        await check_circle_membership(current_user, circle)
+    
+    # Get or create lobby
+    lobby = get_or_create_lobby(circle_id, game_type)
+    
+    # Filter placeholders before processing
+    participants = filter_placeholders(lobby.get("participants", []))
+    
+    # Check if player is already in lobby
+    player_already_joined = any(
+        str(p.get("player_id")) == str(join_data.player_id) 
+        for p in participants
+    )
+    
+    action = "joined" if player_already_joined else "created"
+    
+    # Add player if not already joined
+    if not player_already_joined:
+        # Check if lobby is full (max 4 players)
+        if len(participants) >= 4:
+            raise HTTPException(status_code=400, detail="Lobby is full (maximum 4 players).")
+        
+        now = datetime.now(timezone.utc)
+        participant_doc = {
+            "player_id": join_data.player_id,
+            "joined_at": now
+        }
+        
+        # Set created_by if this is the first player
+        update_ops = {
+            "$push": {"participants": participant_doc}
+        }
+        
+        if not lobby.get("created_by"):
+            update_ops["$set"] = {"created_by": join_data.player_id}
+        
+        game_lobbies_collection.update_one(
+            {"_id": lobby["_id"]},
+            update_ops
+        )
+        
+        # Refresh lobby
+        lobby = game_lobbies_collection.find_one({"_id": lobby["_id"]})
+        participants = filter_placeholders(lobby.get("participants", []))
+        action = "joined"
+    
+    return LobbyResponse(
+        game_id=lobby.get("game_id"),
+        action=action,
+        player_count=len(participants),
+        replaced_ai=None
+    )
 
 # ----------------------------------
 # Authentication
@@ -3043,6 +3229,9 @@ async def get_active_webrtc_session(
 
 def convert_game_lobby_doc(lobby_doc: dict) -> dict:
     """Convert ObjectIds in game lobby document to strings for serialization."""
+    # Filter placeholders from participants
+    participants = filter_placeholders(lobby_doc.get("participants", []))
+    
     converted = {
         "_id": str(lobby_doc["_id"]),
         "circle_id": str(lobby_doc["circle_id"]),
@@ -3052,14 +3241,14 @@ def convert_game_lobby_doc(lobby_doc: dict) -> dict:
         "game_id": lobby_doc.get("game_id", ""),
         "participants": [
             {
-                "user_id": str(p["user_id"]),
-                "username": p["username"],
-                "joined_at": p["joined_at"]
+                "user_id": str(p.get("user_id", p.get("player_id", ""))),
+                "username": p.get("username", ""),
+                "joined_at": p.get("joined_at", datetime.now(timezone.utc))
             }
-            for p in lobby_doc.get("participants", [])
+            for p in participants
         ],
-        "created_at": lobby_doc["created_at"],
-        "created_by": str(lobby_doc["created_by"])
+        "created_at": lobby_doc.get("created_at", datetime.now(timezone.utc)),
+        "created_by": str(lobby_doc.get("created_by", "")) if lobby_doc.get("created_by") else ""
     }
     return converted
 
@@ -3095,85 +3284,71 @@ async def create_game_lobby(
     circle = await get_circle_or_404(str(circle_id))
     await check_circle_membership(current_user, circle)
     
-    # Check if there's already an active lobby for this circle and game type
-    existing_lobby = game_lobbies_collection.find_one({
-        "circle_id": circle_id,
-        "game_type": lobby_data.game_type
-    })
+    # Get or create persistent lobby
+    lobby = get_or_create_lobby(str(circle_id), lobby_data.game_type)
     
-    if existing_lobby:
-        # Check if user is already a participant
-        user_already_participant = any(
-            str(p.get("user_id")) == str(current_user.id) 
-            for p in existing_lobby.get("participants", [])
-        )
-        
-        # Prepare update operations
-        update_ops = {}
-        
-        # Update game_id if provided and not already set
-        if lobby_data.game_id and not existing_lobby.get("game_id"):
-            update_ops["game_id"] = lobby_data.game_id
-        
-        # Update game_url if provided and not already set
-        if lobby_data.game_url and not existing_lobby.get("game_url"):
-            update_ops["game_url"] = lobby_data.game_url
-        
-        # Update game_mode if provided and different
-        if lobby_data.game_mode and existing_lobby.get("game_mode") != lobby_data.game_mode:
-            update_ops["game_mode"] = lobby_data.game_mode
-        
-        # Add user to existing lobby if not already a participant
-        if not user_already_participant:
-            now = datetime.now(timezone.utc)
-            participant_doc = {
-                "user_id": current_user.id,
-                "username": current_user.username,
-                "joined_at": now
-            }
-            update_ops["$push"] = {"participants": participant_doc}
-        
-        # Apply updates if any
-        if update_ops:
-            # Separate $push from other updates
-            push_op = update_ops.pop("$push", None)
-            if update_ops:
-                game_lobbies_collection.update_one(
-                    {"_id": existing_lobby["_id"]},
-                    {"$set": update_ops}
-                )
-            if push_op:
-                game_lobbies_collection.update_one(
-                    {"_id": existing_lobby["_id"]},
-                    {"$push": push_op}
-                )
-            existing_lobby = game_lobbies_collection.find_one({"_id": existing_lobby["_id"]})
-        
-        return GameLobbyOut(**convert_game_lobby_doc(existing_lobby))
+    # Filter placeholders before processing
+    participants = filter_placeholders(lobby.get("participants", []))
     
-    # Create new lobby
-    now = datetime.now(timezone.utc)
-    participant_doc = {
-        "user_id": current_user.id,
-        "username": current_user.username,
-        "joined_at": now
-    }
+    # Check if user is already a participant
+    user_already_participant = any(
+        str(p.get("user_id", p.get("player_id", ""))) == str(current_user.id) 
+        for p in participants
+    )
     
-    lobby_doc = {
-        "_id": ObjectId(),
-        "circle_id": circle_id,
-        "game_type": lobby_data.game_type,
-        "game_mode": lobby_data.game_mode,
-        "game_url": lobby_data.game_url,
-        "game_id": lobby_data.game_id,
-        "participants": [participant_doc],
-        "created_at": now,
-        "created_by": current_user.id
-    }
+    # Prepare update operations
+    update_ops = {}
     
-    game_lobbies_collection.insert_one(lobby_doc)
+    # Update game_id if provided and not already set
+    if lobby_data.game_id and not lobby.get("game_id"):
+        update_ops["game_id"] = lobby_data.game_id
     
-    return GameLobbyOut(**convert_game_lobby_doc(lobby_doc))
+    # Update game_url if provided and not already set
+    if lobby_data.game_url and not lobby.get("game_url"):
+        update_ops["game_url"] = lobby_data.game_url
+    
+    # Update game_mode if provided and different
+    if lobby_data.game_mode and lobby.get("game_mode") != lobby_data.game_mode:
+        update_ops["game_mode"] = lobby_data.game_mode
+    
+    # Add user to existing lobby if not already a participant
+    if not user_already_participant:
+        now = datetime.now(timezone.utc)
+        participant_doc = {
+            "user_id": current_user.id,
+            "username": current_user.username,
+            "joined_at": now
+        }
+        update_ops["$push"] = {"participants": participant_doc}
+        
+        # Set created_by if this is the first player
+        if not lobby.get("created_by"):
+            if "$set" not in update_ops:
+                update_ops["$set"] = {}
+            update_ops["$set"]["created_by"] = current_user.id
+    
+    # Apply updates if any
+    if update_ops:
+        # Separate $push from other updates
+        push_op = update_ops.pop("$push", None)
+        set_ops = update_ops.pop("$set", None)
+        
+        if update_ops or set_ops:
+            set_dict = {**(update_ops or {}), **(set_ops or {})}
+            game_lobbies_collection.update_one(
+                {"_id": lobby["_id"]},
+                {"$set": set_dict}
+            )
+        
+        if push_op:
+            game_lobbies_collection.update_one(
+                {"_id": lobby["_id"]},
+                {"$push": push_op}
+            )
+        
+        lobby = game_lobbies_collection.find_one({"_id": lobby["_id"]})
+    
+    return GameLobbyOut(**convert_game_lobby_doc(lobby))
 
 @app.get("/game-lobbies/{lobby_id}", response_model=GameLobbyOut, tags=["Game Lobbies"])
 async def get_game_lobby(
@@ -3215,16 +3390,23 @@ async def join_game_lobby(
     circle = await get_circle_or_404(str(lobby["circle_id"]))
     await check_circle_membership(current_user, circle)
     
+    # Filter placeholders before processing
+    participants = filter_placeholders(lobby.get("participants", []))
+    
     # Check if user is already a participant
     user_id_str = str(current_user.id)
     user_already_participant = any(
-        str(p.get("user_id")) == user_id_str 
-        for p in lobby.get("participants", [])
+        str(p.get("user_id", p.get("player_id", ""))) == user_id_str 
+        for p in participants
     )
     
     if user_already_participant:
         # Return existing lobby
         return GameLobbyOut(**convert_game_lobby_doc(lobby))
+    
+    # Check if lobby is full (max 4 players)
+    if len(participants) >= 4:
+        raise HTTPException(status_code=400, detail="Lobby is full (maximum 4 players).")
     
     # Add user to lobby
     now = datetime.now(timezone.utc)
@@ -3234,9 +3416,15 @@ async def join_game_lobby(
         "joined_at": now
     }
     
+    update_ops = {"$push": {"participants": participant_doc}}
+    
+    # Set created_by if this is the first player
+    if not lobby.get("created_by"):
+        update_ops["$set"] = {"created_by": current_user.id}
+    
     game_lobbies_collection.update_one(
         {"_id": lobby_obj_id},
-        {"$push": {"participants": participant_doc}}
+        update_ops
     )
     
     # Get updated lobby
@@ -3263,6 +3451,106 @@ async def get_active_game_lobbies(
     
     return [GameLobbyOut(**convert_game_lobby_doc(lobby)) for lobby in lobbies]
 
+class GameStartRequest(BaseModel):
+    player_id: str
+
+@app.post("/game/{game_id}/start", tags=["Game Portal"])
+async def start_game(
+    game_id: str = Path(..., description="Game ID"),
+    start_data: GameStartRequest = Body(...),
+    current_user: Optional[UserInDB] = Depends(get_optional_current_user)
+):
+    """
+    Start a game. Auto-fills missing players with AI to meet minimum requirements.
+    Filters out placeholders before starting.
+    """
+    if not game_id:
+        raise HTTPException(status_code=400, detail="game_id is required.")
+    
+    if not start_data.player_id:
+        raise HTTPException(status_code=400, detail="player_id is required.")
+    
+    player_id = start_data.player_id
+    
+    # Find lobby by game_id
+    lobby = game_lobbies_collection.find_one({"game_id": game_id})
+    
+    if not lobby:
+        raise HTTPException(status_code=404, detail="Game not found.")
+    
+    # Verify circle exists
+    circle = await get_circle_or_404(str(lobby["circle_id"]))
+    
+    # Check membership if user is authenticated
+    if current_user:
+        await check_circle_membership(current_user, circle)
+    
+    # Filter placeholders before processing
+    participants = filter_placeholders(lobby.get("participants", []))
+    
+    # Check if player is in lobby
+    player_in_lobby = any(
+        str(p.get("player_id", p.get("user_id", ""))) == str(player_id)
+        for p in participants
+    )
+    
+    if not player_in_lobby:
+        raise HTTPException(status_code=403, detail="Player not in lobby.")
+    
+    # Set host_id if it was None (first player to start becomes host)
+    update_ops = {}
+    if not lobby.get("host_id"):
+        update_ops["host_id"] = player_id
+    
+    # Determine minimum players required (2 for most games)
+    min_players = 2
+    game_type = lobby.get("game_type", "dominoes")
+    
+    # Calculate how many AI players needed
+    current_player_count = len(participants)
+    ai_needed = max(0, min_players - current_player_count)
+    
+    # Auto-fill with AI if needed
+    replaced_ai = None
+    if ai_needed > 0:
+        # Add AI players
+        now = datetime.now(timezone.utc)
+        ai_players = []
+        for i in range(ai_needed):
+            ai_player_id = f"ai_{game_id}_{i}_{int(time.time())}"
+            ai_player = {
+                "player_id": ai_player_id,
+                "is_ai": True,
+                "joined_at": now
+            }
+            ai_players.append(ai_player)
+        
+        if ai_players:
+            # Push AI players to participants array
+            game_lobbies_collection.update_one(
+                {"_id": lobby["_id"]},
+                {"$push": {"participants": {"$each": ai_players}}}
+            )
+    
+    # Apply updates if any
+    if update_ops:
+        game_lobbies_collection.update_one(
+            {"_id": lobby["_id"]},
+            {"$set": update_ops}
+        )
+    
+    # Refresh lobby after all updates
+    lobby = game_lobbies_collection.find_one({"_id": lobby["_id"]})
+    participants = filter_placeholders(lobby.get("participants", []))
+    
+    return {
+        "game_id": game_id,
+        "player_count": len(participants),
+        "ai_count": sum(1 for p in participants if p.get("is_ai", False)),
+        "replaced_ai": replaced_ai,
+        "status": "started"
+    }
+
 @app.delete("/game-lobbies/{lobby_id}", status_code=204, tags=["Game Lobbies"])
 async def end_game_lobby(
     lobby_id: str,
@@ -3279,7 +3567,7 @@ async def end_game_lobby(
         raise HTTPException(status_code=404, detail="Lobby not found.")
     
     # Verify user is the creator
-    if str(lobby["created_by"]) != str(current_user.id):
+    if str(lobby.get("created_by", "")) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Only the lobby creator can end it.")
     
     game_lobbies_collection.delete_one({"_id": lobby_obj_id})
