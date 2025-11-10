@@ -684,8 +684,8 @@ const initTheme = () => {
 
 // -----------------------------------------------
 // Global State & DOM references:
-//const BASE_URL = 'https://mycircles.oblivio-company.com'; //'http://localhost:8000';
-const BASE_URL = 'http://localhost:8000';
+const BASE_URL = 'https://mycircles.oblivio-company.com'; //'http://localhost:8000';
+//const BASE_URL = 'http://localhost:8000';
 const state = {
     accessToken: localStorage.getItem('accessToken') || null,
     refreshToken: localStorage.getItem('refreshToken') || null,
