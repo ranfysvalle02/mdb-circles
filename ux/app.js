@@ -2394,6 +2394,14 @@ async function resetAndRenderCircleFeed(circleId) {
     state.circleView.posts = [];
     dom.circleFeedContainer.innerHTML = '';
     dom.circleHeader.innerHTML = '';
+    // Clean up widgets
+    const widgetsContainer = document.getElementById('circleGameWidgets');
+    if (widgetsContainer) {
+        widgetsContainer.remove();
+    }
+    // Stop all game widgets
+    gamePortalWidgets.forEach(widget => widget.stopPolling());
+    gamePortalWidgets.clear();
     await renderCircleFeed(circleId);
 }
 
@@ -2483,47 +2491,48 @@ async function renderCircleFeed(circleId) {
                 console.warn('Failed to fetch active game lobbies:', error);
             }
             
-            // Build game lobby buttons HTML
+            // Build game lobby display - use widget for active games, button for inactive
             let gameLobbiesHtml = '';
+            let gameWidgetsHtml = '';
             if (activeGameLobbies && activeGameLobbies.length > 0) {
-                gameLobbiesHtml = activeGameLobbies.map(lobby => {
+                activeGameLobbies.forEach(lobby => {
                     const gameTypeLabel = lobby.game_type === 'dominoes' ? '🎲 Dominoes' : '🃏 Blackjack';
                     const gameModeLabel = lobby.game_mode || 'classic';
                     const participantCount = lobby.participants ? lobby.participants.length : 0;
                     const myUserId = state.currentUser ? String(state.currentUser._id || state.currentUser.id) : '';
                     const isParticipant = lobby.participants && lobby.participants.some(p => String(p.user_id) === myUserId);
                     
-                    // Build game URL - use stored game_url or construct from game_id
-                    let gameUrl = lobby.game_url;
-                    if (!gameUrl && lobby.game_id) {
-                        gameUrl = `https://apps.oblivio-company.com/experiments/game_portal?game=${lobby.game_id}`;
-                    }
-                    
-                    // Start polling if we have a game_id
+                    // If game has a game_id, use the widget for real-time updates
                     if (lobby.game_id) {
-                        // Start polling after a short delay to avoid race conditions
-                        // Use game_id as the key for polling
+                        const widgetId = `game-widget-${lobby.game_id}`;
+                        const widgetHtml = createGamePortalWidgetHTML(lobby.game_id, circleId, lobby.game_type);
+                        gameWidgetsHtml += widgetHtml;
+                        
+                        // Initialize widget after DOM is ready
                         setTimeout(() => {
-                            startGamePolling(lobby.game_id, lobby.game_id);
-                        }, 1000);
+                            const widgetContainer = document.getElementById(widgetId);
+                            if (widgetContainer) {
+                                createGamePortalWidget(lobby.game_id, widgetId);
+                            }
+                        }, 100);
+                    } else {
+                        // No game_id yet - show simple join button in header
+                        gameLobbiesHtml += `
+                            <div class="btn-group ms-2" role="group">
+                                <button class="btn btn-sm btn-warning" 
+                                        data-action="join-game-lobby" 
+                                        data-lobby-id="${lobby.id}"
+                                        data-circle-id="${circleId}"
+                                        data-game-type="${lobby.game_type}"
+                                        data-game-id="${lobby.game_id || ''}"
+                                        title="${gameTypeLabel} - ${gameModeLabel} (${participantCount} ${participantCount === 1 ? 'player' : 'players'})">
+                                    <i class="bi bi-controller"></i> ${gameTypeLabel}${isParticipant ? ' (Joined)' : ''}
+                                    <span class="badge bg-dark ms-1">${participantCount}</span>
+                                </button>
+                            </div>
+                        `;
                     }
-                    
-                    return `
-                        <div class="btn-group ms-2" role="group">
-                            <button class="btn btn-sm btn-warning" 
-                                    data-action="join-game-lobby" 
-                                    data-lobby-id="${lobby.id}"
-                                    data-circle-id="${circleId}"
-                                    data-game-type="${lobby.game_type}"
-                                    data-game-id="${lobby.game_id || ''}"
-                                    data-game-url="${gameUrl || ''}"
-                                    title="${gameTypeLabel} - ${gameModeLabel} (${participantCount} ${participantCount === 1 ? 'player' : 'players'})">
-                                <i class="bi bi-controller"></i> ${gameTypeLabel}${isParticipant ? ' (Joined)' : ''}
-                                <span class="badge bg-dark ms-1" id="lobby-badge-${lobby.game_id || lobby.id}">${participantCount}</span>
-                            </button>
-                        </div>
-                    `;
-                }).join('');
+                });
             }
             
             dom.circleHeader.innerHTML = `
@@ -2571,6 +2580,25 @@ async function renderCircleFeed(circleId) {
               ` : ''}
            </div>
            </div>`;
+            
+            // Add game widgets section if we have active games with game_id
+            if (gameWidgetsHtml) {
+                // Create or update widgets container
+                let widgetsContainer = document.getElementById('circleGameWidgets');
+                if (!widgetsContainer) {
+                    widgetsContainer = document.createElement('div');
+                    widgetsContainer.id = 'circleGameWidgets';
+                    widgetsContainer.className = 'mb-3';
+                    dom.circleHeader.insertAdjacentElement('afterend', widgetsContainer);
+                }
+                widgetsContainer.innerHTML = gameWidgetsHtml;
+            } else {
+                // Remove widgets container if no active games
+                const widgetsContainer = document.getElementById('circleGameWidgets');
+                if (widgetsContainer) {
+                    widgetsContainer.remove();
+                }
+            }
         }
 
         // --- Step 2: Fetch Circle Feed (Posts) ---
@@ -3549,6 +3577,301 @@ async function handleStartGameLobby(circleId, gameType) {
 // Game Polling (for Game Portal integration)
 // -----------------------------------------------
 const gamePollingIntervals = new Map(); // Map of lobby_id -> interval
+const gamePortalWidgets = new Map(); // Map of game_id -> GamePortalWidget instance
+
+// GamePortalWidget class for real-time game UI updates
+class GamePortalWidget {
+    constructor(gameId, containerId) {
+        this.gameId = gameId;
+        this.container = typeof containerId === 'string' ? document.getElementById(containerId) : containerId;
+        this.pollInterval = null;
+        this.lastUpdate = null;
+        this.lastStateHash = null;
+        this.previousState = null;
+    }
+
+    async startPolling(intervalMs = 2000) {
+        // Poll immediately
+        await this.updateUI();
+        
+        // Then poll every intervalMs
+        this.pollInterval = setInterval(() => {
+            this.updateUI();
+        }, intervalMs);
+    }
+
+    stopPolling() {
+        if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = null;
+        }
+    }
+
+    async updateUI() {
+        try {
+            const response = await fetch(
+                `https://apps.oblivio-company.com/experiments/game_portal/backend/api/game/${this.gameId}/poll`,
+                { method: 'GET' }
+            );
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const gameData = await response.json();
+            
+            // Only update if state changed
+            const stateHash = this.hashState(gameData);
+            if (stateHash !== this.lastStateHash) {
+                this.render(gameData);
+                this.lastStateHash = stateHash;
+            }
+            
+            this.lastUpdate = Date.now();
+        } catch (error) {
+            console.error('Failed to poll game updates:', error);
+            this.renderError(error);
+        }
+    }
+
+    hashState(gameData) {
+        // Create a simple hash of the game state
+        const key = `${gameData.status}-${gameData.player_count}-${JSON.stringify(gameData.game_state_summary || {})}`;
+        return btoa(key).substring(0, 16);
+    }
+
+    render(gameData) {
+        if (!this.container) return;
+        
+        const { status, players, player_count, max_players, game_state_summary } = gameData;
+
+        // Detect changes and show notifications
+        if (this.previousState) {
+            this.detectChanges(this.previousState, gameData);
+        }
+
+        // Update status badge
+        this.updateStatusBadge(status);
+
+        // Update player list
+        this.updatePlayerList(players, player_count, max_players);
+
+        // Update game state (if in progress)
+        if (game_state_summary) {
+            this.updateGameState(game_state_summary, status);
+        }
+
+        // Update join button
+        this.updateJoinButton(gameData);
+        
+        this.previousState = JSON.parse(JSON.stringify(gameData));
+    }
+
+    detectChanges(oldState, newState) {
+        // Player joined
+        if (newState.player_count > oldState.player_count) {
+            this.showNotification('👤 Player joined!', 'success');
+        }
+
+        // Game started
+        if (oldState.status === 'waiting' && newState.status === 'in_progress') {
+            this.showNotification('🎮 Game started!', 'info');
+        }
+
+        // Round finished
+        if (oldState.status === 'in_progress' && newState.status === 'round_finished') {
+            this.showNotification('✅ Round complete!', 'success');
+        }
+
+        // Game finished
+        if (newState.status === 'finished') {
+            this.showNotification('🏁 Game finished!', 'info');
+            this.stopPolling();
+        }
+    }
+
+    showNotification(message, type) {
+        // Create and show a toast notification
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.textContent = message;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background: ${type === 'success' ? '#10b981' : type === 'info' ? '#3b82f6' : '#ef4444'};
+            color: white;
+            border-radius: 8px;
+            z-index: 10000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideIn 0.3s ease-out;
+        `;
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s ease-out';
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
+    }
+
+    updateStatusBadge(status) {
+        const badge = this.container.querySelector('.status-badge');
+        if (!badge) return;
+
+        const statusConfig = {
+            waiting: { text: 'Waiting', class: 'status-waiting', icon: '⏳' },
+            in_progress: { text: 'In Progress', class: 'status-active', icon: '🎮' },
+            round_finished: { text: 'Round Complete', class: 'status-paused', icon: '✅' },
+            hand_finished: { text: 'Hand Complete', class: 'status-paused', icon: '✅' },
+            finished: { text: 'Finished', class: 'status-finished', icon: '🏁' }
+        };
+
+        const config = statusConfig[status] || statusConfig.waiting;
+        badge.textContent = `${config.icon} ${config.text}`;
+        badge.className = `status-badge ${config.class}`;
+    }
+
+    updatePlayerList(players, currentCount, maxCount) {
+        const playerListEl = this.container.querySelector('.players-list');
+        if (!playerListEl) return;
+
+        // Filter out suspicious player IDs for display
+        const validPlayers = (players || []).filter(p => {
+            const pid = p.player_id || p;
+            return !pid || !pid.match(/^player_\d+/);
+        });
+
+        playerListEl.innerHTML = validPlayers.map(p => {
+            const pid = p.player_id || p;
+            const isAI = p.is_ai || (pid && pid.startsWith('AI_'));
+            const isSpectator = p.is_spectator || false;
+            
+            const badge = isAI ? '🤖 AI' : isSpectator ? '👀 Spectator' : '👤';
+            const displayName = isAI ? 'AutoBot' : this.formatPlayerId(pid);
+            
+            return `<div class="player-item ${isAI ? 'ai-player' : ''}">
+                <span class="player-badge">${badge}</span>
+                <span class="player-name">${displayName}</span>
+            </div>`;
+        }).join('');
+
+        // Update player count
+        const countEl = this.container.querySelector('.player-count');
+        if (countEl) {
+            countEl.textContent = `${currentCount}/${maxCount} players`;
+        }
+    }
+
+    updateGameState(gameStateSummary, status) {
+        const gameStateEl = this.container.querySelector('.game-state');
+        if (!gameStateEl) return;
+
+        if (status === 'in_progress' || status === 'round_finished' || status === 'hand_finished') {
+            // Show scores/leaderboard
+            if (gameStateSummary.scores) {
+                const scoresHtml = this.renderScores(gameStateSummary.scores, gameStateSummary.hand_wins);
+                gameStateEl.innerHTML = scoresHtml;
+            }
+
+            // Show current turn
+            if (gameStateSummary.current_turn) {
+                const turnEl = this.container.querySelector('.current-turn');
+                if (turnEl) {
+                    const turnPlayer = this.formatPlayerId(gameStateSummary.current_turn);
+                    turnEl.textContent = `Current Turn: ${turnPlayer}`;
+                    turnEl.style.display = 'block';
+                }
+            }
+
+            // Show round/hand number
+            if (gameStateSummary.round_number) {
+                const roundEl = this.container.querySelector('.round-number');
+                if (roundEl) {
+                    roundEl.textContent = `Round ${gameStateSummary.round_number}`;
+                    roundEl.style.display = 'block';
+                }
+            }
+        }
+    }
+
+    renderScores(scores, handWins) {
+        if (!scores) return '';
+
+        const sortedScores = Object.entries(scores)
+            .sort((a, b) => b[1] - a[1])
+            .map(([pid, score], index) => {
+                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
+                const playerName = this.formatPlayerId(pid);
+                const wins = handWins?.[pid] || 0;
+                return `<div class="score-item">
+                    <span class="medal">${medal}</span>
+                    <span class="player-name">${playerName}</span>
+                    <span class="score">${score} pts</span>
+                    ${wins > 0 ? `<span class="wins">(${wins} wins)</span>` : ''}
+                </div>`;
+            });
+
+        return `<div class="leaderboard">
+            <h4>📊 Leaderboard</h4>
+            ${sortedScores.join('')}
+        </div>`;
+    }
+
+    updateJoinButton(gameData) {
+        const joinBtn = this.container.querySelector('.join-button');
+        if (!joinBtn) return;
+
+        const { status, player_count, max_players, can_join } = gameData;
+
+        if (status === 'finished') {
+            joinBtn.textContent = 'Game Finished';
+            joinBtn.disabled = true;
+            joinBtn.classList.add('disabled');
+        } else if (player_count >= max_players) {
+            joinBtn.textContent = 'Game Full';
+            joinBtn.disabled = true;
+            joinBtn.classList.add('disabled');
+        } else if (status === 'in_progress') {
+            joinBtn.textContent = 'Join as Spectator';
+            joinBtn.disabled = false;
+            joinBtn.classList.remove('disabled');
+        } else {
+            joinBtn.textContent = `Join Game (${player_count}/${max_players})`;
+            joinBtn.disabled = !can_join;
+            joinBtn.classList.toggle('disabled', !can_join);
+        }
+
+        // Update link
+        const gameUrl = `https://apps.oblivio-company.com/experiments/game_portal?game=${this.gameId}`;
+        if (joinBtn.tagName === 'A') {
+            joinBtn.href = gameUrl;
+        } else {
+            joinBtn.onclick = () => window.open(gameUrl, '_blank');
+        }
+    }
+
+    formatPlayerId(playerId) {
+        // Format player ID for display (hide suspicious IDs)
+        if (!playerId) return 'Unknown Player';
+        if (playerId.match(/^player_\d+/)) {
+            return 'Unknown Player';
+        }
+        if (playerId.startsWith('AI_')) {
+            return 'AutoBot';
+        }
+        // Show first 8 characters
+        return `Player ${playerId.substring(0, 8)}`;
+    }
+
+    renderError(error) {
+        const errorEl = this.container.querySelector('.error-message');
+        if (errorEl) {
+            errorEl.textContent = `Failed to load game: ${error.message}`;
+            errorEl.style.display = 'block';
+        }
+    }
+}
 
 async function pollGameUpdates(gameId) {
     try {
@@ -3575,7 +3898,15 @@ function startGamePolling(lobbyId, gameId) {
         clearInterval(gamePollingIntervals.get(lobbyId));
     }
     
-    // Poll every 2-3 seconds for game updates
+    // Check if we have a widget for this game
+    if (gamePortalWidgets.has(gameId)) {
+        // Use widget polling
+        const widget = gamePortalWidgets.get(gameId);
+        widget.startPolling(2000);
+        return;
+    }
+    
+    // Fallback to old polling system
     const interval = setInterval(async () => {
         try {
             const updates = await pollGameUpdates(gameId);
@@ -3600,6 +3931,48 @@ function startGamePolling(lobbyId, gameId) {
     }, 2500); // Poll every 2.5 seconds
     
     gamePollingIntervals.set(lobbyId, interval);
+}
+
+// Helper function to create and initialize a GamePortalWidget
+function createGamePortalWidget(gameId, containerId) {
+    // Stop existing widget if any
+    if (gamePortalWidgets.has(gameId)) {
+        const existingWidget = gamePortalWidgets.get(gameId);
+        existingWidget.stopPolling();
+    }
+    
+    // Create new widget
+    const widget = new GamePortalWidget(gameId, containerId);
+    gamePortalWidgets.set(gameId, widget);
+    
+    // Start polling
+    widget.startPolling(2000);
+    
+    return widget;
+}
+
+// Helper function to create widget HTML structure
+function createGamePortalWidgetHTML(gameId, circleId, gameType) {
+    const widgetId = `game-widget-${gameId || circleId}-${gameType}`;
+    return `
+        <div id="${widgetId}" class="game-portal-widget">
+            <div class="widget-header">
+                <h3>🎮 Game Portal</h3>
+                <span class="status-badge status-waiting">⏳ Waiting</span>
+            </div>
+            <div class="widget-body">
+                <div class="player-count">0/4 players</div>
+                <div class="players-list"></div>
+                <div class="game-state"></div>
+                <div class="current-turn" style="display: none;"></div>
+                <div class="round-number" style="display: none;"></div>
+                <button class="join-button" data-action="join-game-lobby" data-circle-id="${circleId}" data-game-type="${gameType}" data-game-id="${gameId || ''}">
+                    Join Game
+                </button>
+            </div>
+            <div class="error-message" style="display: none;"></div>
+        </div>
+    `;
 }
 
 function stopGamePolling(lobbyId) {

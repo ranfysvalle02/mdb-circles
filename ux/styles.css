@@ -793,3 +793,181 @@ a:hover {
 #chatParticipantSelectorModal {
   z-index: 9999999999999999999; 
 }
+
+/* Game Portal Widget Styles */
+.game-portal-widget {
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.5rem;
+  background: var(--card-background);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1rem;
+}
+
+.widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.status-badge {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.status-waiting { 
+  background: rgba(254, 243, 199, 0.3); 
+  color: #fbbf24; 
+}
+
+.status-active { 
+  background: rgba(209, 250, 229, 0.3); 
+  color: #10b981; 
+}
+
+.status-paused { 
+  background: rgba(219, 234, 254, 0.3); 
+  color: #3b82f6; 
+}
+
+.status-finished { 
+  background: rgba(243, 244, 246, 0.3); 
+  color: var(--text-muted-color); 
+}
+
+.player-count {
+  font-size: 0.875rem;
+  color: var(--text-muted-color);
+  margin-bottom: 1rem;
+}
+
+.players-list {
+  margin-bottom: 1rem;
+}
+
+.player-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 6px;
+  margin-bottom: 0.25rem;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.player-item.ai-player {
+  background: rgba(254, 243, 199, 0.2);
+}
+
+.player-badge {
+  font-size: 1.2rem;
+}
+
+.player-name {
+  color: var(--text-color);
+  font-size: 0.875rem;
+}
+
+.leaderboard {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.leaderboard h4 {
+  color: var(--heading-color);
+  margin-bottom: 0.75rem;
+  font-size: 1rem;
+}
+
+.score-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  color: var(--text-color);
+}
+
+.medal {
+  font-size: 1.2rem;
+}
+
+.score {
+  font-weight: 600;
+  color: var(--primary-color);
+  margin-left: auto;
+}
+
+.wins {
+  font-size: 0.75rem;
+  color: var(--text-muted-color);
+}
+
+.join-button {
+  display: block;
+  text-align: center;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  color: white;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  margin-top: 1rem;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.join-button:hover:not(.disabled) {
+  opacity: 0.9;
+}
+
+.join-button.disabled {
+  background: var(--text-muted-color);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.error-message {
+  color: #ef4444;
+  padding: 0.75rem;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 8px;
+  margin-top: 1rem;
+  display: none;
+}
+
+.current-turn,
+.round-number {
+  color: var(--text-color);
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  display: none;
+}
+
+/* Notification animations */
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
