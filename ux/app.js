@@ -3537,25 +3537,51 @@ class CircleGameIntegration {
 
     // Join game with user-selected settings
     async joinGame(gameType, gameMode = null, aiCount = null) {
+        const requestBody = {
+            player_id: this.userId
+        };
+        
+        // Only include game_mode and ai_count if they are provided (not null)
+        if (gameMode !== null && gameMode !== undefined) {
+            requestBody.game_mode = gameMode;
+        }
+        if (aiCount !== null && aiCount !== undefined) {
+            requestBody.ai_count = aiCount;
+        }
+        
         const response = await fetch(
             `${this.baseUrl}/mycircles/join/${this.circleId}/${gameType}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    player_id: this.userId,
-                    game_mode: gameMode,
-                    ai_count: aiCount
-                })
+                body: JSON.stringify(requestBody)
             }
         );
 
         if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Failed to join game' }));
-            throw new Error(error.detail || 'Failed to join game');
+            let errorDetail = 'Failed to join game';
+            try {
+                const error = await response.json();
+                errorDetail = error.detail || error.error || error.message || errorDetail;
+            } catch (e) {
+                // If response is not JSON, use status text
+                errorDetail = response.statusText || errorDetail;
+            }
+            throw new Error(errorDetail);
         }
 
         const result = await response.json();
+        
+        // Check if result has an error (backend might return 200 with error in body)
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        
+        // Validate that we got a game_id
+        if (!result.game_id) {
+            throw new Error('Failed to get or create lobby: No game_id returned');
+        }
+        
         return result;
     }
 
@@ -3574,25 +3600,46 @@ class CircleGameIntegration {
 
     // Update lobby settings (host only)
     async updateSettings(gameType, gameMode = null, aiCount = null) {
+        const requestBody = {
+            player_id: this.userId
+        };
+        
+        // Only include game_mode and ai_count if they are provided (not null)
+        if (gameMode !== null && gameMode !== undefined) {
+            requestBody.game_mode = gameMode;
+        }
+        if (aiCount !== null && aiCount !== undefined) {
+            requestBody.ai_count = aiCount;
+        }
+        
         const response = await fetch(
             `${this.baseUrl}/mycircles/lobby/${this.circleId}/${gameType}/settings`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    player_id: this.userId,
-                    game_mode: gameMode,
-                    ai_count: aiCount
-                })
+                body: JSON.stringify(requestBody)
             }
         );
 
         if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Failed to update settings' }));
-            throw new Error(error.detail || 'Failed to update settings');
+            let errorDetail = 'Failed to update settings';
+            try {
+                const error = await response.json();
+                errorDetail = error.detail || error.error || error.message || errorDetail;
+            } catch (e) {
+                errorDetail = response.statusText || errorDetail;
+            }
+            throw new Error(errorDetail);
         }
 
-        return await response.json();
+        const result = await response.json();
+        
+        // Check if result has an error
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        
+        return result;
     }
 
     // Poll lobby status for real-time updates
@@ -6320,72 +6367,14 @@ Added videos will appear here. You can drag to reorder.
                         break;
                     }
                     
-                    // Show modal to select game settings
-                    document.getElementById('startGameCircleId').value = circleId;
-                    document.getElementById('startGameType').value = gameType;
-                    document.getElementById('startGameType').disabled = true; // Lock game type
-                    
-                    // Show/hide game mode containers based on game type
-                    const dominoContainer = document.getElementById('dominoGameModeContainer');
-                    const blackjackContainer = document.getElementById('blackjackGameModeContainer');
-                    if (dominoContainer) dominoContainer.style.display = gameType === 'dominoes' ? 'block' : 'none';
-                    if (blackjackContainer) blackjackContainer.style.display = gameType === 'blackjack' ? 'block' : 'none';
-                    
-                    // Update button to say "Join Game" instead of "Create Game"
-                    const createGameBtn = document.getElementById('createGameBtn');
-                    if (createGameBtn) {
-                        createGameBtn.innerHTML = '<i class="bi bi-controller"></i> Join Game';
-                        createGameBtn.setAttribute('data-action', 'join-game-from-modal');
-                        createGameBtn.setAttribute('data-circle-id', circleId);
-                        createGameBtn.setAttribute('data-game-type', gameType);
-                        createGameBtn.setAttribute('data-game-id', gameId || '');
-                    }
-                    
-                    // Show modal
-                    bootstrap.Modal.getOrCreateInstance(document.getElementById('startGameModal')).show();
-                    break;
-                }
-            case 'join-game-from-modal':
-                {
-                    const circleId = data.circleId || document.getElementById('startGameCircleId')?.value;
-                    const gameType = data.gameType || document.getElementById('startGameType')?.value;
-                    const gameId = data.gameId || '';
-                    
-                    if (!circleId || !gameType) {
-                        showStatus('Missing circle ID or game type', 'danger');
-                        break;
-                    }
-                    
-                    // Get game settings from modal
-                    let gameMode = null;
-                    let aiCount = null;
-                    
-                    if (gameType === 'dominoes') {
-                        const dominoMode = document.getElementById('dominoGameMode')?.value;
-                        if (dominoMode) gameMode = dominoMode;
-                    } else if (gameType === 'blackjack') {
-                        const blackjackMode = document.getElementById('blackjackGameMode')?.value;
-                        if (blackjackMode) gameMode = blackjackMode;
-                    }
-                    
-                    const aiCountValue = document.getElementById('startGameAiCount')?.value;
-                    if (aiCountValue !== null && aiCountValue !== undefined) {
-                        aiCount = parseInt(aiCountValue, 10);
-                        if (isNaN(aiCount)) aiCount = null;
-                    }
-                    
                     setButtonLoading(target, true);
                     try {
-                        // Close modal first
-                        const modal = bootstrap.Modal.getInstance('#startGameModal');
-                        if (modal) modal.hide();
-                        
                         // Generate player_id from browser fingerprint
                         const playerId = await generateFingerprint();
                         
-                        // Use CircleGameIntegration to join with game settings
+                        // Use CircleGameIntegration to join - Game Platform handles game settings
                         const gameIntegration = new CircleGameIntegration(circleId, playerId);
-                        const joinResult = await gameIntegration.joinGame(gameType, gameMode, aiCount);
+                        const joinResult = await gameIntegration.joinGame(gameType, null, null);
                         
                         const redirectUrl = joinResult.redirect_url;
                         const newGameId = joinResult.game_id || gameId;
@@ -6407,7 +6396,7 @@ Added videos will appear here. You can drag to reorder.
                             }
                         }
                         
-                        // Open Game Portal
+                        // Open Game Portal - Game Platform handles game settings UI
                         const gameUrl = redirectUrl || 
                                        `https://apps.oblivio-company.com/experiments/game_portal?game=${newGameId}&replace_placeholder=true`;
                         window.open(gameUrl, '_blank');
@@ -6432,13 +6421,12 @@ Added videos will appear here. You can drag to reorder.
                         showStatus(error.message || 'Failed to join game lobby', 'danger');
                     } finally {
                         setButtonLoading(target, false);
-                        // Reset modal
-                        document.getElementById('startGameType').disabled = false;
                     }
                     break;
                 }
             case 'update-lobby-settings':
                 {
+                    // Settings are handled in Game Portal - just redirect there
                     const circleId = data.circleId;
                     const gameType = data.gameType;
                     
@@ -6447,82 +6435,28 @@ Added videos will appear here. You can drag to reorder.
                         break;
                     }
                     
-                    // Show modal to update game settings (host only)
-                    document.getElementById('startGameCircleId').value = circleId;
-                    document.getElementById('startGameType').value = gameType;
-                    document.getElementById('startGameType').disabled = true; // Lock game type
-                    
-                    // Show/hide game mode containers based on game type
-                    const dominoContainer = document.getElementById('dominoGameModeContainer');
-                    const blackjackContainer = document.getElementById('blackjackGameModeContainer');
-                    if (dominoContainer) dominoContainer.style.display = gameType === 'dominoes' ? 'block' : 'none';
-                    if (blackjackContainer) blackjackContainer.style.display = gameType === 'blackjack' ? 'block' : 'none';
-                    
-                    // Update button to say "Update Settings" instead of "Create Game"
-                    const createGameBtn = document.getElementById('createGameBtn');
-                    if (createGameBtn) {
-                        createGameBtn.innerHTML = '<i class="bi bi-gear"></i> Update Settings';
-                        createGameBtn.setAttribute('data-action', 'update-lobby-settings-from-modal');
-                        createGameBtn.setAttribute('data-circle-id', circleId);
-                        createGameBtn.setAttribute('data-game-type', gameType);
-                    }
-                    
-                    // Show modal
-                    bootstrap.Modal.getOrCreateInstance(document.getElementById('startGameModal')).show();
-                    break;
-                }
-            case 'update-lobby-settings-from-modal':
-                {
-                    const circleId = data.circleId || document.getElementById('startGameCircleId')?.value;
-                    const gameType = data.gameType || document.getElementById('startGameType')?.value;
-                    
-                    if (!circleId || !gameType) {
-                        showStatus('Missing circle ID or game type', 'danger');
-                        break;
-                    }
-                    
-                    // Get game settings from modal
-                    let gameMode = null;
-                    let aiCount = null;
-                    
-                    if (gameType === 'dominoes') {
-                        const dominoMode = document.getElementById('dominoGameMode')?.value;
-                        if (dominoMode) gameMode = dominoMode;
-                    } else if (gameType === 'blackjack') {
-                        const blackjackMode = document.getElementById('blackjackGameMode')?.value;
-                        if (blackjackMode) gameMode = blackjackMode;
-                    }
-                    
-                    const aiCountValue = document.getElementById('startGameAiCount')?.value;
-                    if (aiCountValue !== null && aiCountValue !== undefined) {
-                        aiCount = parseInt(aiCountValue, 10);
-                        if (isNaN(aiCount)) aiCount = null;
-                    }
-                    
                     setButtonLoading(target, true);
                     try {
-                        // Close modal first
-                        const modal = bootstrap.Modal.getInstance('#startGameModal');
-                        if (modal) modal.hide();
-                        
                         // Generate player_id from browser fingerprint
                         const playerId = await generateFingerprint();
                         
-                        // Use CircleGameIntegration to update lobby settings (host only)
+                        // Join lobby to get game_id, then redirect to Game Portal
                         const gameIntegration = new CircleGameIntegration(circleId, playerId);
-                        await gameIntegration.updateSettings(gameType, gameMode, aiCount);
+                        const joinResult = await gameIntegration.joinGame(gameType, null, null);
                         
-                        showStatus('Lobby settings updated successfully!', 'success');
+                        const redirectUrl = joinResult.redirect_url;
+                        const gameId = joinResult.game_id;
                         
-                        // Refresh circle feed to show updated lobby
-                        await resetAndRenderCircleFeed(circleId);
+                        // Redirect to Game Portal - settings are handled there
+                        const gameUrl = redirectUrl || 
+                                       `https://apps.oblivio-company.com/experiments/game_portal?game=${gameId}&replace_placeholder=true`;
+                        window.open(gameUrl, '_blank');
+                        showStatus('Opening Game Portal...', 'info');
                     } catch (error) {
-                        console.error('Failed to update lobby settings:', error);
-                        showStatus(error.message || 'Failed to update lobby settings', 'danger');
+                        console.error('Failed to join lobby:', error);
+                        showStatus(error.message || 'Failed to join lobby', 'danger');
                     } finally {
                         setButtonLoading(target, false);
-                        // Reset modal
-                        document.getElementById('startGameType').disabled = false;
                     }
                     break;
                 }
@@ -6559,11 +6493,9 @@ Added videos will appear here. You can drag to reorder.
                 break;
             case 'open-start-game-modal':
                 {
-                    const circleId = data.circleId;
-                    if (circleId) {
-                        document.getElementById('startGameCircleId').value = circleId;
-                        bootstrap.Modal.getOrCreateInstance(document.getElementById('startGameModal')).show();
-                    }
+                    // No modal - Game Platform handles everything
+                    // This handler is kept for backwards compatibility but does nothing
+                    // Users should use create-game-lobby or join-game-lobby instead
                     break;
                 }
             case 'create-game-lobby':
@@ -6576,70 +6508,16 @@ Added videos will appear here. You can drag to reorder.
                         break;
                     }
                     
-                    // Show modal to select game settings
-                    document.getElementById('startGameCircleId').value = circleId;
-                    document.getElementById('startGameType').value = gameType;
-                    document.getElementById('startGameType').disabled = true; // Lock game type
-                    
-                    // Show/hide game mode containers based on game type
-                    const dominoContainer = document.getElementById('dominoGameModeContainer');
-                    const blackjackContainer = document.getElementById('blackjackGameModeContainer');
-                    if (dominoContainer) dominoContainer.style.display = gameType === 'dominoes' ? 'block' : 'none';
-                    if (blackjackContainer) blackjackContainer.style.display = gameType === 'blackjack' ? 'block' : 'none';
-                    
-                    // Update button to say "Create Game"
-                    const createGameBtn = document.getElementById('createGameBtn');
-                    if (createGameBtn) {
-                        createGameBtn.innerHTML = '<i class="bi bi-controller"></i> Create Game';
-                        createGameBtn.setAttribute('data-action', 'create-game-from-circle');
-                    }
-                    
-                    // Show modal
-                    bootstrap.Modal.getOrCreateInstance(document.getElementById('startGameModal')).show();
-                    break;
-                }
-            case 'create-game-from-circle':
-                {
-                    const circleId = document.getElementById('startGameCircleId')?.value;
-                    const gameType = document.getElementById('startGameType')?.value;
-                    
-                    if (!circleId || !gameType) {
-                        showStatus('Please select a game type', 'warning');
-                        break;
-                    }
-                    
-                    // Get game settings from modal
-                    let gameMode = null;
-                    let aiCount = null;
-                    
-                    if (gameType === 'dominoes') {
-                        const dominoMode = document.getElementById('dominoGameMode')?.value;
-                        if (dominoMode) gameMode = dominoMode;
-                    } else if (gameType === 'blackjack') {
-                        const blackjackMode = document.getElementById('blackjackGameMode')?.value;
-                        if (blackjackMode) gameMode = blackjackMode;
-                    }
-                    
-                    const aiCountValue = document.getElementById('startGameAiCount')?.value;
-                    if (aiCountValue !== null && aiCountValue !== undefined) {
-                        aiCount = parseInt(aiCountValue, 10);
-                        if (isNaN(aiCount)) aiCount = null;
-                    }
-                    
                     setButtonLoading(target, true);
                     try {
-                        // Close modal first
-                        const modal = bootstrap.Modal.getInstance('#startGameModal');
-                        if (modal) modal.hide();
-                        
-                        // Create/join game lobby with game settings
-                        await handleStartGameLobby(circleId, gameType, gameMode, aiCount);
+                        // Create/join game lobby - Game Platform handles game settings
+                        await handleStartGameLobby(circleId, gameType, null, null);
                         
                         // Refresh circle feed to show the new game
                         await resetAndRenderCircleFeed(circleId);
                     } catch (error) {
-                        console.error('Failed to create game:', error);
-                        showStatus(error.message || 'Failed to create game', 'danger');
+                        console.error('Failed to create game lobby:', error);
+                        showStatus(error.message || 'Failed to create game lobby', 'danger');
                     } finally {
                         setButtonLoading(target, false);
                     }
