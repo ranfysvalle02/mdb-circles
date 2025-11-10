@@ -2512,11 +2512,18 @@ async function renderCircleFeed(circleId) {
                         setTimeout(() => {
                             const widgetContainer = document.getElementById(widgetId);
                             if (widgetContainer) {
+                                console.log('Initializing widget for game:', lobby.game_id, 'container:', widgetId);
                                 const widget = createGamePortalWidget(lobby.game_id, widgetId);
-                                // Force immediate update to get current player count
-                                widget.updateUI();
+                                if (widget) {
+                                    // Force immediate update to get current player count
+                                    widget.updateUI().catch(err => {
+                                        console.error('Error in initial widget update:', err);
+                                    });
+                                }
+                            } else {
+                                console.error('Widget container not found:', widgetId);
                             }
-                        }, 200);
+                        }, 300);
                     } else {
                         // No game_id yet - show simple join button in header
                         gameLobbiesHtml += `
@@ -3593,13 +3600,22 @@ class GamePortalWidget {
     }
 
     async startPolling(intervalMs = 2000) {
+        // Stop any existing polling
+        this.stopPolling();
+        
         // Poll immediately
-        await this.updateUI();
+        try {
+            await this.updateUI();
+        } catch (error) {
+            console.error('Error in initial widget poll:', error, 'gameId:', this.gameId);
+        }
         
         // Then poll every intervalMs
         this.pollInterval = setInterval(() => {
             this.updateUI();
         }, intervalMs);
+        
+        console.log('Started polling for game:', this.gameId, 'interval:', intervalMs);
     }
 
     stopPolling() {
@@ -3610,28 +3626,52 @@ class GamePortalWidget {
     }
 
     async updateUI() {
+        if (!this.gameId) {
+            console.warn('GamePortalWidget: No gameId provided');
+            return;
+        }
+        
         try {
-            const response = await fetch(
-                `https://apps.oblivio-company.com/experiments/game_portal/backend/api/game/${this.gameId}/poll`,
-                { method: 'GET' }
-            );
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const gameData = await response.json();
+            // Try both endpoints - the correct one might vary
+            const endpoints = [
+                `https://apps.oblivio-company.com/experiments/game_portal/backend/game/${this.gameId}/poll`,
+                `https://apps.oblivio-company.com/experiments/game_portal/backend/api/game/${this.gameId}/poll`
+            ];
             
-            // Only update if state changed
+            let gameData = null;
+            let lastError = null;
+            
+            for (const endpoint of endpoints) {
+                try {
+                    const response = await fetch(endpoint, { method: 'GET' });
+                    
+                    if (response.ok) {
+                        gameData = await response.json();
+                        break; // Success, exit loop
+                    } else if (response.status !== 404) {
+                        // If it's not a 404, this might be the right endpoint but with an error
+                        lastError = new Error(`HTTP ${response.status} from ${endpoint}`);
+                    }
+                } catch (err) {
+                    lastError = err;
+                    continue; // Try next endpoint
+                }
+            }
+            
+            if (!gameData) {
+                throw lastError || new Error('Failed to fetch game data from any endpoint');
+            }
+            
+            // Always update on first poll, then only if state changed
             const stateHash = this.hashState(gameData);
-            if (stateHash !== this.lastStateHash) {
+            if (this.lastStateHash === null || stateHash !== this.lastStateHash) {
                 this.render(gameData);
                 this.lastStateHash = stateHash;
             }
             
             this.lastUpdate = Date.now();
         } catch (error) {
-            console.error('Failed to poll game updates:', error);
+            console.error('GamePortalWidget: Failed to poll game updates:', error, 'gameId:', this.gameId);
             this.renderError(error);
         }
     }
@@ -3941,19 +3981,34 @@ function startGamePolling(lobbyId, gameId) {
 
 // Helper function to create and initialize a GamePortalWidget
 function createGamePortalWidget(gameId, containerId) {
+    if (!gameId) {
+        console.error('createGamePortalWidget: No gameId provided');
+        return null;
+    }
+    
     // Stop existing widget if any
     if (gamePortalWidgets.has(gameId)) {
         const existingWidget = gamePortalWidgets.get(gameId);
         existingWidget.stopPolling();
     }
     
+    // Get container element
+    const container = typeof containerId === 'string' ? document.getElementById(containerId) : containerId;
+    if (!container) {
+        console.error('createGamePortalWidget: Container not found:', containerId);
+        return null;
+    }
+    
     // Create new widget
-    const widget = new GamePortalWidget(gameId, containerId);
+    const widget = new GamePortalWidget(gameId, container);
     gamePortalWidgets.set(gameId, widget);
     
     // Start polling
-    widget.startPolling(2000);
+    widget.startPolling(2000).catch(err => {
+        console.error('Error starting widget polling:', err);
+    });
     
+    console.log('Created widget for game:', gameId, 'container:', containerId);
     return widget;
 }
 
