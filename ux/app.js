@@ -684,8 +684,8 @@ const initTheme = () => {
 
 // -----------------------------------------------
 // Global State & DOM references:
-const BASE_URL = 'https://mycircles.oblivio-company.com'; //'http://localhost:8000';
-//const BASE_URL = 'http://localhost:8000';
+//const BASE_URL = 'https://mycircles.oblivio-company.com'; //'http://localhost:8000';
+const BASE_URL = 'http://localhost:8000';
 const state = {
     accessToken: localStorage.getItem('accessToken') || null,
     refreshToken: localStorage.getItem('refreshToken') || null,
@@ -1312,7 +1312,7 @@ function renderActivityItems() {
                     <small class="text-nowrap ms-2">${new Date(item.created_at).toLocaleDateString()}</small>
                 </div>
                 <div class="mt-2 text-end">
-                    <button class="btn btn-sm btn-success" data-action="accept-invite" data-invite-id="${item._id}">Accept</button>
+                    <button class="btn btn-sm btn-success" data-action="accept-invite" data-invite-id="${item._id}" data-circle-id="${item.circle_id}">Accept</button>
                     <button class="btn btn-sm btn-secondary ms-2" data-action="reject-invite" data-invite-id="${item._id}">Decline</button>
                 </div>
             </div>`;
@@ -1347,11 +1347,21 @@ function renderActivityItems() {
             let contentHtml = '';
             let notificationLink = '#';
             switch (item.type_specific.type) {
+                case 'invite_received':
+                    contentHtml = `<img src="${generateAvatarUrl(item.type_specific.content.inviter_username)}" class="avatar-small me-2"> <strong>${item.type_specific.content.inviter_username}</strong> invited you to join <strong>${item.type_specific.content.circle_name}</strong>.`;
+                    if (item.type_specific.content.circle_id) {
+                        notificationLink = `#/circle/${item.type_specific.content.circle_id}`;
+                    }
+                    break;
                 case 'invite_accepted':
                     contentHtml = `<img src="${generateAvatarUrl(item.type_specific.content.invitee_username)}" class="avatar-small me-2"> <strong>${item.type_specific.content.invitee_username}</strong> accepted your invite to <strong>${item.type_specific.content.circle_name}</strong>.`;
                     if (item.type_specific.content.circle_id) {
                         notificationLink = `#/circle/${item.type_specific.content.circle_id}`;
                     }
+                    break;
+                case 'invite_rejected':
+                    contentHtml = `<img src="${generateAvatarUrl(item.type_specific.content.invitee_username)}" class="avatar-small me-2"> <strong>${item.type_specific.content.invitee_username}</strong> declined your invite to <strong>${item.type_specific.content.circle_name}</strong>.`;
+                    notificationLink = '#'; // No link for rejected invites
                     break;
                 case 'new_comment':
                     contentHtml = `<img src="${generateAvatarUrl(item.type_specific.content.commenter_username)}" class="avatar-small me-2"> <strong>${item.type_specific.content.commenter_username}</strong> commented on your post in <strong>${item.type_specific.content.circle_name}</strong>.`;
@@ -1947,10 +1957,10 @@ function renderFriendRequests() {
                 <div class="list-group-item d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-person-plus me-2"></i>${request.username}</span>
                     <div class="btn-group btn-group-sm">
-                        <button class="btn btn-success" data-action="accept-friend" data-friend-id="${request.user_id}">
+                        <button class="btn btn-success" data-action="accept-friend" data-friend-id="${request.friend_id}">
                             <i class="bi bi-check"></i>
                         </button>
-                        <button class="btn btn-danger" data-action="reject-friend" data-friend-id="${request.user_id}">
+                        <button class="btn btn-danger" data-action="reject-friend" data-friend-id="${request.friend_id}">
                             <i class="bi bi-x"></i>
                         </button>
                     </div>
@@ -1986,27 +1996,35 @@ async function sendFriendRequest(username) {
 }
 
 async function acceptFriendRequest(friendId) {
-    try {
-        await apiFetch(`/friends/${friendId}/accept`, {
-            method: 'POST'
-        });
-        showStatus('Friend request accepted!', 'success');
-        await loadFriends();
-    } catch (error) {
-        showStatus(error.message || 'Failed to accept friend request.', 'error');
+    if (!friendId) {
+        throw new Error('Friend ID is required');
     }
+    const response = await apiFetch(`/friends/${friendId}/accept`, {
+        method: 'POST'
+    });
+    showStatus('Friend request accepted!', 'success');
+    await loadFriends();
+    // Refresh activity center to update notifications
+    if (activityPoller) {
+        activityPoller.poll();
+    }
+    return response;
 }
 
 async function rejectFriendRequest(friendId) {
-    try {
-        await apiFetch(`/friends/${friendId}/reject`, {
-            method: 'POST'
-        });
-        showStatus('Friend request rejected.', 'info');
-        await loadFriends();
-    } catch (error) {
-        showStatus(error.message || 'Failed to reject friend request.', 'error');
+    if (!friendId) {
+        throw new Error('Friend ID is required');
     }
+    const response = await apiFetch(`/friends/${friendId}/reject`, {
+        method: 'POST'
+    });
+    showStatus('Friend request rejected.', 'info');
+    await loadFriends();
+    // Refresh activity center to update notifications
+    if (activityPoller) {
+        activityPoller.poll();
+    }
+    return response;
 }
 
 async function removeFriend(friendId) {
@@ -2494,8 +2512,11 @@ async function renderCircleFeed(circleId) {
             // Build game lobby display - use widget for active games, button for inactive
             let gameLobbiesHtml = '';
             let gameWidgetsHtml = '';
+            const existingGameTypes = new Set();
+            
             if (activeGameLobbies && activeGameLobbies.length > 0) {
                 activeGameLobbies.forEach(lobby => {
+                    existingGameTypes.add(lobby.game_type);
                     const gameTypeLabel = lobby.game_type === 'dominoes' ? '🎲 Dominoes' : '🃏 Blackjack';
                     const gameModeLabel = lobby.game_mode || 'classic';
                     const participantCount = lobby.participants ? lobby.participants.length : 0;
@@ -2507,30 +2528,16 @@ async function renderCircleFeed(circleId) {
                         const widgetId = `game-widget-${lobby.game_id}`;
                         const widgetHtml = createGamePortalWidgetHTML(lobby.game_id, circleId, lobby.game_type);
                         gameWidgetsHtml += widgetHtml;
-                        
-                        // Initialize widget after DOM is ready - use longer timeout to ensure DOM is ready
-                        setTimeout(() => {
-                            const widgetContainer = document.getElementById(widgetId);
-                            if (widgetContainer) {
-                                console.log('Initializing widget for game:', lobby.game_id, 'container:', widgetId);
-                                const widget = createGamePortalWidget(lobby.game_id, widgetId);
-                                if (widget) {
-                                    // Force immediate update to get current player count
-                                    widget.updateUI().catch(err => {
-                                        console.error('Error in initial widget update:', err);
-                                    });
-                                }
-                            } else {
-                                console.error('Widget container not found:', widgetId);
-                            }
-                        }, 300);
+                        // Widget initialization happens after DOM is ready (see below)
                     } else {
                         // No game_id yet - show simple join button in header
+                        // Use _id if id is not available (for backwards compatibility)
+                        const lobbyId = lobby.id || lobby._id || '';
                         gameLobbiesHtml += `
                             <div class="btn-group ms-2" role="group">
                                 <button class="btn btn-sm btn-warning" 
                                         data-action="join-game-lobby" 
-                                        data-lobby-id="${lobby.id}"
+                                        data-lobby-id="${lobbyId}"
                                         data-circle-id="${circleId}"
                                         data-game-type="${lobby.game_type}"
                                         data-game-id="${lobby.game_id || ''}"
@@ -2543,6 +2550,25 @@ async function renderCircleFeed(circleId) {
                     }
                 });
             }
+            
+            // Add buttons for missing game types
+            const allGameTypes = ['dominoes', 'blackjack'];
+            allGameTypes.forEach(gameType => {
+                if (!existingGameTypes.has(gameType)) {
+                    const gameTypeLabel = gameType === 'dominoes' ? '🎲 Dominoes' : '🃏 Blackjack';
+                    gameLobbiesHtml += `
+                        <div class="btn-group ms-2" role="group">
+                            <button class="btn btn-sm btn-success" 
+                                    data-action="create-game-lobby" 
+                                    data-circle-id="${circleId}"
+                                    data-game-type="${gameType}"
+                                    title="Create ${gameTypeLabel} lobby">
+                                <i class="bi bi-plus-circle"></i> ${gameTypeLabel}
+                            </button>
+                        </div>
+                    `;
+                }
+            });
             
             dom.circleHeader.innerHTML = `
            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3" ${colorStyle}>
@@ -2597,10 +2623,38 @@ async function renderCircleFeed(circleId) {
                 if (!widgetsContainer) {
                     widgetsContainer = document.createElement('div');
                     widgetsContainer.id = 'circleGameWidgets';
-                    widgetsContainer.className = 'mb-3';
-                    dom.circleHeader.insertAdjacentElement('afterend', widgetsContainer);
+                    widgetsContainer.className = 'mb-3 d-flex flex-wrap gap-2';
+                    // Insert after circle header
+                    const headerElement = dom.circleHeader;
+                    if (headerElement && headerElement.parentNode) {
+                        headerElement.parentNode.insertBefore(widgetsContainer, headerElement.nextSibling);
+                    } else {
+                        dom.circleHeader.insertAdjacentElement('afterend', widgetsContainer);
+                    }
                 }
                 widgetsContainer.innerHTML = gameWidgetsHtml;
+                
+                // Initialize widgets after DOM is ready
+                setTimeout(() => {
+                    activeGameLobbies.forEach(lobby => {
+                        if (lobby.game_id) {
+                            const widgetId = `game-widget-${lobby.game_id}`;
+                            const widgetContainer = document.getElementById(widgetId);
+                            if (widgetContainer) {
+                                console.log('Initializing widget for game:', lobby.game_id, 'container:', widgetId);
+                                const widget = createGamePortalWidget(lobby.game_id, widgetId);
+                                if (widget) {
+                                    // Force immediate update to get current player count
+                                    widget.updateUI().catch(err => {
+                                        console.error('Error in initial widget update:', err);
+                                    });
+                                }
+                            } else {
+                                console.error('Widget container not found:', widgetId);
+                            }
+                        }
+                    });
+                }, 500);
             } else {
                 // Remove widgets container if no active games
                 const widgetsContainer = document.getElementById('circleGameWidgets');
@@ -3451,94 +3505,91 @@ async function handleStartGameLobby(circleId, gameType) {
     }
 
     // Find the button that was clicked to show loading state
-    const button = document.querySelector(`[data-action="start-game-lobby"][data-circle-id="${circleId}"][data-game-type="${gameType}"]`);
+    const button = document.querySelector(`[data-action="create-game-lobby"][data-circle-id="${circleId}"][data-game-type="${gameType}"]`) ||
+                   document.querySelector(`[data-action="start-game-lobby"][data-circle-id="${circleId}"][data-game-type="${gameType}"]`);
     if (button) {
         setButtonLoading(button, true);
     }
     
     try {
-        // First, check if there's already an active lobby for this circle and game type in our backend
-        let existingLobby = null;
+        // ALWAYS use backend first - it ensures ONE lobby per game type per circle
+        // The backend's get_or_create_lobby function handles this with unique index
+        let backendLobby = null;
         try {
-            const activeLobbies = await apiFetch(`/game-lobbies/circles/${circleId}/active-lobbies`);
-            existingLobby = activeLobbies.find(l => l.game_type === gameType);
+            // Get or create lobby via backend (ensures one per game type per circle)
+            // Game Platform handles game_mode, AI, rules, etc.
+            backendLobby = await apiFetch('/game-lobbies', {
+                method: 'POST',
+                body: JSON.stringify({
+                    circle_id: circleId,
+                    game_type: gameType
+                })
+            });
         } catch (error) {
-            console.warn('Failed to check existing lobbies:', error);
+            console.error('Failed to get/create backend lobby:', error);
+            throw new Error('Failed to get or create game lobby: ' + (error.message || error));
         }
         
         // Generate player_id from browser fingerprint
         const playerId = await generateFingerprint();
         
-        let gameId = null;
-        let action = 'created';
-        let playerCount = 0;
+        let gameId = backendLobby.game_id;
+        let action = 'joined';
+        let playerCount = backendLobby.participants ? backendLobby.participants.length : 0;
         
-        // If we have an existing lobby with a game_id, use it
-        if (existingLobby && existingLobby.game_id) {
-            // Join the existing lobby via Game Portal
-            gameId = existingLobby.game_id;
-            action = 'joined';
-            
-            // Join our backend lobby if not already a participant
-            try {
-                const updatedLobby = await apiFetch(`/game-lobbies/${existingLobby.id}/join`, {
-                    method: 'POST'
-                });
-                playerCount = updatedLobby.participants ? updatedLobby.participants.length : 0;
-            } catch (joinError) {
-                console.warn('Failed to join backend lobby:', joinError);
-            }
-            
-            // Poll Game Portal to get current player count
-            try {
-                const pollResponse = await fetch(
-                    `https://apps.oblivio-company.com/experiments/game_portal/backend/game/${gameId}/poll`,
-                    { method: 'GET' }
-                );
-                if (pollResponse.ok) {
-                    const pollData = await pollResponse.json();
-                    playerCount = pollData.player_count || playerCount;
-                }
-            } catch (pollError) {
-                console.warn('Failed to poll game for player count:', pollError);
-            }
-        } else {
-            // No existing lobby - create or join via Game Portal
-            const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
-            const lobbyUrl = `${gamePortalApiUrl}/lobby/${circleId}/${gameType}`;
-            
-            const response = await fetch(lobbyUrl, {
+        // Use Game Platform's mycircles/join endpoint - it handles everything:
+        // 1. Gets or creates persistent lobby for circle_id + game_type (always exists, can have 0-4 players)
+        // 2. Joins the player automatically
+        // 3. Returns game_id, redirect_url, and player info
+        // Game Platform handles game_mode, AI, rules, etc. automatically
+        const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
+        const joinUrl = `${gamePortalApiUrl}/mycircles/join/${circleId}/${gameType}`;
+        
+        let redirectUrl = null;
+        try {
+            const joinResponse = await fetch(joinUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ player_id: playerId })
             });
             
-            if (!response.ok) {
-                throw new Error(`Failed to create/join lobby: ${response.status}`);
+            if (joinResponse.ok) {
+                const joinResult = await joinResponse.json();
+                const newGameId = joinResult.game_id || gameId;
+                redirectUrl = joinResult.redirect_url;
+                
+                // Update game_id if we got a new one or if backend didn't have one
+                if (newGameId && (!gameId || newGameId !== gameId)) {
+                    gameId = newGameId;
+                    action = joinResult.action || 'joined';
+                    playerCount = joinResult.player_count || playerCount;
+                    
+                    // Update backend lobby with game_id
+                    try {
+                        backendLobby = await apiFetch('/game-lobbies', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                circle_id: circleId,
+                                game_type: gameType,
+                                game_id: gameId,
+                                game_url: `https://apps.oblivio-company.com/experiments/game_portal?game=${gameId}&replace_placeholder=true`
+                            })
+                        });
+                    } catch (updateError) {
+                        console.warn('Failed to update backend lobby with game_id:', updateError);
+                    }
+                } else if (newGameId) {
+                    // Game_id already exists, just update player count
+                    playerCount = joinResult.player_count || playerCount;
+                    action = joinResult.action || 'joined';
+                }
+            } else {
+                console.warn('Failed to join Game Portal lobby:', joinResponse.status);
+                // Continue anyway - backend lobby exists
             }
-            
-            const result = await response.json();
-            gameId = result.game_id;
-            action = result.action || 'created';
-            playerCount = result.player_count || 0;
-            
-            // Sync lobby info to our backend
-            // Always call POST endpoint - it will return existing lobby or create new one
-            // If existing, it will update game_id if not already set
-            try {
-                await apiFetch('/game-lobbies', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        circle_id: circleId,
-                        game_type: gameType,
-                        game_id: gameId,
-                        game_url: `https://apps.oblivio-company.com/experiments/game_portal?game=${gameId}&replace_placeholder=true`
-                    })
-                });
-            } catch (lobbyError) {
-                // Non-critical - just log it
-                console.warn('Failed to sync lobby with our backend:', lobbyError);
-            }
+        } catch (joinError) {
+            console.warn('Failed to join Game Portal lobby:', joinError);
+            // Continue anyway - backend lobby exists
         }
         
         // Show status message
@@ -3548,8 +3599,10 @@ async function handleStartGameLobby(circleId, gameType) {
             showStatus(`Created ${gameType} lobby!`, 'success');
         }
         
-        // Open Game Portal with replace_placeholder=true
-        const gameUrl = `https://apps.oblivio-company.com/experiments/game_portal?game=${gameId}&replace_placeholder=true`;
+        // Open Game Portal - use redirect_url from Game Platform if available
+        // Otherwise construct URL with game_id
+        const gameUrl = redirectUrl || 
+                       `https://apps.oblivio-company.com/experiments/game_portal?game=${gameId}&replace_placeholder=true`;
         window.open(gameUrl, '_blank');
         
         // Start polling for game updates to show participant count
@@ -3632,35 +3685,16 @@ class GamePortalWidget {
         }
         
         try {
-            // Try both endpoints - the correct one might vary
-            const endpoints = [
-                `https://apps.oblivio-company.com/experiments/game_portal/backend/game/${this.gameId}/poll`,
-                `https://apps.oblivio-company.com/experiments/game_portal/backend/api/game/${this.gameId}/poll`
-            ];
+            // Use the correct endpoint from the guide
+            const endpoint = `https://apps.oblivio-company.com/experiments/game_portal/backend/api/game/${this.gameId}/poll`;
             
-            let gameData = null;
-            let lastError = null;
+            const response = await fetch(endpoint, { method: 'GET' });
             
-            for (const endpoint of endpoints) {
-                try {
-                    const response = await fetch(endpoint, { method: 'GET' });
-                    
-                    if (response.ok) {
-                        gameData = await response.json();
-                        break; // Success, exit loop
-                    } else if (response.status !== 404) {
-                        // If it's not a 404, this might be the right endpoint but with an error
-                        lastError = new Error(`HTTP ${response.status} from ${endpoint}`);
-                    }
-                } catch (err) {
-                    lastError = err;
-                    continue; // Try next endpoint
-                }
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
             }
             
-            if (!gameData) {
-                throw lastError || new Error('Failed to fetch game data from any endpoint');
-            }
+            const gameData = await response.json();
             
             // Always update on first poll, then only if state changed
             const stateHash = this.hashState(gameData);
@@ -3683,9 +3717,20 @@ class GamePortalWidget {
     }
 
     render(gameData) {
-        if (!this.container) return;
+        if (!this.container) {
+            console.warn('GamePortalWidget: Container not found for gameId:', this.gameId);
+            return;
+        }
         
         const { status, players, player_count, max_players, game_state_summary } = gameData;
+        
+        console.log('GamePortalWidget: Rendering game data:', {
+            gameId: this.gameId,
+            status,
+            player_count,
+            max_players,
+            players: players?.length || 0
+        });
 
         // Detect changes and show notifications
         if (this.previousState) {
@@ -3695,8 +3740,10 @@ class GamePortalWidget {
         // Update status badge
         this.updateStatusBadge(status);
 
-        // Update player list
-        this.updatePlayerList(players, player_count, max_players);
+        // Update player list - ensure we have valid values
+        const validPlayerCount = player_count || 0;
+        const validMaxPlayers = max_players || 4;
+        this.updatePlayerList(players || [], validPlayerCount, validMaxPlayers);
 
         // Update game state (if in progress)
         if (game_state_summary) {
@@ -3712,7 +3759,30 @@ class GamePortalWidget {
     detectChanges(oldState, newState) {
         // Player joined
         if (newState.player_count > oldState.player_count) {
-            this.showNotification('👤 Player joined!', 'success');
+            // Special message for first player joining empty lobby
+            if (oldState.player_count === 0) {
+                this.showNotification('✨ First player joined and became host!', 'success');
+            } else {
+                this.showNotification('👤 Player joined!', 'success');
+            }
+        }
+
+        // Player left (lobby might be empty now)
+        if (newState.player_count < oldState.player_count) {
+            if (newState.player_count === 0) {
+                this.showNotification('✨ Lobby is now empty - next player becomes host!', 'info');
+            } else {
+                this.showNotification('👋 Player left', 'info');
+            }
+        }
+
+        // Host changed (magical: new host assigned)
+        if (oldState.host_id !== newState.host_id) {
+            if (!oldState.host_id && newState.host_id) {
+                this.showNotification('✨ New host assigned!', 'success');
+            } else if (oldState.host_id && !newState.host_id) {
+                this.showNotification('✨ Host left - next player becomes host!', 'info');
+            }
         }
 
         // Game started
@@ -3723,6 +3793,11 @@ class GamePortalWidget {
         // Round finished
         if (oldState.status === 'in_progress' && newState.status === 'round_finished') {
             this.showNotification('✅ Round complete!', 'success');
+        }
+
+        // Hand finished
+        if (oldState.status === 'in_progress' && newState.status === 'hand_finished') {
+            this.showNotification('✅ Hand complete!', 'success');
         }
 
         // Game finished
@@ -3775,37 +3850,65 @@ class GamePortalWidget {
     }
 
     updatePlayerList(players, currentCount, maxCount) {
+        // Filter out placeholder and temporary player IDs for display (per guide)
+        const validPlayers = (players || []).filter(p => {
+            const pid = p.player_id || p;
+            // Filter out placeholder players and temporary player IDs
+            return !pid.startsWith('PLACEHOLDER_') && 
+                   !pid.startsWith('placeholder_') &&
+                   !pid.match(/^player_\d+/) &&
+                   !(pid.startsWith('player_') && pid.length > 7 && pid.substring(7).match(/^[a-z0-9]+$/));
+        });
+
         // Update compact player list
         const playerListEl = this.container.querySelector('.players-list-compact');
         if (playerListEl) {
-            // Filter out suspicious player IDs for display
-            const validPlayers = (players || []).filter(p => {
-                const pid = p.player_id || p;
-                return !pid || !pid.match(/^player_\d+/);
-            });
-
-            if (validPlayers.length > 0) {
+            // Handle empty lobby - show empty state (magical!)
+            if (validPlayers.length === 0) {
+                playerListEl.innerHTML = `
+                    <div class="empty-lobby">
+                        <span class="empty-icon">✨</span>
+                        <span class="empty-text">Empty lobby - next player becomes host!</span>
+                    </div>
+                `;
+            } else {
                 playerListEl.innerHTML = validPlayers.slice(0, 4).map(p => {
                     const pid = p.player_id || p;
                     const isAI = p.is_ai || (pid && pid.startsWith('AI_'));
-                    const badge = isAI ? '🤖' : '👤';
-                    return `<span class="player-chip ${isAI ? 'ai-player' : ''}" title="${isAI ? 'AI' : this.formatPlayerId(pid)}">${badge}</span>`;
+                    const isSpectator = p.is_spectator || false;
+                    const badge = isAI ? '🤖' : isSpectator ? '👀' : '👤';
+                    const displayName = isAI ? 'AutoBot' : this.formatPlayerId(pid);
+                    return `<div class="player-item ${isAI ? 'ai-player' : ''}" title="${displayName}">
+                        <span class="player-badge">${badge}</span>
+                        <span class="player-name">${displayName}</span>
+                    </div>`;
                 }).join('');
-            } else {
-                playerListEl.innerHTML = '<span class="text-muted small">No players yet</span>';
             }
         }
 
-        // Update compact player count
+        // Update compact player count - magical: shows 0/4 when empty!
         const countEl = this.container.querySelector('.player-count-compact');
         if (countEl) {
-            countEl.textContent = `${currentCount}/${maxCount}`;
+            // Add special styling for empty lobby
+            if (currentCount === 0) {
+                countEl.classList.add('empty-lobby-count');
+                countEl.textContent = `✨ ${currentCount}/${maxCount} - Join to become host!`;
+            } else {
+                countEl.classList.remove('empty-lobby-count');
+                countEl.textContent = `${currentCount}/${maxCount}`;
+            }
         }
         
         // Also update regular player count if it exists
         const regularCountEl = this.container.querySelector('.player-count');
         if (regularCountEl) {
-            regularCountEl.textContent = `${currentCount}/${maxCount} players`;
+            if (currentCount === 0) {
+                regularCountEl.classList.add('empty-lobby-count');
+                regularCountEl.textContent = `✨ ${currentCount}/${maxCount} players - Join to become host!`;
+            } else {
+                regularCountEl.classList.remove('empty-lobby-count');
+                regularCountEl.textContent = `${currentCount}/${maxCount} players`;
+            }
         }
     }
 
@@ -3868,24 +3971,40 @@ class GamePortalWidget {
         const joinBtn = this.container.querySelector('.join-button-compact') || this.container.querySelector('.join-button');
         if (!joinBtn) return;
 
-        const { status, player_count, max_players, can_join } = gameData;
+        const { status, player_count, max_players, can_join, host_id } = gameData;
 
         if (status === 'finished') {
             joinBtn.textContent = 'Game Finished';
             joinBtn.disabled = true;
             joinBtn.classList.add('disabled');
+            joinBtn.classList.remove('magical-join');
         } else if (player_count >= max_players) {
             joinBtn.textContent = 'Game Full';
             joinBtn.disabled = true;
             joinBtn.classList.add('disabled');
+            joinBtn.classList.remove('magical-join');
         } else if (status === 'in_progress') {
             joinBtn.textContent = 'Join as Spectator';
             joinBtn.disabled = false;
             joinBtn.classList.remove('disabled');
+            joinBtn.classList.remove('magical-join');
+        } else if (player_count === 0) {
+            // Magical: Empty lobby - next player becomes host!
+            joinBtn.textContent = `✨ Join & Become Host (${player_count}/${max_players})`;
+            joinBtn.disabled = false;
+            joinBtn.classList.remove('disabled');
+            joinBtn.classList.add('magical-join');
+        } else if (!host_id || host_id === null) {
+            // No host - next player becomes host
+            joinBtn.textContent = `✨ Join & Become Host (${player_count}/${max_players})`;
+            joinBtn.disabled = false;
+            joinBtn.classList.remove('disabled');
+            joinBtn.classList.add('magical-join');
         } else {
             joinBtn.textContent = `Join Game (${player_count}/${max_players})`;
             joinBtn.disabled = !can_join;
             joinBtn.classList.toggle('disabled', !can_join);
+            joinBtn.classList.remove('magical-join');
         }
 
         // Update link
@@ -3898,15 +4017,26 @@ class GamePortalWidget {
     }
 
     formatPlayerId(playerId) {
-        // Format player ID for display (hide suspicious IDs)
+        // Format player ID for display (per guide - filter out placeholder and temporary IDs)
         if (!playerId) return 'Unknown Player';
-        if (playerId.match(/^player_\d+/)) {
+        
+        // Filter out placeholder players
+        if (playerId.startsWith('PLACEHOLDER_') || playerId.startsWith('placeholder_')) {
             return 'Unknown Player';
         }
+        
+        // Filter out temporary player IDs (pattern: "player_" followed by alphanumeric)
+        if (playerId.match(/^player_\d+/) || 
+            (playerId.startsWith('player_') && playerId.length > 7 && playerId.substring(7).match(/^[a-z0-9]+$/))) {
+            return 'Unknown Player';
+        }
+        
+        // AI players
         if (playerId.startsWith('AI_')) {
             return 'AutoBot';
         }
-        // Show first 8 characters
+        
+        // Show first 8 characters of browser fingerprint
         return `Player ${playerId.substring(0, 8)}`;
     }
 
@@ -6033,11 +6163,31 @@ Added videos will appear here. You can drag to reorder.
                     break;
                 }
             case 'accept-friend':
-                await acceptFriendRequest(data.friendId);
-                break;
+                {
+                    setButtonLoading(target, true);
+                    try {
+                        await acceptFriendRequest(data.friendId);
+                    } catch (error) {
+                        console.error('Failed to accept friend request:', error);
+                        showStatus(error.message || 'Failed to accept friend request', 'danger');
+                    } finally {
+                        setButtonLoading(target, false);
+                    }
+                    break;
+                }
             case 'reject-friend':
-                await rejectFriendRequest(data.friendId);
-                break;
+                {
+                    setButtonLoading(target, true);
+                    try {
+                        await rejectFriendRequest(data.friendId);
+                    } catch (error) {
+                        console.error('Failed to reject friend request:', error);
+                        showStatus(error.message || 'Failed to reject friend request', 'danger');
+                    } finally {
+                        setButtonLoading(target, false);
+                    }
+                    break;
+                }
             case 'remove-friend':
                 await removeFriend(data.friendId);
                 break;
@@ -6106,32 +6256,106 @@ Added videos will appear here. You can drag to reorder.
                     
                     setButtonLoading(target, true);
                     try {
+                        // ALWAYS use backend first - ensures ONE lobby per game type per circle
+                        // The POST endpoint already adds the user to the lobby if not already a participant
+                        let backendLobby = null;
+                        try {
+                            backendLobby = await apiFetch('/game-lobbies', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    circle_id: circleId,
+                                    game_type: gameType
+                                })
+                            });
+                        } catch (error) {
+                            console.error('Failed to get/create backend lobby:', error);
+                            throw new Error('Failed to get or create game lobby: ' + (error.message || error));
+                        }
+                        
                         // Generate player_id from browser fingerprint
                         const playerId = await generateFingerprint();
                         
-                        // Use MyCircles endpoint to join
-                        const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
-                        const joinUrl = `${gamePortalApiUrl}/mycircles/join/${circleId}/${gameType}`;
-                        
-                        const response = await fetch(joinUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ player_id: playerId })
-                        });
-                        
-                        if (!response.ok) {
-                            const errorText = await response.text();
-                            throw new Error(`Failed to join lobby: ${response.status} - ${errorText}`);
+                        // Join via Game Portal if we have a game_id
+                        const finalGameId = backendLobby.game_id || gameId;
+                        if (finalGameId) {
+                            const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
+                            const joinUrl = `${gamePortalApiUrl}/mycircles/join/${circleId}/${gameType}`;
+                            
+                            try {
+                                const response = await fetch(joinUrl, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ player_id: playerId })
+                                });
+                                
+                                if (response.ok) {
+                                    const result = await response.json();
+                                    const redirectUrl = result.redirect_url || `https://apps.oblivio-company.com/experiments/game_portal?game=${result.game_id || finalGameId}&replace_placeholder=true`;
+                                    window.open(redirectUrl, '_blank');
+                                    showStatus(`Joined ${gameType} lobby!`, 'success');
+                                } else {
+                                    // Fallback: open with game_id
+                                    window.open(`https://apps.oblivio-company.com/experiments/game_portal?game=${finalGameId}&replace_placeholder=true`, '_blank');
+                                    showStatus(`Joined ${gameType} lobby!`, 'success');
+                                }
+                            } catch (portalError) {
+                                console.warn('Failed to join Game Portal lobby:', portalError);
+                                // Fallback: open with game_id
+                                window.open(`https://apps.oblivio-company.com/experiments/game_portal?game=${finalGameId}&replace_placeholder=true`, '_blank');
+                                showStatus(`Joined ${gameType} lobby!`, 'success');
+                            }
+                        } else {
+                            // No game_id yet - use Game Platform's mycircles/join endpoint
+                            // It handles getting/creating lobby and joining player automatically
+                            const gamePortalApiUrl = 'https://apps.oblivio-company.com/experiments/game_portal/backend';
+                            const joinUrl = `${gamePortalApiUrl}/mycircles/join/${circleId}/${gameType}`;
+                            
+                            try {
+                                const response = await fetch(joinUrl, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ player_id: playerId })
+                                });
+                                
+                                if (response.ok) {
+                                    const result = await response.json();
+                                    const newGameId = result.game_id;
+                                    
+                                    if (newGameId) {
+                                        // Update backend lobby with game_id
+                                        try {
+                                            await apiFetch('/game-lobbies', {
+                                                method: 'POST',
+                                                body: JSON.stringify({
+                                                    circle_id: circleId,
+                                                    game_type: gameType,
+                                                    game_id: newGameId,
+                                                    game_url: `https://apps.oblivio-company.com/experiments/game_portal?game=${newGameId}&replace_placeholder=true`
+                                                })
+                                            });
+                                        } catch (updateError) {
+                                            console.warn('Failed to update backend lobby with game_id:', updateError);
+                                        }
+                                        
+                                        // Use redirect_url from Game Platform if available, otherwise construct it
+                                        const gameUrl = result.redirect_url || 
+                                                       `https://apps.oblivio-company.com/experiments/game_portal?game=${newGameId}&replace_placeholder=true`;
+                                        window.open(gameUrl, '_blank');
+                                        showStatus(`Joined ${gameType} lobby!`, 'success');
+                                        
+                                        // Start polling
+                                        startGamePolling(newGameId, newGameId);
+                                    } else {
+                                        showStatus(`Joined ${gameType} lobby! Waiting for game to start...`, 'info');
+                                    }
+                                } else {
+                                    showStatus(`Joined ${gameType} lobby! Waiting for game to start...`, 'info');
+                                }
+                            } catch (portalError) {
+                                console.warn('Failed to join Game Portal lobby:', portalError);
+                                showStatus(`Joined ${gameType} lobby! Waiting for game to start...`, 'info');
+                            }
                         }
-                        
-                        const result = await response.json();
-                        const finalGameId = result.game_id || gameId;
-                        
-                        showStatus(`Joined ${gameType} lobby!`, 'success');
-                        
-                        // Redirect using the redirect_url from the response
-                        const urlToOpen = result.redirect_url || `https://apps.oblivio-company.com/experiments/game_portal?game=${finalGameId}&replace_placeholder=true`;
-                        window.open(urlToOpen, '_blank');
                         
                         // Start polling if we have a game_id
                         if (finalGameId) {
@@ -6145,7 +6369,7 @@ Added videos will appear here. You can drag to reorder.
                             await widget.updateUI();
                         }
                         
-                        // Refresh the circle view to update lobby buttons
+                        // Refresh circle feed to update lobby display
                         await resetAndRenderCircleFeed(circleId);
                     } catch (error) {
                         console.error('Error joining game lobby:', error);
@@ -6186,6 +6410,69 @@ Added videos will appear here. You can drag to reorder.
             case 'open-yt-search':
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('youtubeSearchModal')).show();
                 break;
+            case 'open-start-game-modal':
+                {
+                    const circleId = data.circleId;
+                    if (circleId) {
+                        document.getElementById('startGameCircleId').value = circleId;
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('startGameModal')).show();
+                    }
+                    break;
+                }
+            case 'create-game-lobby':
+                {
+                    const circleId = data.circleId;
+                    const gameType = data.gameType;
+                    
+                    if (!circleId || !gameType) {
+                        showStatus('Missing circle ID or game type', 'danger');
+                        break;
+                    }
+                    
+                    setButtonLoading(target, true);
+                    try {
+                        // Create/join game lobby - Game Platform handles game_mode, AI, rules, etc.
+                        await handleStartGameLobby(circleId, gameType);
+                        
+                        // Refresh circle feed to show the new game
+                        await resetAndRenderCircleFeed(circleId);
+                    } catch (error) {
+                        console.error('Failed to create game lobby:', error);
+                        showStatus(error.message || 'Failed to create game lobby', 'danger');
+                    } finally {
+                        setButtonLoading(target, false);
+                    }
+                    break;
+                }
+            case 'create-game-from-circle':
+                {
+                    const circleId = document.getElementById('startGameCircleId')?.value;
+                    const gameType = document.getElementById('startGameType')?.value;
+                    
+                    if (!circleId || !gameType) {
+                        showStatus('Please select a game type', 'warning');
+                        break;
+                    }
+                    
+                    setButtonLoading(target, true);
+                    try {
+                        // Close modal first
+                        const modal = bootstrap.Modal.getInstance('#startGameModal');
+                        if (modal) modal.hide();
+                        
+                        // Create/join game lobby - Game Platform handles game_mode, AI, rules, etc.
+                        await handleStartGameLobby(circleId, gameType);
+                        
+                        // Refresh circle feed to show the new game
+                        await resetAndRenderCircleFeed(circleId);
+                    } catch (error) {
+                        console.error('Failed to create game:', error);
+                        showStatus(error.message || 'Failed to create game', 'danger');
+                    } finally {
+                        setButtonLoading(target, false);
+                    }
+                    break;
+                }
             case 'open-comments':
                 e.preventDefault();
                 handleOpenCommentsModal(data.postId, data.postAuthorUsername);
@@ -6244,13 +6531,27 @@ Added videos will appear here. You can drag to reorder.
                 {
                     setButtonLoading(target, true);
                     try {
-                        await apiFetch(`/invitations/${data.inviteId}/accept`, {
+                        const response = await apiFetch(`/invitations/${data.inviteId}/accept`, {
                             method: 'POST'
                         });
                         showStatus('Invitation accepted!', 'success');
-                        await Promise.all([openNotificationsModal(), activityPoller.poll(), fetchAndRenderAll()]);
+                        // Close notifications modal first
+                        const modal = bootstrap.Modal.getInstance('#notificationsModal');
+                        if (modal) modal.hide();
+                        // Get circle_id from data attribute (convert to string if needed)
+                        const circleId = String(data.circleId || '');
+                        // Refresh everything first to ensure circles are loaded
+                        await Promise.all([activityPoller.poll(), fetchAndRenderAll()]);
+                        // Navigate to the circle after refresh completes
+                        if (circleId) {
+                            // Small delay to ensure circles are rendered
+                            setTimeout(() => {
+                                window.location.hash = `#/circle/${circleId}`;
+                            }, 100);
+                        }
                     } catch (error) {
                         console.error('Failed to accept invitation:', error);
+                        showStatus(error.message || 'Failed to accept invitation', 'danger');
                     } finally {
                         setButtonLoading(target, false);
                     }

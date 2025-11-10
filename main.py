@@ -598,6 +598,7 @@ class FriendOut(BaseModel):
 class FriendRequestOut(BaseModel):
     id: PyObjectId = Field(alias="_id")
     user_id: PyObjectId
+    friend_id: PyObjectId
     username: str
     status: FriendStatusEnum
     created_at: datetime
@@ -1917,6 +1918,19 @@ async def invite_user_to_circle(
 
     if invitee["_id"] == current_user.id:
         raise HTTPException(status_code=400, detail="You cannot invite yourself.")
+
+    # Check if users are friends before allowing invitation
+    friendship = friends_collection.find_one({
+        "$or": [
+            {"user_id": current_user.id, "friend_id": invitee["_id"], "status": FriendStatusEnum.accepted.value},
+            {"user_id": invitee["_id"], "friend_id": current_user.id, "status": FriendStatusEnum.accepted.value}
+        ]
+    })
+    if not friendship:
+        raise HTTPException(
+            status_code=400, 
+            detail="You must be friends with this user before inviting them to a circle. Please send a friend request first."
+        )
 
     if any(m['user_id'] == invitee["_id"] for m in circle.get("members", [])):
         raise HTTPException(status_code=400, detail="User is already a member of this circle.")
