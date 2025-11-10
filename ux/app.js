@@ -2508,13 +2508,15 @@ async function renderCircleFeed(circleId) {
                         const widgetHtml = createGamePortalWidgetHTML(lobby.game_id, circleId, lobby.game_type);
                         gameWidgetsHtml += widgetHtml;
                         
-                        // Initialize widget after DOM is ready
+                        // Initialize widget after DOM is ready - use longer timeout to ensure DOM is ready
                         setTimeout(() => {
                             const widgetContainer = document.getElementById(widgetId);
                             if (widgetContainer) {
-                                createGamePortalWidget(lobby.game_id, widgetId);
+                                const widget = createGamePortalWidget(lobby.game_id, widgetId);
+                                // Force immediate update to get current player count
+                                widget.updateUI();
                             }
-                        }, 100);
+                        }, 200);
                     } else {
                         // No game_id yet - show simple join button in header
                         gameLobbiesHtml += `
@@ -3733,33 +3735,37 @@ class GamePortalWidget {
     }
 
     updatePlayerList(players, currentCount, maxCount) {
-        const playerListEl = this.container.querySelector('.players-list');
-        if (!playerListEl) return;
+        // Update compact player list
+        const playerListEl = this.container.querySelector('.players-list-compact');
+        if (playerListEl) {
+            // Filter out suspicious player IDs for display
+            const validPlayers = (players || []).filter(p => {
+                const pid = p.player_id || p;
+                return !pid || !pid.match(/^player_\d+/);
+            });
 
-        // Filter out suspicious player IDs for display
-        const validPlayers = (players || []).filter(p => {
-            const pid = p.player_id || p;
-            return !pid || !pid.match(/^player_\d+/);
-        });
+            if (validPlayers.length > 0) {
+                playerListEl.innerHTML = validPlayers.slice(0, 4).map(p => {
+                    const pid = p.player_id || p;
+                    const isAI = p.is_ai || (pid && pid.startsWith('AI_'));
+                    const badge = isAI ? '🤖' : '👤';
+                    return `<span class="player-chip ${isAI ? 'ai-player' : ''}" title="${isAI ? 'AI' : this.formatPlayerId(pid)}">${badge}</span>`;
+                }).join('');
+            } else {
+                playerListEl.innerHTML = '<span class="text-muted small">No players yet</span>';
+            }
+        }
 
-        playerListEl.innerHTML = validPlayers.map(p => {
-            const pid = p.player_id || p;
-            const isAI = p.is_ai || (pid && pid.startsWith('AI_'));
-            const isSpectator = p.is_spectator || false;
-            
-            const badge = isAI ? '🤖 AI' : isSpectator ? '👀 Spectator' : '👤';
-            const displayName = isAI ? 'AutoBot' : this.formatPlayerId(pid);
-            
-            return `<div class="player-item ${isAI ? 'ai-player' : ''}">
-                <span class="player-badge">${badge}</span>
-                <span class="player-name">${displayName}</span>
-            </div>`;
-        }).join('');
-
-        // Update player count
-        const countEl = this.container.querySelector('.player-count');
+        // Update compact player count
+        const countEl = this.container.querySelector('.player-count-compact');
         if (countEl) {
-            countEl.textContent = `${currentCount}/${maxCount} players`;
+            countEl.textContent = `${currentCount}/${maxCount}`;
+        }
+        
+        // Also update regular player count if it exists
+        const regularCountEl = this.container.querySelector('.player-count');
+        if (regularCountEl) {
+            regularCountEl.textContent = `${currentCount}/${maxCount} players`;
         }
     }
 
@@ -3819,7 +3825,7 @@ class GamePortalWidget {
     }
 
     updateJoinButton(gameData) {
-        const joinBtn = this.container.querySelector('.join-button');
+        const joinBtn = this.container.querySelector('.join-button-compact') || this.container.querySelector('.join-button');
         if (!joinBtn) return;
 
         const { status, player_count, max_players, can_join } = gameData;
@@ -3954,20 +3960,25 @@ function createGamePortalWidget(gameId, containerId) {
 // Helper function to create widget HTML structure
 function createGamePortalWidgetHTML(gameId, circleId, gameType) {
     const widgetId = `game-widget-${gameId || circleId}-${gameType}`;
+    const gameIcon = gameType === 'dominoes' ? '🎲' : '🃏';
+    const gameName = gameType === 'dominoes' ? 'Dominoes' : 'Blackjack';
+    const gameClass = `game-widget-${gameType}`;
+    
     return `
-        <div id="${widgetId}" class="game-portal-widget">
-            <div class="widget-header">
-                <h3>🎮 Game Portal</h3>
-                <span class="status-badge status-waiting">⏳ Waiting</span>
+        <div id="${widgetId}" class="game-portal-widget ${gameClass}">
+            <div class="widget-header-compact">
+                <div class="widget-title">
+                    <span class="game-icon">${gameIcon}</span>
+                    <span class="game-name">${gameName}</span>
+                    <span class="status-badge status-waiting">⏳ Waiting</span>
+                </div>
+                <div class="player-count-compact">0/4</div>
             </div>
-            <div class="widget-body">
-                <div class="player-count">0/4 players</div>
-                <div class="players-list"></div>
-                <div class="game-state"></div>
-                <div class="current-turn" style="display: none;"></div>
-                <div class="round-number" style="display: none;"></div>
-                <button class="join-button" data-action="join-game-lobby" data-circle-id="${circleId}" data-game-type="${gameType}" data-game-id="${gameId || ''}">
-                    Join Game
+            <div class="widget-body-compact">
+                <div class="players-list-compact"></div>
+                <div class="game-state-compact"></div>
+                <button class="join-button-compact" data-action="join-game-lobby" data-circle-id="${circleId}" data-game-type="${gameType}" data-game-id="${gameId || ''}">
+                    Join
                 </button>
             </div>
             <div class="error-message" style="display: none;"></div>
@@ -6070,6 +6081,13 @@ Added videos will appear here. You can drag to reorder.
                         // Start polling if we have a game_id
                         if (finalGameId) {
                             startGamePolling(finalGameId, finalGameId);
+                        }
+                        
+                        // Refresh the widget if it exists
+                        if (finalGameId && gamePortalWidgets.has(finalGameId)) {
+                            const widget = gamePortalWidgets.get(finalGameId);
+                            // Force immediate update to get current player count
+                            await widget.updateUI();
                         }
                         
                         // Refresh the circle view to update lobby buttons

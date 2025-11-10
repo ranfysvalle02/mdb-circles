@@ -795,13 +795,123 @@ a:hover {
 }
 
 /* Game Portal Widget Styles */
+#circleGameWidgets {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
 .game-portal-widget {
   border: 2px solid var(--border-color);
-  border-radius: 12px;
-  padding: 1.5rem;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
   background: var(--card-background);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  margin-bottom: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 200px;
+  max-width: 280px;
+  flex: 1 1 auto;
+}
+
+/* Game-specific styling */
+.game-widget-dominoes {
+  border-left: 4px solid #f59e0b;
+}
+
+.game-widget-blackjack {
+  border-left: 4px solid #8b5cf6;
+}
+
+.widget-header-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.widget-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.game-icon {
+  font-size: 1.25rem;
+}
+
+.game-name {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-color);
+}
+
+.player-count-compact {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted-color);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.widget-body-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.players-list-compact {
+  display: flex;
+  gap: 0.25rem;
+  flex: 1;
+  min-height: 24px;
+  align-items: center;
+}
+
+.player-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.875rem;
+  cursor: help;
+}
+
+.player-chip.ai-player {
+  background: rgba(254, 243, 199, 0.3);
+}
+
+.game-state-compact {
+  display: none;
+}
+
+.join-button-compact {
+  padding: 0.375rem 0.75rem;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  color: white;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.75rem;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+
+.join-button-compact:hover:not(.disabled) {
+  opacity: 0.9;
+}
+
+.join-button-compact.disabled {
+  background: var(--text-muted-color);
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .widget-header {
