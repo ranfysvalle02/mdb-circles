@@ -4717,8 +4717,7 @@ document.addEventListener('DOMContentLoaded', () => {
         '#helpModal',
         '#chatParticipantSelectorModal',
         '#chatModal',
-        '#editPostModal',
-        '#startGameModal'
+        '#editPostModal'
     ].forEach(id => {
         const modalEl = document.querySelector(id);
         if (modalEl) {

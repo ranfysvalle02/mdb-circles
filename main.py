@@ -227,7 +227,6 @@ class PostTypeEnum(str, Enum):
     wishlist = "wishlist"
     image = "image"
     spotify_playlist = "spotify_playlist"
-    game = "game"
     webrtc = "webrtc"
 
 class UserRegister(BaseModel):
@@ -430,7 +429,6 @@ class PostCreate(BaseModel):
     images_data: Optional[List[ImageData]] = Field(default=None, max_length=1)
     poll_duration_hours: Optional[int] = None
     spotify_playlist_data: Optional[SpotifyPlaylistData] = None
-    game_data: Optional[GameData] = None
     webrtc_data: Optional[WebRTCData] = None
     is_chat_enabled: bool = False
     chat_participant_ids: Optional[List[PyObjectId]] = None
@@ -452,8 +450,6 @@ class PostCreate(BaseModel):
             raise ValueError('An image post must contain image_data from an upload or a direct link.')
         if self.post_type == PostTypeEnum.spotify_playlist and not self.link and not self.spotify_playlist_data:
             raise ValueError('A Spotify playlist post must contain a link.')
-        if self.post_type == PostTypeEnum.game and not self.game_data:
-            raise ValueError('A game post must contain game_data.')
         if self.post_type == PostTypeEnum.webrtc and not self.webrtc_data:
             raise ValueError('A WebRTC post must contain webrtc_data.')
 
