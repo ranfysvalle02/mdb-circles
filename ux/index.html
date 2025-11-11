@@ -1493,58 +1493,6 @@
       </div>
     </div>
 
-    <div class="modal fade" id="startGameModal" tabindex="-1">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title"><i class="bi bi-controller"></i> Start a Game</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <p class="small mb-3">Choose a game to play with your circle members!</p>
-            <input type="hidden" id="startGameCircleId">
-            <div class="mb-3">
-              <label for="startGameType" class="form-label">Game Type:</label>
-              <select id="startGameType" class="form-select">
-                <option value="">-- Select Game Type --</option>
-                <option value="dominoes">🎲 Dominoes</option>
-                <option value="blackjack">🃏 Blackjack</option>
-              </select>
-            </div>
-            <div class="mb-3" id="dominoGameModeContainer" style="display: none;">
-              <label for="dominoGameMode" class="form-label">Game Mode:</label>
-              <select id="dominoGameMode" class="form-select">
-                <option value="classic">Classic (Best of 5)</option>
-                <option value="boricua">Boricua Style (First to 500, 2v2)</option>
-              </select>
-            </div>
-            <div class="mb-3" id="blackjackGameModeContainer" style="display: none;">
-              <label for="blackjackGameMode" class="form-label">Game Mode:</label>
-              <select id="blackjackGameMode" class="form-select">
-                <option value="best_of_5">Best of 5 (First to 3 Wins)</option>
-                <option value="best_of_10">Best of 10 (First to 5 Wins)</option>
-              </select>
-            </div>
-            <div class="mb-3">
-              <label for="startGameAiCount" class="form-label">🤖 AI Players (Optional):</label>
-              <select id="startGameAiCount" class="form-select">
-                <option value="0">None (Wait for real players)</option>
-                <option value="1">1 AI Player</option>
-                <option value="2" selected>2 AI Players</option>
-                <option value="3">3 AI Players (Max)</option>
-              </select>
-              <small class="form-text text-muted">Minimum players will be auto-filled if needed. Maximum 3 AI players (4 players total max).</small>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-warning" id="createGameBtn" data-action="create-game-from-circle">
-              <i class="bi bi-controller"></i> Create Game
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
     
 
     <script
