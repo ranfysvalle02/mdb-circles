@@ -2158,7 +2158,7 @@ function renderMyCircles(circles) {
                 <span class="editable-personal-name" data-circle-id="${c._id}">${displayName}</span>
                 ${c.personal_name ? `<span class="text-muted small" style="font-weight: normal;">(${c.name})</span>` : ''}
                 <button class="btn btn-sm btn-outline-secondary ms-auto" style="font-size: 0.7rem;" data-action="edit-personal-name" data-circle-id="${c._id}" title="Rename">
-                    <i class="bi bi-pencil-square"></i> Rename
+                    <i class="bi bi-pencil-square"></i> &nbsp;
                 </button>
             </div>
             ${tagsHtml}
@@ -2505,7 +2505,7 @@ async function renderCircleFeed(circleId) {
                   <span class="editable-personal-name" data-circle-id="${circleId}">${displayName}</span>
                   ${circleDetails.personal_name ? `<span class="text-muted small" style="font-weight: normal;">(${circleDetails.name})</span>` : ''}
                   <button class="btn btn-sm btn-outline-secondary ms-2" style="font-size: 0.75rem;" data-action="edit-circle-personal-name" data-circle-id="${circleId}" title="Rename">
-                    <i class="bi bi-pencil-square"></i> Rename
+                    <i class="bi bi-pencil-square"></i> &nbsp;
                   </button>
                 </h2>
                 ${directMessageBadge}
@@ -6029,7 +6029,6 @@ ${options.length <= 2 ? 'disabled' : ''}>
             }
         }
         
-        // Removed: Clicking on personal name no longer edits it - use the rename button instead
     });
 
     initTheme();
