@@ -3587,47 +3587,232 @@ class CircleGameIntegration {
             requestBody.ai_count = aiCount;
         }
         
-        const response = await fetch(
-            `${this.baseUrl}/mycircles/join/${this.circleId}/${gameType}`,
+        // Try mycircles/join endpoint first
+        let response;
+        let errorDetail = null;
+        
+        try {
+            response = await fetch(
+                `${this.baseUrl}/mycircles/join/${this.circleId}/${gameType}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                }
+            );
+            
+            if (response.ok) {
+                const result = await response.json();
+                
+                // Check if result has an error
+                if (result.error) {
+                    // If error is "Game not found" or similar, create a new game
+                    if (result.error.toLowerCase().includes('not found') || 
+                        result.error.toLowerCase().includes('game not found') ||
+                        result.error.toLowerCase().includes('lobby not found')) {
+                        console.log('Game not found, creating new game...');
+                        return await this.createNewGameAndJoin(gameType, gameMode, aiCount);
+                    }
+                    throw new Error(result.error);
+                }
+                
+                // Validate that we got a game_id
+                if (!result.game_id) {
+                    // No game_id returned, create a new game
+                    console.log('No game_id returned, creating new game...');
+                    return await this.createNewGameAndJoin(gameType, gameMode, aiCount);
+                }
+                
+                return result;
+            } else {
+                // Handle error response
+                try {
+                    const error = await response.json();
+                    errorDetail = error.detail || error.error || error.message;
+                } catch (e) {
+                    errorDetail = response.statusText;
+                }
+                
+                // If 404 or "not found", create a new game
+                if (response.status === 404 || 
+                    (errorDetail && (errorDetail.toLowerCase().includes('not found') || 
+                                     errorDetail.toLowerCase().includes('game not found') ||
+                                     errorDetail.toLowerCase().includes('lobby not found')))) {
+                    console.log('Game/lobby not found (404), creating new game...');
+                    return await this.createNewGameAndJoin(gameType, gameMode, aiCount);
+                }
+                
+                throw new Error(errorDetail || 'Failed to join game');
+            }
+        } catch (error) {
+            // Network error or other exception - try creating a new game as fallback
+            console.warn('Error joining game, attempting to create new game:', error);
+            try {
+                return await this.createNewGameAndJoin(gameType, gameMode, aiCount);
+            } catch (createError) {
+                throw new Error(`Failed to join or create game: ${error.message || createError.message || 'Unknown error'}`);
+            }
+        }
+    }
+
+    // Create a new game and join it (fallback when lobby doesn't exist)
+    // Uses the /lobby/{circle_id}/{game_type} POST endpoint which automatically gets or creates
+    async createNewGameAndJoin(gameType, gameMode = null, aiCount = null) {
+        const requestBody = {
+            player_id: this.userId
+        };
+        
+        if (gameMode) requestBody.game_mode = gameMode;
+        if (aiCount !== null && aiCount !== undefined) {
+            requestBody.ai_count = aiCount;
+        }
+        
+        try {
+            // Use the /lobby endpoint which automatically gets or creates
+            const response = await fetch(
+                `${this.baseUrl}/lobby/${this.circleId}/${gameType}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                }
+            );
+            
+            if (!response.ok) {
+                // If that fails, try /api/lobby/
+                const altResponse = await fetch(
+                    `${this.baseUrl}/api/lobby/${this.circleId}/${gameType}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    }
+                );
+                
+                if (!altResponse.ok) {
+                    // Last resort: create game directly
+                    return await this.createGameDirectly(gameType, gameMode, aiCount);
+                }
+                
+                const result = await altResponse.json();
+                return this.formatLobbyResult(result, gameType);
+            }
+            
+            const result = await response.json();
+            return this.formatLobbyResult(result, gameType);
+        } catch (error) {
+            console.error('Error creating/joining lobby:', error);
+            // Last resort: create game directly
+            return await this.createGameDirectly(gameType, gameMode, aiCount);
+        }
+    }
+
+    // Format lobby result to match mycircles/join response format
+    formatLobbyResult(result, gameType) {
+        return {
+            game_id: result.game_id,
+            player_id: this.userId,
+            game_type: gameType,
+            game_mode: result.game_mode || (gameType === 'dominoes' ? 'classic' : 'best_of_5'),
+            redirect_url: `https://apps.oblivio-company.com/experiments/game_portal?game=${result.game_id}&replace_placeholder=true`,
+            players: result.players || [],
+            player_count: result.player_count || result.players?.length || 0,
+            status: result.status || 'waiting',
+            action: result.action || 'joined',
+            ai_count: result.ai_count || 0,
+            min_players: result.min_players || 2,
+            max_players: result.max_players || 4
+        };
+    }
+
+    // Last resort: create game directly using /game/create
+    async createGameDirectly(gameType, gameMode = null, aiCount = null) {
+        const createPayload = {
+            player_id: this.userId,
+            game_type: gameType
+        };
+        
+        if (!gameMode) {
+            gameMode = gameType === 'dominoes' ? 'classic' : 'best_of_5';
+        }
+        createPayload.game_mode = gameMode;
+        
+        if (aiCount !== null && aiCount !== undefined) {
+            createPayload.ai_count = aiCount;
+        }
+        
+        // Try /backend/game/create
+        let createResponse = await fetch(
+            `${this.baseUrl}/game/create`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
+                body: JSON.stringify(createPayload)
             }
         );
-
-        if (!response.ok) {
-            let errorDetail = 'Failed to join game';
-            try {
-                const error = await response.json();
-                errorDetail = error.detail || error.error || error.message || errorDetail;
-            } catch (e) {
-                // If response is not JSON, use status text
-                errorDetail = response.statusText || errorDetail;
-            }
-            throw new Error(errorDetail);
-        }
-
-        const result = await response.json();
         
-        // Check if result has an error (backend might return 200 with error in body)
-        if (result.error) {
-            throw new Error(result.error);
+        if (!createResponse.ok) {
+            // Try /backend/api/game/create
+            createResponse = await fetch(
+                `${this.baseUrl}/api/game/create`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(createPayload)
+                }
+            );
         }
         
-        // Validate that we got a game_id
-        if (!result.game_id) {
-            throw new Error('Failed to get or create lobby: No game_id returned');
+        if (!createResponse.ok) {
+            throw new Error('Failed to create game: All endpoints returned error');
         }
         
-        return result;
+        const gameData = await createResponse.json();
+        
+        // Return in the same format as mycircles/join
+        return {
+            game_id: gameData.game_id,
+            player_id: this.userId,
+            game_type: gameType,
+            game_mode: gameData.game_mode || gameMode,
+            redirect_url: `https://apps.oblivio-company.com/experiments/game_portal?game=${gameData.game_id}&replace_placeholder=true`,
+            players: gameData.players || [this.userId],
+            player_count: gameData.players?.length || 1,
+            status: 'waiting',
+            action: 'created',
+            ai_count: gameData.ai_players?.length || 0,
+            min_players: 2,
+            max_players: 4
+        };
     }
 
     // Get lobby status for display
     async getLobbyStatus(gameType) {
-        const response = await fetch(
-            `${this.baseUrl}/mycircles/lobby/${this.circleId}/${gameType}`
-        );
+        // Try /backend/mycircles/ first, fallback to /mycircles/
+        let response;
+        try {
+            response = await fetch(
+                `${this.baseUrl}/mycircles/lobby/${this.circleId}/${gameType}`
+            );
+            
+            if (response.status === 404) {
+                // Try without /backend prefix
+                const altBaseUrl = this.baseUrl.replace('/backend', '');
+                response = await fetch(
+                    `${altBaseUrl}/mycircles/lobby/${this.circleId}/${gameType}`
+                );
+            }
+        } catch (error) {
+            // Try alternative path
+            try {
+                const altBaseUrl = this.baseUrl.replace('/backend', '');
+                response = await fetch(
+                    `${altBaseUrl}/mycircles/lobby/${this.circleId}/${gameType}`
+                );
+            } catch (altError) {
+                return null;
+            }
+        }
 
         if (!response.ok) {
             return null;
@@ -3650,14 +3835,49 @@ class CircleGameIntegration {
             requestBody.ai_count = aiCount;
         }
         
-        const response = await fetch(
-            `${this.baseUrl}/mycircles/lobby/${this.circleId}/${gameType}/settings`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
+        // Try both /backend/mycircles/ and /mycircles/ paths
+        let response;
+        let lastError;
+        
+        try {
+            response = await fetch(
+                `${this.baseUrl}/mycircles/lobby/${this.circleId}/${gameType}/settings`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                }
+            );
+            
+            if (response.status === 404) {
+                // Try without /backend prefix
+                const altBaseUrl = this.baseUrl.replace('/backend', '');
+                response = await fetch(
+                    `${altBaseUrl}/mycircles/lobby/${this.circleId}/${gameType}/settings`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    }
+                );
             }
-        );
+        } catch (error) {
+            lastError = error;
+            // Try alternative path
+            try {
+                const altBaseUrl = this.baseUrl.replace('/backend', '');
+                response = await fetch(
+                    `${altBaseUrl}/mycircles/lobby/${this.circleId}/${gameType}/settings`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    }
+                );
+            } catch (altError) {
+                throw new Error(`Failed to update settings: ${lastError?.message || altError?.message || 'Unknown error'}`);
+            }
+        }
 
         if (!response.ok) {
             let errorDetail = 'Failed to update settings';
