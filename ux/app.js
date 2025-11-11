@@ -2420,6 +2420,11 @@ async function resetAndRenderCircleFeed(circleId) {
     // Stop all game widgets
     gamePortalWidgets.forEach(widget => widget.stopPolling());
     gamePortalWidgets.clear();
+    // Clean up lobby polling interval
+    if (state.circleView.lobbyPollInterval) {
+        clearInterval(state.circleView.lobbyPollInterval);
+        state.circleView.lobbyPollInterval = null;
+    }
     await renderCircleFeed(circleId);
 }
 
@@ -2664,15 +2669,16 @@ async function renderCircleFeed(circleId) {
                 }
                 widgetsContainer.innerHTML = gameWidgetsHtml;
                 
-                // Initialize widgets after DOM is ready
-                setTimeout(() => {
+                // Initialize widgets after DOM is ready with real-time WebSocket support
+                setTimeout(async () => {
+                    const playerId = state.currentUser ? await generateFingerprint() : null;
                     activeGameLobbies.forEach(lobby => {
                         if (lobby.game_id) {
                             const widgetId = `game-widget-${lobby.game_id}`;
                             const widgetContainer = document.getElementById(widgetId);
                             if (widgetContainer) {
                                 console.log('Initializing widget for game:', lobby.game_id, 'container:', widgetId);
-                                const widget = createGamePortalWidget(lobby.game_id, widgetId);
+                                const widget = createGamePortalWidget(lobby.game_id, widgetId, playerId);
                                 if (widget) {
                                     // Force immediate update to get current player count
                                     widget.updateUI().catch(err => {
@@ -2685,6 +2691,38 @@ async function renderCircleFeed(circleId) {
                         }
                     });
                 }, 500);
+                
+                // Start real-time lobby status polling for buttons (if no WebSocket available)
+                if (gameIntegration) {
+                    // Poll lobby status for both game types to update button badges
+                    const startLobbyStatusPolling = () => {
+                        const pollInterval = setInterval(async () => {
+                            try {
+                                const [dominoesStatus, blackjackStatus] = await Promise.all([
+                                    gameIntegration.getLobbyStatus('dominoes').catch(() => null),
+                                    gameIntegration.getLobbyStatus('blackjack').catch(() => null)
+                                ]);
+                                
+                                // Update button badges with real-time player counts
+                                if (dominoesStatus) {
+                                    updateLobbyButtonBadge(circleId, 'dominoes', dominoesStatus.player_count, dominoesStatus.max_players);
+                                }
+                                if (blackjackStatus) {
+                                    updateLobbyButtonBadge(circleId, 'blackjack', blackjackStatus.player_count, blackjackStatus.max_players);
+                                }
+                            } catch (error) {
+                                console.warn('Error polling lobby status:', error);
+                            }
+                        }, 3000); // Poll every 3 seconds
+                        
+                        // Store interval for cleanup
+                        if (!state.circleView.lobbyPollInterval) {
+                            state.circleView.lobbyPollInterval = pollInterval;
+                        }
+                    };
+                    
+                    startLobbyStatusPolling();
+                }
             } else {
                 // Remove widgets container if no active games
                 const widgetsContainer = document.getElementById('circleGameWidgets');
@@ -3642,7 +3680,7 @@ class CircleGameIntegration {
         return result;
     }
 
-    // Poll lobby status for real-time updates
+    // Poll lobby status for real-time updates (HTTP fallback)
     startPolling(gameType, callback, intervalMs = 2000) {
         const poll = async () => {
             const lobby = await this.getLobbyStatus(gameType);
@@ -3656,6 +3694,136 @@ class CircleGameIntegration {
 
         // Then poll every intervalMs
         return setInterval(poll, intervalMs);
+    }
+
+    // Connect WebSocket for real-time lobby updates
+    connectWebSocket(gameId, callbacks = {}) {
+        if (!gameId || !this.userId) {
+            console.warn('CircleGameIntegration: Cannot connect WebSocket without gameId and userId');
+            return null;
+        }
+
+        // Construct WebSocket URL (WebSocket endpoint is on main game portal app, not backend)
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//apps.oblivio-company.com/experiments/game_portal/ws/game/${gameId}/${this.userId}`;
+
+        const ws = new WebSocket(wsUrl);
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        let reconnectTimeout = null;
+
+        ws.onopen = () => {
+            console.log('Game WebSocket connected:', gameId);
+            reconnectAttempts = 0;
+            if (callbacks.onConnected) callbacks.onConnected();
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                this.handleWebSocketMessage(data, callbacks);
+            } catch (e) {
+                console.error('Error parsing WebSocket message:', e);
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error('Game WebSocket error:', error);
+            if (callbacks.onError) callbacks.onError(error);
+        };
+
+        ws.onclose = () => {
+            console.log('Game WebSocket disconnected:', gameId);
+            if (callbacks.onDisconnected) callbacks.onDisconnected();
+
+            // Auto-reconnect
+            if (reconnectAttempts < maxReconnectAttempts) {
+                reconnectAttempts++;
+                reconnectTimeout = setTimeout(() => {
+                    console.log(`Reconnecting WebSocket (attempt ${reconnectAttempts})...`);
+                    this.connectWebSocket(gameId, callbacks);
+                }, 1000 * reconnectAttempts);
+            }
+        };
+
+        // Return WebSocket with helper methods
+        return {
+            ws,
+            send: (type, data = {}) => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type, ...data }));
+                }
+            },
+            disconnect: () => {
+                if (reconnectTimeout) {
+                    clearTimeout(reconnectTimeout);
+                }
+                ws.close();
+            }
+        };
+    }
+
+    handleWebSocketMessage(data, callbacks) {
+        switch (data.type) {
+            case 'connection_success':
+                if (callbacks.onGameState) {
+                    callbacks.onGameState(data.game_state, data.players, data.game_status);
+                }
+                break;
+
+            case 'player_joined':
+            case 'player_connected':
+                if (callbacks.onPlayersUpdate) {
+                    callbacks.onPlayersUpdate(data.players || []);
+                }
+                // Also trigger lobby status update
+                if (callbacks.onLobbyUpdate) {
+                    this.getLobbyStatus('blackjack').then(lobby => {
+                        if (lobby) callbacks.onLobbyUpdate('blackjack', lobby);
+                    });
+                    this.getLobbyStatus('dominoes').then(lobby => {
+                        if (lobby) callbacks.onLobbyUpdate('dominoes', lobby);
+                    });
+                }
+                break;
+
+            case 'player_disconnected':
+                if (callbacks.onPlayersUpdate) {
+                    callbacks.onPlayersUpdate(data.players || []);
+                }
+                // Also trigger lobby status update
+                if (callbacks.onLobbyUpdate) {
+                    this.getLobbyStatus('blackjack').then(lobby => {
+                        if (lobby) callbacks.onLobbyUpdate('blackjack', lobby);
+                    });
+                    this.getLobbyStatus('dominoes').then(lobby => {
+                        if (lobby) callbacks.onLobbyUpdate('dominoes', lobby);
+                    });
+                }
+                break;
+
+            case 'game_started':
+                if (callbacks.onGameStarted) {
+                    callbacks.onGameStarted(data.game_state, data.players);
+                }
+                break;
+
+            case 'state_update':
+                if (callbacks.onGameState) {
+                    callbacks.onGameState(data.game_state, data.players, data.game_status);
+                }
+                break;
+
+            case 'error':
+                console.error('Game error:', data.message);
+                if (callbacks.onError) {
+                    callbacks.onError(data.message);
+                }
+                break;
+
+            default:
+                console.log('Unknown WebSocket message type:', data.type);
+        }
     }
 }
 
@@ -3756,19 +3924,36 @@ const gamePortalWidgets = new Map(); // Map of game_id -> GamePortalWidget insta
 
 // GamePortalWidget class for real-time game UI updates
 class GamePortalWidget {
-    constructor(gameId, containerId) {
+    constructor(gameId, containerId, playerId = null) {
         this.gameId = gameId;
         this.container = typeof containerId === 'string' ? document.getElementById(containerId) : containerId;
+        this.playerId = playerId;
         this.pollInterval = null;
+        this.websocket = null;
         this.lastUpdate = null;
         this.lastStateHash = null;
         this.previousState = null;
+        this.useWebSocket = true; // Prefer WebSocket over polling
     }
 
     async startPolling(intervalMs = 2000) {
-        // Stop any existing polling
+        // Stop any existing polling/WebSocket
         this.stopPolling();
+        this.disconnectWebSocket();
         
+        // Try WebSocket first if playerId is available
+        if (this.useWebSocket && this.playerId) {
+            try {
+                await this.connectWebSocket();
+                console.log('GamePortalWidget: Using WebSocket for real-time updates');
+                return;
+            } catch (error) {
+                console.warn('GamePortalWidget: WebSocket connection failed, falling back to HTTP polling:', error);
+                this.useWebSocket = false;
+            }
+        }
+        
+        // Fallback to HTTP polling
         // Poll immediately
         try {
             await this.updateUI();
@@ -3781,7 +3966,142 @@ class GamePortalWidget {
             this.updateUI();
         }, intervalMs);
         
-        console.log('Started polling for game:', this.gameId, 'interval:', intervalMs);
+        console.log('Started HTTP polling for game:', this.gameId, 'interval:', intervalMs);
+    }
+
+    async connectWebSocket() {
+        if (!this.gameId || !this.playerId) {
+            throw new Error('Cannot connect WebSocket without gameId and playerId');
+        }
+
+        // Construct WebSocket URL (WebSocket endpoint is on main game portal app, not backend)
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//apps.oblivio-company.com/experiments/game_portal/ws/game/${this.gameId}/${this.playerId}`;
+
+        return new Promise((resolve, reject) => {
+            const ws = new WebSocket(wsUrl);
+            let connected = false;
+
+            ws.onopen = () => {
+                console.log('GamePortalWidget: WebSocket connected:', this.gameId);
+                connected = true;
+                this.websocket = ws;
+                resolve();
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    this.handleWebSocketMessage(data);
+                } catch (e) {
+                    console.error('Error parsing WebSocket message:', e);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('GamePortalWidget: WebSocket error:', error);
+                if (!connected) {
+                    reject(error);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('GamePortalWidget: WebSocket disconnected:', this.gameId);
+                this.websocket = null;
+                // Auto-reconnect after delay
+                if (this.useWebSocket) {
+                    setTimeout(() => {
+                        if (this.useWebSocket) {
+                            this.connectWebSocket().catch(() => {
+                                // Fallback to polling if WebSocket fails
+                                this.useWebSocket = false;
+                                this.startPolling();
+                            });
+                        }
+                    }, 2000);
+                }
+            };
+
+            // Timeout after 5 seconds
+            setTimeout(() => {
+                if (!connected) {
+                    ws.close();
+                    reject(new Error('WebSocket connection timeout'));
+                }
+            }, 5000);
+        });
+    }
+
+    handleWebSocketMessage(data) {
+        switch (data.type) {
+            case 'connection_success':
+                // Update UI with initial state
+                this.updateFromGameData({
+                    status: data.game_status || 'waiting',
+                    players: data.players || [],
+                    player_count: data.players?.length || 0,
+                    max_players: 4
+                });
+                break;
+
+            case 'player_joined':
+            case 'player_connected':
+                // Trigger UI update
+                this.updateUI();
+                break;
+
+            case 'player_disconnected':
+                // Trigger UI update
+                this.updateUI();
+                break;
+
+            case 'game_started':
+                // Update UI
+                this.updateFromGameData({
+                    status: 'in_progress',
+                    players: data.players || [],
+                    player_count: data.players?.length || 0,
+                    max_players: 4
+                });
+                break;
+
+            case 'state_update':
+                // Update UI with new state
+                this.updateFromGameData({
+                    status: data.game_status || 'in_progress',
+                    players: data.players || [],
+                    player_count: data.players?.length || 0,
+                    max_players: 4,
+                    game_state_summary: data.game_state ? this.extractGameStateSummary(data.game_state) : null
+                });
+                break;
+        }
+    }
+
+    extractGameStateSummary(gameState) {
+        // Extract public game state info for display
+        if (!gameState) return null;
+        return {
+            round_number: gameState.round_number,
+            current_turn: gameState.current_turn_index !== undefined ? gameState.players?.[gameState.current_turn_index] : null
+        };
+    }
+
+    updateFromGameData(gameData) {
+        // Update UI directly from game data (from WebSocket)
+        const stateHash = this.hashState(gameData);
+        if (this.lastStateHash === null || stateHash !== this.lastStateHash) {
+            this.render(gameData);
+            this.lastStateHash = stateHash;
+        }
+        this.lastUpdate = Date.now();
+    }
+
+    disconnectWebSocket() {
+        if (this.websocket) {
+            this.websocket.close();
+            this.websocket = null;
+        }
     }
 
     stopPolling() {
@@ -3789,6 +4109,7 @@ class GamePortalWidget {
             clearInterval(this.pollInterval);
             this.pollInterval = null;
         }
+        this.disconnectWebSocket();
     }
 
     async updateUI() {
@@ -4223,7 +4544,7 @@ function startGamePolling(lobbyId, gameId) {
 }
 
 // Helper function to create and initialize a GamePortalWidget
-function createGamePortalWidget(gameId, containerId) {
+function createGamePortalWidget(gameId, containerId, playerId = null) {
     if (!gameId) {
         console.error('createGamePortalWidget: No gameId provided');
         return null;
@@ -4242,17 +4563,35 @@ function createGamePortalWidget(gameId, containerId) {
         return null;
     }
     
-    // Create new widget
-    const widget = new GamePortalWidget(gameId, container);
+    // Create new widget with playerId for WebSocket support
+    const widget = new GamePortalWidget(gameId, container, playerId);
     gamePortalWidgets.set(gameId, widget);
     
-    // Start polling
+    // Start polling/WebSocket (WebSocket preferred if playerId available)
     widget.startPolling(2000).catch(err => {
         console.error('Error starting widget polling:', err);
     });
     
-    console.log('Created widget for game:', gameId, 'container:', containerId);
+    console.log('Created widget for game:', gameId, 'container:', containerId, 'playerId:', playerId ? 'provided' : 'none');
     return widget;
+}
+
+// Helper function to update lobby button badges in real-time
+function updateLobbyButtonBadge(circleId, gameType, playerCount, maxPlayers) {
+    const buttons = document.querySelectorAll(
+        `[data-action="join-game-lobby"][data-circle-id="${circleId}"][data-game-type="${gameType}"], ` +
+        `[data-action="create-game-lobby"][data-circle-id="${circleId}"][data-game-type="${gameType}"]`
+    );
+    
+    buttons.forEach(button => {
+        const badge = button.querySelector('.badge');
+        if (badge) {
+            badge.textContent = `${playerCount}/${maxPlayers}`;
+            // Update button title with current player count
+            const gameTypeLabel = gameType === 'dominoes' ? '🎲 Dominoes' : '🃏 Blackjack';
+            button.setAttribute('title', `${gameTypeLabel} (${playerCount}/${maxPlayers} players)`);
+        }
+    });
 }
 
 // Helper function to create widget HTML structure
