@@ -1196,3 +1196,109 @@ h5.card-title {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
+
+/* Circle View Controls Panel */
+.circle-controls-panel {
+  background: rgba(26, 19, 52, 0.3);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1rem;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  margin-top: 1rem;
+}
+
+.circle-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.circle-controls-primary {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.circle-controls-primary .btn {
+  flex-shrink: 0;
+}
+
+.circle-controls-secondary {
+  gap: 1rem;
+}
+
+.circle-controls-secondary .input-group {
+  flex: 1;
+  min-width: 200px;
+}
+
+.circle-tag-filter {
+  max-width: 300px;
+}
+
+.circle-color-picker {
+  flex-shrink: 0;
+}
+
+.circle-color-picker .form-control-color {
+  border-radius: 0;
+}
+
+.circle-color-picker .input-group-text {
+  border-radius: 8px 0 0 8px;
+}
+
+.circle-color-picker .btn {
+  border-radius: 0 8px 8px 0;
+}
+
+/* Responsive adjustments for circle controls */
+@media (max-width: 768px) {
+  .circle-controls-panel {
+    padding: 0.75rem;
+  }
+  
+  .circle-controls-row {
+    gap: 0.5rem;
+  }
+  
+  .circle-controls-primary {
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+  
+  .circle-controls-primary .btn {
+    flex: 1;
+    min-width: calc(50% - 0.25rem);
+  }
+  
+  .circle-controls-secondary {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .circle-controls-secondary .input-group {
+    width: 100%;
+    max-width: 100%;
+  }
+  
+  .circle-tag-filter {
+    max-width: 100%;
+  }
+  
+  .circle-color-picker {
+    width: 100%;
+    max-width: 100%;
+  }
+  
+  .circle-color-picker .form-control-color {
+    width: 60px !important;
+  }
+  
+  .circle-color-picker #memberCircleColorHex {
+    flex: 1;
+    min-width: 0;
+  }
+}

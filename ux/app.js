@@ -2444,10 +2444,12 @@ async function renderCircleFeed(circleId) {
             
             // Member-specific color picker (available to all members)
             const memberColorPicker = state.currentUser ? `
-              <div class="input-group input-group-sm" style="width: auto; max-width: 200px;">
-                <span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);" title="Your personal color for this circle"><i class="bi bi-palette"></i></span>
-                <input type="color" id="memberCircleColor" class="form-control form-control-color border-start-0" value="${circleDetails.color || '#3b82f6'}" title="Set your color for this circle" style="width: 60px; height: 31px; cursor: pointer;">
-                <input type="text" id="memberCircleColorHex" class="form-control border-start-0" placeholder="#000000" value="${circleDetails.color || ''}" maxlength="7" style="width: 90px; font-size: 0.75rem;">
+              <div class="input-group input-group-sm circle-color-picker">
+                <span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);" title="Your personal color for this circle">
+                  <i class="bi bi-palette"></i>
+                </span>
+                <input type="color" id="memberCircleColor" class="form-control form-control-color border-start-0 border-end-0" value="${circleDetails.color || '#3b82f6'}" title="Set your color for this circle" style="width: 50px; height: 31px; cursor: pointer; padding: 2px;">
+                <input type="text" id="memberCircleColorHex" class="form-control border-start-0" placeholder="#000000" value="${circleDetails.color || ''}" maxlength="7" style="width: 85px; font-size: 0.75rem;">
                 <button class="btn btn-sm btn-outline-secondary" id="updateMemberColorBtn" data-circle-id="${circleId}" title="Update your color">
                   <i class="bi bi-check"></i>
                 </button>
@@ -2473,47 +2475,64 @@ async function renderCircleFeed(circleId) {
             `;
             
             dom.circleHeader.innerHTML = `
-           <div class="d-flex justify-content-between align-items-center flex-wrap gap-3" ${colorStyle}>
-           <div class="flex-grow-1">
-              <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                ${dicebearImage}
-                <h2 class="mb-0 d-flex align-items-center gap-2">
-                  ${circleDetails.color ? `<span class="badge rounded-pill me-2" style="background-color: ${circleDetails.color}; width: 20px; height: 20px; padding: 0;" title="${circleDetails.color}"></span>` : ''}
-                  <i class="bi ${headerIconClass}" title="${headerIconTitle}"></i>
-                  <span class="editable-personal-name" data-circle-id="${circleId}">${displayName}</span>
-                  ${circleDetails.personal_name ? `<span class="text-muted small" style="font-weight: normal;">(${circleDetails.name})</span>` : ''}
-                  <button class="btn btn-sm btn-outline-secondary ms-2" style="font-size: 0.75rem;" data-action="edit-circle-personal-name" data-circle-id="${circleId}" title="Rename">
-                    <i class="bi bi-pencil-square"></i> &nbsp;
-                  </button>
-                </h2>
-                ${directMessageBadge}
-                ${colorBadge}
-                ${circleDetails.is_public ? '<span class="badge bg-info" title="This circle is public"><i class="bi bi-globe"></i> Public</span>' : ''}
+           <div ${colorStyle}>
+           <!-- Circle Info Section -->
+           <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-3">
+              <div class="flex-grow-1">
+                 <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                    ${dicebearImage}
+                    <h2 class="mb-0 d-flex align-items-center gap-2">
+                       ${circleDetails.color ? `<span class="badge rounded-pill me-2" style="background-color: ${circleDetails.color}; width: 20px; height: 20px; padding: 0;" title="${circleDetails.color}"></span>` : ''}
+                       <i class="bi ${headerIconClass}" title="${headerIconTitle}"></i>
+                       <span class="editable-personal-name" data-circle-id="${circleId}">${displayName}</span>
+                       ${circleDetails.personal_name ? `<span class="text-muted small" style="font-weight: normal;">(${circleDetails.name})</span>` : ''}
+                       <button class="btn btn-sm btn-outline-secondary ms-2" style="font-size: 0.75rem;" data-action="edit-circle-personal-name" data-circle-id="${circleId}" title="Rename">
+                          <i class="bi bi-pencil-square"></i>
+                       </button>
+                    </h2>
+                    ${directMessageBadge}
+                    ${colorBadge}
+                    ${circleDetails.is_public ? '<span class="badge bg-info" title="This circle is public"><i class="bi bi-globe"></i> Public</span>' : ''}
+                 </div>
+                 <p class="mb-1">${circleDetails.description || defaultDescription}</p>
+                 ${tagsHtml}
               </div>
-              <p class="mb-1">${circleDetails.description || defaultDescription}</p>
-              ${tagsHtml}
+              <!-- Navigation Button -->
+              <div>
+                 <a href="#" class="btn btn-secondary btn-sm">
+                    <i class="bi bi-arrow-left"></i> Back
+                 </a>
+              </div>
            </div>
-           <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-              <a href="#" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
-              ${memberColorPicker}
-              <div class="input-group input-group-sm" style="width: auto;">
-              <span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);"><i class="bi bi-tags"></i></span>
-              <input type="text" id="circleTagFilter" class="form-control border-start-0" placeholder="Filter by tags..." value="${feedState.tags}" style="min-width: 150px;">
-              </div>
+           
+           <!-- Controls Section -->
+           <div class="circle-controls-panel">
+              <!-- Primary Actions Row -->
               ${state.currentUser ? `
-              <div class="btn-group">
+              <div class="circle-controls-row circle-controls-primary">
+                 <button id="togglePostCreatorCircleBtn" class="btn btn-primary btn-sm">
+                    <i class="bi bi-pencil-square"></i> New Post
+                 </button>
                  <button class="btn btn-sm btn-success" data-action="invite-to-circle" data-circle-id="${circleId}">
-                 <i class="bi bi-send"></i> Invite
+                    <i class="bi bi-send"></i> Invite
                  </button>
                  ${managementControlsHtml}
+                 <button class="btn btn-sm btn-info" data-action="start-webrtc" data-circle-id="${circleId}" data-session-type="${circleDetails.is_direct_message ? 'dm' : 'circle'}" title="${circleDetails.is_direct_message ? 'Start WebRTC Call' : 'Start WebRTC Session'}">
+                    <i class="bi bi-camera-video"></i> ${circleDetails.is_direct_message ? 'Call' : 'WebRTC'}
+                 </button>
               </div>
-              <button class="btn btn-sm btn-info ms-2" data-action="start-webrtc" data-circle-id="${circleId}" data-session-type="${circleDetails.is_direct_message ? 'dm' : 'circle'}" title="${circleDetails.is_direct_message ? 'Start WebRTC Call' : 'Start WebRTC Session'}">
-                 <i class="bi bi-camera-video"></i> ${circleDetails.is_direct_message ? 'Call' : 'WebRTC'}
-              </button>
-              <button id="togglePostCreatorCircleBtn" class="btn btn-sm btn-primary ms-2">
-                 <i class="bi bi-pencil-square"></i> New Post
-              </button>
               ` : ''}
+              
+              <!-- Filters & Settings Row -->
+              <div class="circle-controls-row circle-controls-secondary">
+                 ${state.currentUser ? memberColorPicker : ''}
+                 <div class="input-group input-group-sm circle-tag-filter">
+                    <span class="input-group-text bg-transparent border-end-0" style="border-color: var(--border-color);">
+                       <i class="bi bi-funnel"></i>
+                    </span>
+                    <input type="text" id="circleTagFilter" class="form-control border-start-0" placeholder="Filter by tags..." value="${feedState.tags}" style="min-width: 180px;">
+                 </div>
+              </div>
            </div>
            </div>`;
         }
