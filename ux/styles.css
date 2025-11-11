@@ -2,23 +2,30 @@
   --primary-color: #00dcff;  
   --secondary-color: #a27bff;  
   --background-color: #0a041f;  
-  --card-background: rgba(26, 19, 52, 0.25);  
-  --border-color: rgba(162, 123, 255, 0.3);  
-  --timeline-color: rgba(162, 123, 255, 0.4);  
-  --list-item-hover-bg: rgba(255, 255, 255, 0.1);  
-  --list-item-active-bg: rgba(0, 220, 255, 0.15);  
+  --card-background: rgba(26, 19, 52, 0.4);  
+  --border-color: rgba(162, 123, 255, 0.4);  
+  --timeline-color: rgba(162, 123, 255, 0.5);  
+  --list-item-hover-bg: rgba(255, 255, 255, 0.15);  
+  --list-item-active-bg: rgba(0, 220, 255, 0.25);  
   --list-item-active-color: #ffffff;  
   --list-item-active-border-color: var(--primary-color);  
-  --text-color: #e0e0e0;  
+  --text-color: #f0f0f0;  
   --heading-color: #ffffff;  
-  --text-muted-color: #a0a0b0;  
+  --text-muted-color: #b8b8d0;  
   --link-color: var(--primary-color);  
   --link-hover-color: #ffffff;  
-  --primary-glow: rgba(0, 220, 255, 0.5);  
-  --secondary-glow: rgba(162, 123, 255, 0.5);  
-  --form-input-bg: rgba(10, 4, 31, 0.5);  
-  --my-message-bg: rgba(0, 220, 255, 0.1);  
-  --pinned-border-color: rgba(0, 220, 255, 0.6);  
+  --primary-glow: rgba(0, 220, 255, 0.6);  
+  --secondary-glow: rgba(162, 123, 255, 0.6);  
+  --form-input-bg: rgba(26, 19, 52, 0.6);  
+  --my-message-bg: rgba(0, 220, 255, 0.15);  
+  --pinned-border-color: rgba(0, 220, 255, 0.7);  
+  --glass-bg: rgba(255, 255, 255, 0.1);  
+  --glass-border: rgba(255, 255, 255, 0.2);  
+  --tab-bg: rgba(26, 19, 52, 0.5);  
+  --tab-active-bg: rgba(0, 220, 255, 0.2);  
+  --button-text: #ffffff;  
+  --pagination-bg: rgba(26, 19, 52, 0.6);  
+  --pagination-border: rgba(162, 123, 255, 0.5);  
 }  
   
 :root[data-theme="light"] {  
@@ -177,39 +184,65 @@ a:hover {
   transform: translateY(-3px);  
   box-shadow: 0 12px 40px 0 rgba(10, 4, 31, 0.5);  
 }  
+/* Enhanced Button Styling with Glassmorphism */
 .btn {  
   font-family: 'Orbitron', sans-serif;  
   font-weight: 600;  
-  border-radius: 8px;  
-  border: none;  
-  padding: 10px 15px;  
+  border-radius: 10px;  
+  border: 1px solid var(--glass-border);  
+  padding: 10px 20px;  
   transition: all 0.3s ease;  
   background-size: 200% 100%;  
-  color: white;  
-  letter-spacing: 1px;  
+  color: var(--button-text) !important;  
+  letter-spacing: 0.5px;  
   display: inline-flex;  
   align-items: center;  
   justify-content: center;  
   gap: 0.5rem;  
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }  
+
 .btn-primary {  
-  background-image: linear-gradient(to right, #6a11cb 0%, #2575fc 51%, #6a11cb 100%);  
+  background: linear-gradient(135deg, rgba(106, 17, 203, 0.8) 0%, rgba(37, 117, 252, 0.8) 100%);
+  background-size: 200% 100%;
+  border-color: rgba(37, 117, 252, 0.5);
 }  
+
 .btn-success {  
-  background-image: linear-gradient(to right, #11cb6a 0%, #259cfc 51%, #11cb6a 100%);  
+  background: linear-gradient(135deg, rgba(17, 203, 106, 0.8) 0%, rgba(37, 156, 252, 0.8) 100%);
+  background-size: 200% 100%;
+  border-color: rgba(17, 203, 106, 0.5);
 }  
-.btn-secondary {  
-  background-image: linear-gradient(to right, #434343 0%, #000000 51%, #434343 100%);  
+
+.btn-secondary,
+.btn-outline-secondary {  
+  background: var(--pagination-bg);
+  border-color: var(--pagination-border);
+  color: var(--text-color) !important;
 }  
+
 .btn-danger {  
-  background-image: linear-gradient(to right, #cb1111 0%, #fc2575 51%, #cb1111 100%);  
+  background: linear-gradient(135deg, rgba(203, 17, 17, 0.8) 0%, rgba(252, 37, 117, 0.8) 100%);
+  background-size: 200% 100%;
+  border-color: rgba(203, 17, 17, 0.5);
 }  
-.btn:hover {  
+
+.btn:hover:not(:disabled) {  
   background-position: right center;  
-  transform: translateY(-2px) scale(1.05);  
-  box-shadow: 0 0 15px var(--secondary-glow);  
-  color: #fff;  
+  transform: translateY(-2px) scale(1.02);  
+  box-shadow: 0 6px 20px rgba(0, 220, 255, 0.4), 0 0 15px var(--secondary-glow);  
+  color: #fff !important;  
   text-decoration: none;  
+  border-color: var(--primary-color);
+}  
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }  
 .form-control, .form-select {  
   background-color: var(--form-input-bg);  
@@ -219,7 +252,7 @@ a:hover {
   transition: border-color 0.2s, box-shadow 0.2s;  
 }  
 .form-control::placeholder {  
-  color: #aaa;  
+  color: rgba(184, 184, 208, 0.6);  
 }  
 .form-control:focus, .form-select:focus {  
   background-color: rgba(0, 0, 0, 0.4);  
@@ -281,16 +314,45 @@ a:hover {
 :root[data-theme="light"] .btn-close {  
   filter: none;  
 }  
+/* Enhanced Tab Styling with Glassmorphism */
 #createPostModal .nav-link,  
-#manageCircleModal .nav-link {  
-  color: var(--text-muted-color);  
+#manageCircleModal .nav-link,
+.post-creator .nav-link,
+.nav-tabs .nav-link {  
+  color: var(--text-muted-color) !important;  
+  background: var(--tab-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 10px 10px 0 0 !important;
+  margin-right: 4px;
+  padding: 0.75rem 1.25rem !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+  font-weight: 500;
+  position: relative;
+  overflow: hidden;
 }  
+
+#createPostModal .nav-link:hover,  
+#manageCircleModal .nav-link:hover,
+.post-creator .nav-link:hover,
+.nav-tabs .nav-link:hover {  
+  color: var(--text-color) !important;  
+  background: rgba(162, 123, 255, 0.15) !important;
+  border-color: var(--secondary-color) !important;
+  transform: translateY(-2px);
+}  
+
 #createPostModal .nav-link.active,  
-#manageCircleModal .nav-link.active {  
-  color: var(--heading-color);  
-  background-color: transparent;  
-  border-color: var(--border-color) var(--border-color) transparent !important;  
-  font-weight: bold;  
+#manageCircleModal .nav-link.active,
+.post-creator .nav-link.active,
+.nav-tabs .nav-link.active {  
+  color: var(--heading-color) !important;  
+  background: var(--tab-active-bg) !important;  
+  border-color: var(--primary-color) var(--primary-color) transparent !important;  
+  font-weight: 600;
+  box-shadow: 0 -4px 12px rgba(0, 220, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  text-shadow: 0 0 8px var(--primary-glow);
 }  
 #createPostModal .modal-body,  
 #manageCircleModal .modal-body {  
@@ -564,15 +626,7 @@ a:hover {
   padding: 25px;  
   margin-bottom: 25px;  
 }  
-.post-creator .nav-link {  
-  color: var(--text-muted-color);  
-}  
-.post-creator .nav-link.active {  
-  color: var(--heading-color);  
-  background-color: transparent;  
-  border-color: var(--border-color) var(--border-color) transparent;  
-  font-weight: bold;  
-}  
+/* Post creator tabs already handled above */  
 .post-creator-main-view,  
 .post-creator-poll-view,  
 .post-creator-playlist-view {  
@@ -753,7 +807,7 @@ a:hover {
 }
 .seen-by-text {
     font-size: 0.8rem;
-    color: var(--text-muted);
+    color: var(--text-muted-color);
     font-weight: 500;
 }
 .seen-by-container.seen-by-user .seen-by-text {
@@ -816,4 +870,329 @@ a:hover {
     transform: translateX(100%);
     opacity: 0;
   }
+}
+
+/* Enhanced Pagination Styling with Glassmorphism */
+.wishlist-pagination,
+.circlesPagination {
+  background: var(--pagination-bg);
+  border: 1px solid var(--pagination-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.wishlist-pagination small,
+.circlesPagination small {
+  color: var(--text-color) !important;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.wishlist-pagination .btn-group .btn,
+.circlesPagination .btn-group .btn {
+  background: rgba(26, 19, 52, 0.7) !important;
+  border-color: var(--pagination-border) !important;
+  color: var(--text-color) !important;
+  font-weight: 500;
+  padding: 6px 12px;
+  transition: all 0.2s ease;
+}
+
+.wishlist-pagination .btn-group .btn:hover:not(:disabled),
+.circlesPagination .btn-group .btn:hover:not(:disabled) {
+  background: rgba(0, 220, 255, 0.2) !important;
+  border-color: var(--primary-color) !important;
+  color: var(--heading-color) !important;
+  box-shadow: 0 0 10px rgba(0, 220, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.wishlist-pagination .btn-group .btn:disabled,
+.circlesPagination .btn-group .btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: rgba(26, 19, 52, 0.3) !important;
+}
+
+.wishlist-pagination .btn-group .btn[disabled] {
+  color: var(--text-muted-color) !important;
+}
+
+/* Enhanced Text Readability */
+.text-muted {
+  color: var(--text-muted-color) !important;
+  opacity: 0.9;
+}
+
+small.text-muted {
+  color: var(--text-muted-color) !important;
+  font-weight: 500;
+}
+
+.card-text,
+.post-card .card-text,
+.modal-body {
+  color: var(--text-color) !important;
+  line-height: 1.6;
+}
+
+.card-title,
+h5.card-title {
+  color: var(--heading-color) !important;
+  font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Enhanced List Group Items */
+.list-group-item {
+  background: rgba(26, 19, 52, 0.3) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-color) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+
+.list-group-item:hover {
+  background: var(--list-item-hover-bg) !important;
+  border-color: var(--primary-color) !important;
+  transform: translateX(4px);
+}
+
+.list-group-item-action {
+  color: var(--text-color) !important;
+  font-weight: 500;
+}
+
+/* Enhanced Form Controls */
+.form-control,
+.form-select {
+  background: var(--form-input-bg) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-color) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.form-control:focus,
+.form-select:focus {
+  background: rgba(26, 19, 52, 0.7) !important;
+  border-color: var(--primary-color) !important;
+  color: var(--text-color) !important;
+  box-shadow: 0 0 15px var(--primary-glow), inset 0 0 10px rgba(0, 220, 255, 0.1) !important;
+}
+
+/* Enhanced Badge Styling */
+.badge {
+  background: var(--pagination-bg) !important;
+  border: 1px solid var(--pagination-border);
+  color: var(--text-color) !important;
+  padding: 0.4em 0.7em;
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.badge.bg-secondary {
+  background: rgba(162, 123, 255, 0.3) !important;
+  border-color: var(--secondary-color);
+}
+
+/* Enhanced Modal Styling */
+.modal-content {
+  background: var(--card-background) !important;
+  border: 1px solid var(--glass-border) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.modal-header {
+  border-bottom: 1px solid var(--border-color) !important;
+  color: var(--heading-color) !important;
+}
+
+.modal-title {
+  color: var(--heading-color) !important;
+  font-weight: 600;
+}
+
+.modal-body {
+  color: var(--text-color) !important;
+}
+
+.modal-footer {
+  border-top: 1px solid var(--border-color) !important;
+}
+
+/* Enhanced Post Card Styling */
+.post-card,
+.card {
+  background: var(--card-background) !important;
+  border: 1px solid var(--glass-border) !important;
+  color: var(--text-color) !important;
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+}
+
+.post-card .card-body {
+  color: var(--text-color) !important;
+}
+
+/* Enhanced Dropdown Styling */
+.dropdown-menu {
+  background: var(--card-background) !important;
+  border: 1px solid var(--glass-border) !important;
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.dropdown-item {
+  color: var(--text-color) !important;
+  transition: all 0.2s ease;
+}
+
+.dropdown-item:hover {
+  background: var(--list-item-hover-bg) !important;
+  color: var(--heading-color) !important;
+}
+
+/* Enhanced Alert/Status Messages */
+.alert {
+  background: var(--card-background) !important;
+  border: 1px solid var(--glass-border) !important;
+  color: var(--text-color) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.alert-success {
+  border-color: rgba(17, 203, 106, 0.5) !important;
+  background: rgba(17, 203, 106, 0.15) !important;
+}
+
+.alert-danger {
+  border-color: rgba(203, 17, 17, 0.5) !important;
+  background: rgba(203, 17, 17, 0.15) !important;
+}
+
+.alert-info {
+  border-color: rgba(0, 220, 255, 0.5) !important;
+  background: rgba(0, 220, 255, 0.15) !important;
+}
+
+/* Enhanced Wishlist Item Styling */
+.wishlist-item-details strong {
+  color: var(--text-color) !important;
+  font-weight: 600;
+}
+
+.wishlist-item-details small {
+  color: var(--text-muted-color) !important;
+  font-weight: 500;
+}
+
+.list-group-item-action.wishlist-item {
+  background: rgba(26, 19, 52, 0.4) !important;
+  border-color: var(--border-color) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+
+.list-group-item-action.wishlist-item:hover {
+  background: var(--list-item-hover-bg) !important;
+  border-color: var(--primary-color) !important;
+  transform: translateX(4px);
+}
+
+/* Enhanced Post Action Buttons */
+.post-action-btn {
+  color: var(--text-color) !important;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.post-action-btn:hover {
+  color: var(--primary-color) !important;
+  text-shadow: 0 0 8px var(--primary-glow);
+}
+
+/* Enhanced Link Preview */
+.link-preview-title {
+  color: var(--heading-color) !important;
+  font-weight: 600;
+}
+
+.link-preview-host {
+  color: var(--text-muted-color) !important;
+}
+
+/* Enhanced Vote Controls */
+.vote-score {
+  color: var(--heading-color) !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Enhanced Empty Placeholder */
+.empty-placeholder {
+  color: var(--text-muted-color) !important;
+  font-weight: 500;
+}
+
+/* Enhanced Chat Message Styling */
+.chat-message .content {
+  color: var(--text-color) !important;
+}
+
+.chat-message .sender {
+  color: var(--text-muted-color) !important;
+  font-weight: 600;
+}
+
+/* Enhanced Poll Option Text */
+.poll-option {
+  color: var(--text-color) !important;
+  font-weight: 500;
+}
+
+.poll-option:hover {
+  background: var(--list-item-hover-bg) !important;
+  border-color: var(--primary-color) !important;
+}
+
+/* Enhanced Activity Center Items */
+.activity-item {
+  color: var(--text-color) !important;
+}
+
+/* Enhanced Circle List Items */
+#myCirclesContainer .list-group-item {
+  color: var(--text-color) !important;
+  font-weight: 500;
+}
+
+/* Enhanced Comment Styling */
+.comment-text {
+  color: var(--text-color) !important;
+  line-height: 1.6;
+}
+
+.comment-author {
+  color: var(--heading-color) !important;
+  font-weight: 600;
+}
+
+/* Enhanced Input Group Addons */
+.input-group-text {
+  background: var(--form-input-bg) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-color) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
