@@ -753,7 +753,8 @@ const state = {
     friends: {
         list: [],
         requests: []
-    }
+    },
+    wishlistPagination: {} // postId -> { currentPage: 0, itemsPerPage: 5 }
 };
 
 const dom = {
@@ -2724,14 +2725,33 @@ ${pollFooterHtml}
                     {
                         const rawWishlistData = post.content.wishlist_data;
                         const wishlistItems = Array.isArray(rawWishlistData) ? rawWishlistData : [];
+                        const postId = post._id || post.id;
 
                         if (post.content.text) {
                             contentHtml += `<p class="card-text" style="white-space: pre-wrap;">${post.content.text}</p>`;
                         }
 
-                        let itemsHtml = '<div class="list-group list-group-flush mt-3">';
+                        // Initialize pagination state for this post if not exists
+                        if (!state.wishlistPagination[postId]) {
+                            state.wishlistPagination[postId] = {
+                                currentPage: 0,
+                                itemsPerPage: 5
+                            };
+                        }
 
-                        wishlistItems.forEach(item => {
+                        const pagination = state.wishlistPagination[postId];
+                        const totalItems = wishlistItems.length;
+                        const startIndex = pagination.currentPage * pagination.itemsPerPage;
+                        const endIndex = Math.min(startIndex + pagination.itemsPerPage, totalItems);
+                        const displayedItems = wishlistItems.slice(startIndex, endIndex);
+                        const totalPages = Math.ceil(totalItems / pagination.itemsPerPage);
+                        const currentPage = pagination.currentPage + 1; // 1-based for display
+
+                        // Wrap wishlist content in a container for easy updates
+                        let itemsHtml = '<div class="wishlist-content-container">';
+                        itemsHtml += '<div class="list-group list-group-flush mt-3">';
+
+                        displayedItems.forEach(item => {
                             if (!item || !item.url) return;
 
                             let imageHtml = '';
@@ -2760,7 +2780,42 @@ ${imageHtml}
 `;
                         });
 
-                        itemsHtml += '</div>';
+                        itemsHtml += '</div>'; // Close list-group
+
+                        // Add pagination controls if there are multiple pages
+                        if (totalPages > 1) {
+                            itemsHtml += `
+<div class="wishlist-pagination mt-3 d-flex justify-content-between align-items-center">
+<small class="text-muted">Showing ${startIndex + 1}-${endIndex} of ${totalItems} items</small>
+<div class="btn-group btn-group-sm">
+<button class="btn btn-outline-secondary" 
+onclick="handleWishlistPageChange('${postId}', ${pagination.currentPage - 1})"
+${pagination.currentPage === 0 ? 'disabled' : ''}
+title="Previous page">
+<i class="bi bi-chevron-left"></i> Previous
+</button>
+<button class="btn btn-outline-secondary" disabled style="min-width: 80px;">
+Page ${currentPage} of ${totalPages}
+</button>
+<button class="btn btn-outline-secondary" 
+onclick="handleWishlistPageChange('${postId}', ${pagination.currentPage + 1})"
+${pagination.currentPage >= totalPages - 1 ? 'disabled' : ''}
+title="Next page">
+Next <i class="bi bi-chevron-right"></i>
+</button>
+</div>
+</div>
+`;
+                        } else if (totalItems > 0) {
+                            // Show item count even if only one page
+                            itemsHtml += `
+<div class="wishlist-pagination mt-3">
+<small class="text-muted">${totalItems} item${totalItems !== 1 ? 's' : ''}</small>
+</div>
+`;
+                        }
+
+                        itemsHtml += '</div>'; // Close wishlist-content-container
                         contentHtml += itemsHtml;
 
                         break;
@@ -2919,8 +2974,13 @@ ${tag}
             const seenByUsers = post.seen_by_user_objects || [];
             const seenCount = post.seen_by_count;
             let seenByText;
-            if (seenCount === 0) {
+            // Only show "Be the first to see this!" if no one has seen it AND the current user hasn't seen it
+            // If the user is viewing it, they've already seen it, so don't show that message
+            if (seenCount === 0 && !post.is_seen_by_user) {
                 seenByText = 'Be the first to see this!';
+            } else if (seenCount === 0 && post.is_seen_by_user) {
+                // Edge case: user has seen it but count is 0 (shouldn't happen, but handle gracefully)
+                seenByText = 'You\'ve seen this';
             } else if (seenCount === 1) {
                 seenByText = `Seen by ${seenByUsers[0]?.username || '1 person'}`;
             } else if (seenCount === 2 && seenByUsers.length === 2) {
@@ -4000,6 +4060,116 @@ async function handlePollVote(postId, optionIndex) {
         showStatus(e.message, 'danger');
     }
 }
+
+// -----------------------------------------------
+// Wishlist Pagination Handler
+function handleWishlistPageChange(postId, newPage) {
+    // Update pagination state
+    if (!state.wishlistPagination[postId]) {
+        state.wishlistPagination[postId] = {
+            currentPage: 0,
+            itemsPerPage: 5
+        };
+    }
+    
+    const pagination = state.wishlistPagination[postId];
+    const post = [...state.dashboardFeed.posts, ...(state.circleView.posts || [])]
+        .find(p => (p._id || p.id) === postId);
+    
+    if (!post) return;
+    
+    const wishlistItems = Array.isArray(post.content.wishlist_data) ? post.content.wishlist_data : [];
+    const totalPages = Math.ceil(wishlistItems.length / pagination.itemsPerPage);
+    
+    // Validate page number
+    if (newPage < 0 || newPage >= totalPages) return;
+    
+    // Update current page
+    pagination.currentPage = newPage;
+    
+    // Find the post wrapper and re-render just the wishlist content
+    const postWrapper = document.querySelector(`[data-post-wrapper-id="${postId}"]`);
+    if (postWrapper) {
+        // Find the wishlist content container
+        const wishlistContainer = postWrapper.querySelector('.wishlist-content-container');
+        if (wishlistContainer) {
+            const startIndex = pagination.currentPage * pagination.itemsPerPage;
+            const endIndex = Math.min(startIndex + pagination.itemsPerPage, wishlistItems.length);
+            const displayedItems = wishlistItems.slice(startIndex, endIndex);
+            const currentPage = pagination.currentPage + 1;
+            
+            // Re-render wishlist items
+            let itemsHtml = '<div class="list-group list-group-flush mt-3">';
+            
+            displayedItems.forEach(item => {
+                if (!item || !item.url) return;
+                
+                let imageHtml = '';
+                if (item.image && !item.image.includes('transparent-pixel')) {
+                    imageHtml = `<img src="${item.image}" class="wishlist-item-image me-3" alt="${item.title || 'Wishlist item'}">`;
+                } else {
+                    try {
+                        const domain = new URL(item.url).hostname;
+                        imageHtml = `<img src="https://www.google.com/s2/favicons?domain=${domain}&sz=32" class="favicon me-2" alt="${domain} favicon">`;
+                    } catch (e) {
+                        imageHtml = `<i class="bi bi-link-45deg me-2"></i>`;
+                    }
+                }
+                
+                itemsHtml += `
+<a href="${item.url}" target="_blank" rel="noopener noreferrer"
+class="list-group-item list-group-item-action d-flex align-items-center">
+${imageHtml}
+<div class="wishlist-item-details">
+<strong class="d-block text-truncate">${item.title || item.url}</strong>
+<small class="text-truncate">${item.description || new URL(item.url).hostname.replace('www.','')}</small>
+</div>
+<i class="bi bi-box-arrow-up-right ms-auto"></i>
+</a>
+`;
+            });
+            
+            itemsHtml += '</div>'; // Close list-group
+            
+            // Add pagination controls
+            if (totalPages > 1) {
+                itemsHtml += `
+<div class="wishlist-pagination mt-3 d-flex justify-content-between align-items-center">
+<small class="text-muted">Showing ${startIndex + 1}-${endIndex} of ${wishlistItems.length} items</small>
+<div class="btn-group btn-group-sm">
+<button class="btn btn-outline-secondary" 
+onclick="handleWishlistPageChange('${postId}', ${pagination.currentPage - 1})"
+${pagination.currentPage === 0 ? 'disabled' : ''}
+title="Previous page">
+<i class="bi bi-chevron-left"></i> Previous
+</button>
+<button class="btn btn-outline-secondary" disabled style="min-width: 80px;">
+Page ${currentPage} of ${totalPages}
+</button>
+<button class="btn btn-outline-secondary" 
+onclick="handleWishlistPageChange('${postId}', ${pagination.currentPage + 1})"
+${pagination.currentPage >= totalPages - 1 ? 'disabled' : ''}
+title="Next page">
+Next <i class="bi bi-chevron-right"></i>
+</button>
+</div>
+</div>
+`;
+            } else if (wishlistItems.length > 0) {
+                itemsHtml += `
+<div class="wishlist-pagination mt-3">
+<small class="text-muted">${wishlistItems.length} item${wishlistItems.length !== 1 ? 's' : ''}</small>
+</div>
+`;
+            }
+            
+            wishlistContainer.innerHTML = itemsHtml;
+        }
+    }
+}
+
+// Make handleWishlistPageChange globally available for onclick handlers
+window.handleWishlistPageChange = handleWishlistPageChange;
 
 // -----------------------------------------------
 // Chat Modal Logic
