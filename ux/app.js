@@ -2103,26 +2103,8 @@ function renderMyCircles(circles) {
                       title="${c.color}"></span>
             ` : '';
             
-            // Editable tags with click-to-edit
-            const displayName = c.personal_name || c.name;
-            const tagsHtml = c.tags && c.tags.length > 0 
-                ? `<div class="mt-1 d-flex flex-wrap gap-1 align-items-center" data-circle-id="${c._id}" data-tags="${c.tags.join(',')}">
-                    ${c.tags.map(t => `
-                        <span class="badge bg-secondary editable-tag" style="font-size: 0.7rem; padding: 0.2rem 0.4rem; cursor: pointer;" title="Click to edit tags">
-                            <i class="bi bi-tag-fill" style="font-size: 0.6rem;"></i> ${t}
-                        </span>
-                    `).join('')}
-                    <button class="btn btn-sm p-0 ms-1" style="font-size: 0.7rem; line-height: 1;" data-action="edit-tags" data-circle-id="${c._id}" title="Edit tags">
-                        <i class="bi bi-pencil-square"></i>
-                    </button>
-                   </div>`
-                : `<div class="mt-1" data-circle-id="${c._id}" data-tags="">
-                    <button class="btn btn-sm btn-outline-secondary btn-sm p-1" style="font-size: 0.7rem;" data-action="edit-tags" data-circle-id="${c._id}" title="Add tags">
-                        <i class="bi bi-tag"></i> Add tags
-                    </button>
-                   </div>`;
-            
             // Use envelope icon for direct messages, hash icon for regular circles
+            const displayName = c.personal_name || c.name;
             const iconClass = c.is_direct_message ? 'bi-envelope-fill' : 'bi-hash';
             const iconTitle = c.is_direct_message ? 'Direct Message' : 'Circle';
             
@@ -2157,11 +2139,7 @@ function renderMyCircles(circles) {
             <div class="fw-semibold d-flex align-items-center gap-2">
                 <span class="editable-personal-name" data-circle-id="${c._id}">${displayName}</span>
                 ${c.personal_name ? `<span class="text-muted small" style="font-weight: normal;">(${c.name})</span>` : ''}
-                <button class="btn btn-sm btn-outline-secondary ms-auto" style="font-size: 0.7rem;" data-action="edit-personal-name" data-circle-id="${c._id}" title="Rename">
-                    <i class="bi bi-pencil-square"></i> &nbsp;
-                </button>
             </div>
-            ${tagsHtml}
             </div>
             </div>
             </a>
