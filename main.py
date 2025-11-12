@@ -100,6 +100,7 @@ activity_events_collection = db.get_collection("activity_events")
 friends_collection = db.get_collection("friends")
 webrtc_sessions_collection = db.get_collection("webrtc_sessions")
 webrtc_signaling_collection = db.get_collection("webrtc_signaling")
+feedback_collection = db.get_collection("feedback")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -137,6 +138,9 @@ async def lifespan(app: FastAPI):
     webrtc_sessions_collection.create_index([("created_at", DESCENDING)])
     webrtc_signaling_collection.create_index([("session_id", ASCENDING), ("created_at", ASCENDING)])
     webrtc_signaling_collection.create_index([("session_id", ASCENDING), ("from_user_id", ASCENDING)])
+    feedback_collection.create_index([("created_at", DESCENDING)])
+    feedback_collection.create_index([("user_id", ASCENDING)])
+    feedback_collection.create_index([("type", ASCENDING)])
 
     print("Database indexes ensured.")
     yield
@@ -229,6 +233,12 @@ class PostTypeEnum(str, Enum):
     spotify_playlist = "spotify_playlist"
     webrtc = "webrtc"
 
+class FeedbackTypeEnum(str, Enum):
+    bug = "bug"
+    feature = "feature"
+    improvement = "improvement"
+    other = "other"
+
 class UserRegister(BaseModel):
     username: str = Field(...)
     password: str = Field(...)
@@ -258,6 +268,23 @@ class TokenResponse(BaseModel):
 
 class TokenRefreshRequest(BaseModel):
     refresh_token: str
+
+class FeedbackCreate(BaseModel):
+    type: FeedbackTypeEnum = FeedbackTypeEnum.other
+    message: str = Field(..., min_length=10, max_length=2000)
+    user_agent: Optional[str] = None
+    page_url: Optional[str] = None
+
+class FeedbackOut(BaseModel):
+    id: PyObjectId = Field(alias="_id")
+    user_id: Optional[PyObjectId] = None
+    username: Optional[str] = None
+    type: FeedbackTypeEnum
+    message: str
+    user_agent: Optional[str] = None
+    page_url: Optional[str] = None
+    created_at: datetime
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 class CircleMember(BaseModel):
     user_id: PyObjectId
@@ -968,6 +995,35 @@ async def get_spotify_metadata(body: SpotifyURLRequest, current_user: UserInDB =
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
 
+# ----------------------------------
+# Feedback
+# ----------------------------------
+@app.post("/feedback", response_model=FeedbackOut, status_code=201, tags=["Feedback"])
+async def submit_feedback(
+    feedback_data: FeedbackCreate,
+    current_user: Optional[UserInDB] = Depends(get_optional_current_user)
+):
+    """
+    Submit user feedback. Can be used by both authenticated and anonymous users.
+    """
+    now = datetime.now(timezone.utc)
+    feedback_doc = {
+        "type": feedback_data.type.value,
+        "message": feedback_data.message,
+        "user_agent": feedback_data.user_agent,
+        "page_url": feedback_data.page_url,
+        "created_at": now
+    }
+    
+    # Add user info if authenticated
+    if current_user:
+        feedback_doc["user_id"] = current_user.id
+        feedback_doc["username"] = current_user.username
+    
+    result = feedback_collection.insert_one(feedback_doc)
+    created_feedback = feedback_collection.find_one({"_id": result.inserted_id})
+    
+    return FeedbackOut(**created_feedback)
 
 # ----------------------------------
 # Authentication
@@ -1331,12 +1387,12 @@ async def invite_user_to_circle(
 
     invitee = users_collection.find_one({"username": invite_data.username.lower()})
     if not invitee:
-        raise HTTPException(status_code=404, detail="User to invite not found.")
+        raise HTTPException(status_code=404, detail="User not found.")
 
     if invitee["_id"] == current_user.id:
-        raise HTTPException(status_code=400, detail="You cannot invite yourself.")
+        raise HTTPException(status_code=400, detail="You cannot add yourself.")
 
-    # Check if users are friends before allowing invitation
+    # Check if users are friends before allowing addition
     friendship = friends_collection.find_one({
         "$or": [
             {"user_id": current_user.id, "friend_id": invitee["_id"], "status": FriendStatusEnum.accepted.value},
@@ -1346,29 +1402,27 @@ async def invite_user_to_circle(
     if not friendship:
         raise HTTPException(
             status_code=400, 
-            detail="You must be friends with this user before inviting them to a circle. Please send a friend request first."
+            detail="You can only add friends to circles. Please send a friend request first."
         )
 
     if any(m['user_id'] == invitee["_id"] for m in circle.get("members", [])):
         raise HTTPException(status_code=400, detail="User is already a member of this circle.")
 
-    existing_invite = invitations_collection.find_one({
-        "circle_id": circle["_id"],
-        "invitee_id": invitee["_id"],
-        "status": InvitationStatusEnum.pending.value
-    })
-    if existing_invite:
-        raise HTTPException(status_code=400, detail="This user already has a pending invitation to this circle.")
-
-    invitation_doc = {
-        "circle_id": circle["_id"],
-        "inviter_id": current_user.id,
-        "invitee_id": invitee["_id"],
-        "status": InvitationStatusEnum.pending.value,
-        "created_at": datetime.now(timezone.utc)
+    # Directly add the friend to the circle (no invitation needed)
+    new_member_doc = {
+        "user_id": invitee["_id"],
+        "username": invitee["username"],
+        "role": RoleEnum.member.value,
+        "invited_by": current_user.id
     }
-    invitations_collection.insert_one(invitation_doc)
+    new_member_doc = {k: v for k, v in new_member_doc.items() if v is not None}
+    
+    circles_collection.update_one(
+        {"_id": circle["_id"]},
+        {"$addToSet": {"members": new_member_doc}}
+    )
 
+    # Notify the user they were added to the circle
     await create_notification(
         user_id=invitee["_id"],
         notification_type=NotificationTypeEnum.invite_received,
@@ -1378,7 +1432,7 @@ async def invite_user_to_circle(
             "inviter_username": current_user.username
         }
     )
-    return {"message": f"Invitation sent to {invitee['username']}."}
+    return {"message": f"{invitee['username']} has been added to the circle."}
 
 @app.post("/circles/join-by-token", response_model=JoinByTokenResponse, tags=["Circles"])
 async def join_circle_by_token(body: JoinByTokenRequest, current_user: UserInDB = Depends(get_current_user)):

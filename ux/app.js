@@ -715,7 +715,7 @@ const state = {
         isLoading: false
     },
     activityCenter: {
-        filter: 'all', // 'all', 'invites', 'unread'
+        filter: 'all', // 'all', 'unread'
         items: [],
         skip: 0,
         limit: 15,
@@ -1064,9 +1064,6 @@ function createNotificationsFAB() {
 
                             <input type="radio" class="btn-check" name="activityFilter" id="filterUnread" value="unread" autocomplete="off">
                             <label class="btn btn-outline-primary" for="filterUnread" data-action="filter-activity" data-filter="unread">Unread</label>
-
-                            <input type="radio" class="btn-check" name="activityFilter" id="filterInvites" value="invites" autocomplete="off">
-                            <label class="btn btn-outline-primary" for="filterInvites" data-action="filter-activity" data-filter="invites">Invitations</label>
                         </div>
                     </div>
 
@@ -1301,22 +1298,18 @@ function renderActivityItems() {
     const itemsToRender = skip > 0 ? items.slice(skip) : items;
 
     const newItemsHtml = itemsToRender.map(item => {
-        // --- INVITATION ---
+        // --- INVITATION (now just informational, no action needed) ---
         if (item.type === 'invite') {
             return `
-            <div class="list-group-item invitation-card">
-                <div class="d-flex w-100 justify-content-between">
-                    <p class="mb-1">
+            <a href="#/circle/${item.circle_id}" onclick="bootstrap.Modal.getInstance('#notificationsModal').hide()" class="list-group-item list-group-item-action notification-card">
+                <div class="d-flex w-100 justify-content-between align-items-start">
+                    <p class="mb-1 small">
                         <img src="${generateAvatarUrl(item.inviter_username)}" class="avatar-small me-2">
-                        <strong>${item.inviter_username}</strong> invited you to join <strong>${item.circle_name}</strong>.
+                        <strong>${item.inviter_username}</strong> added you to <strong>${item.circle_name}</strong>.
                     </p>
-                    <small class="text-nowrap ms-2">${new Date(item.created_at).toLocaleDateString()}</small>
                 </div>
-                <div class="mt-2 text-end">
-                    <button class="btn btn-sm btn-success" data-action="accept-invite" data-invite-id="${item._id}" data-circle-id="${item.circle_id}">Accept</button>
-                    <button class="btn btn-sm btn-secondary ms-2" data-action="reject-invite" data-invite-id="${item._id}">Decline</button>
-                </div>
-            </div>`;
+                <small class="d-block mt-1">${new Date(item.created_at).toLocaleDateString()}</small>
+            </a>`;
         } 
         // --- ACTIVITY EVENT (New) ---
         else if (item.type === 'activity') {
@@ -1349,20 +1342,10 @@ function renderActivityItems() {
             let notificationLink = '#';
             switch (item.type_specific.type) {
                 case 'invite_received':
-                    contentHtml = `<img src="${generateAvatarUrl(item.type_specific.content.inviter_username)}" class="avatar-small me-2"> <strong>${item.type_specific.content.inviter_username}</strong> invited you to join <strong>${item.type_specific.content.circle_name}</strong>.`;
+                    contentHtml = `<img src="${generateAvatarUrl(item.type_specific.content.inviter_username)}" class="avatar-small me-2"> <strong>${item.type_specific.content.inviter_username}</strong> added you to <strong>${item.type_specific.content.circle_name}</strong>.`;
                     if (item.type_specific.content.circle_id) {
                         notificationLink = `#/circle/${item.type_specific.content.circle_id}`;
                     }
-                    break;
-                case 'invite_accepted':
-                    contentHtml = `<img src="${generateAvatarUrl(item.type_specific.content.invitee_username)}" class="avatar-small me-2"> <strong>${item.type_specific.content.invitee_username}</strong> accepted your invite to <strong>${item.type_specific.content.circle_name}</strong>.`;
-                    if (item.type_specific.content.circle_id) {
-                        notificationLink = `#/circle/${item.type_specific.content.circle_id}`;
-                    }
-                    break;
-                case 'invite_rejected':
-                    contentHtml = `<img src="${generateAvatarUrl(item.type_specific.content.invitee_username)}" class="avatar-small me-2"> <strong>${item.type_specific.content.invitee_username}</strong> declined your invite to <strong>${item.type_specific.content.circle_name}</strong>.`;
-                    notificationLink = '#'; // No link for rejected invites
                     break;
                 case 'new_comment':
                     contentHtml = `<img src="${generateAvatarUrl(item.type_specific.content.commenter_username)}" class="avatar-small me-2"> <strong>${item.type_specific.content.commenter_username}</strong> commented on your post in <strong>${item.type_specific.content.circle_name}</strong>.`;
@@ -1441,11 +1424,8 @@ async function loadActivityItems(isNewFilter = false) {
             
             // Define API calls based on filter. Activity feed is only fetched on a fresh load.
             const apiPromises = [];
-            if (filter === 'all' || filter === 'invites') {
-                apiPromises.push(apiFetch('/users/me/invitations'));
-            } else {
-                apiPromises.push(Promise.resolve([])); // Placeholder for invites
-            }
+            // Always load invitations (now just informational about being added to circles)
+            apiPromises.push(apiFetch('/users/me/invitations'));
             if (filter === 'all' || filter === 'unread') {
                 const unreadOnly = filter === 'unread' ? '&unread_only=true' : '';
                 apiPromises.push(apiFetch(`/users/me/notifications?limit=${limit}&skip=0${unreadOnly}`));
@@ -1513,10 +1493,8 @@ async function loadActivityItems(isNewFilter = false) {
         skip
     } = activityState;
     const apiCalls = [];
-    if (filter === 'all' || filter === 'unread' || filter === 'invites') {
-        // Invites are always considered "unread"
-        apiCalls.push(apiFetch('/users/me/invitations'));
-    }
+    // Always load invitations (now just informational about being added to circles)
+    apiCalls.push(apiFetch('/users/me/invitations'));
     if (filter === 'all' || filter === 'unread') {
         const unreadOnly = filter === 'unread' ? '&unread_only=true' : '';
         apiCalls.push(apiFetch(`/users/me/notifications?limit=${limit}&skip=${skip}${unreadOnly}`));
@@ -1534,19 +1512,15 @@ async function loadActivityItems(isNewFilter = false) {
 
         // Normalize notifications
         let notifications = [];
-        if (filter !== 'invites') {
-            notifications = (results[1] || []).map(notif => ({
-                _id: notif._id,
-                created_at: notif.created_at,
-                is_read: notif.is_read,
-                type: 'notification',
-                type_specific: notif, // Keep original notification data nested
-            }));
-            // Update hasMore based on notification results, as they are the paginated source
-            activityState.hasMore = notifications.length === limit;
-        } else {
-            activityState.hasMore = false; // No pagination for invites-only view
-        }
+        notifications = (results[1] || []).map(notif => ({
+            _id: notif._id,
+            created_at: notif.created_at,
+            is_read: notif.is_read,
+            type: 'notification',
+            type_specific: notif, // Keep original notification data nested
+        }));
+        // Update hasMore based on notification results, as they are the paginated source
+        activityState.hasMore = notifications.length === limit;
 
         // Combine, sort, and update state
         if (isNewFilter) {
@@ -3821,12 +3795,64 @@ async function handleInviteToCircle(circleId) {
     const inviteModal = bootstrap.Modal.getOrCreateInstance(inviteModalEl);
     const qrContainer = document.getElementById('qrCodeContainer');
     const linkInput = document.getElementById('inviteLinkInput');
+    const friendSelectorContainer = document.getElementById('friendSelectorContainer');
 
     inviteModalEl.dataset.circleId = circleId;
 
     qrContainer.innerHTML = `<div class="spinner-border text-primary" role="status"></div>`;
     linkInput.value = '';
-    document.getElementById('directInviteUsernameInput').value = '';
+    
+    // Load and render friends for selection
+    friendSelectorContainer.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div><span class="ms-2 small">Loading friends...</span>';
+    
+    try {
+        // Get current circle to check existing members
+        const circle = await apiFetch(`/circles/${circleId}`);
+        const existingMemberIds = new Set((circle.members || []).map(m => m.user_id));
+        
+        // Get friends list
+        const friends = await apiFetch('/friends');
+        const availableFriends = friends.filter(f => 
+            f.status === 'accepted' && !existingMemberIds.has(f.user_id)
+        );
+        
+        if (availableFriends.length === 0) {
+            friendSelectorContainer.innerHTML = `
+                <div class="alert alert-info small mb-0">
+                    <i class="bi bi-info-circle me-2"></i>
+                    All your friends are already in this circle, or you don't have any friends yet.
+                </div>
+            `;
+        } else {
+            friendSelectorContainer.innerHTML = `
+                <div class="list-group" style="max-height: 300px; overflow-y: auto;">
+                    ${availableFriends.map(friend => `
+                        <button 
+                            type="button" 
+                            class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                            data-action="add-friend-to-circle" 
+                            data-username="${friend.username}"
+                        >
+                            <div class="d-flex align-items-center">
+                                <img src="${generateAvatarUrl(friend.username)}" class="avatar-small me-2" alt="${friend.username}">
+                                <span>${friend.username}</span>
+                            </div>
+                            <i class="bi bi-plus-circle text-primary"></i>
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Failed to load friends:', error);
+        friendSelectorContainer.innerHTML = `
+            <div class="alert alert-danger small mb-0">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                Failed to load friends. Please try again.
+            </div>
+        `;
+    }
+    
     inviteModal.show();
 
     try {
@@ -4884,7 +4910,8 @@ document.addEventListener('DOMContentLoaded', () => {
         '#helpModal',
         '#chatParticipantSelectorModal',
         '#chatModal',
-        '#editPostModal'
+        '#editPostModal',
+        '#feedbackModal'
     ].forEach(id => {
         const modalEl = document.querySelector(id);
         if (modalEl) {
@@ -4910,6 +4937,68 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('commentsModal') ?.addEventListener('shown.bs.modal', () => {
         document.getElementById('commentInput') ?.focus();
+    });
+    
+    // Feedback modal character counter
+    const feedbackMessage = document.getElementById('feedbackMessage');
+    const feedbackCharCount = document.getElementById('feedbackCharCount');
+    if (feedbackMessage && feedbackCharCount) {
+        feedbackMessage.addEventListener('input', () => {
+            const length = feedbackMessage.value.length;
+            feedbackCharCount.textContent = length;
+            if (length < 10) {
+                feedbackCharCount.classList.add('text-danger');
+                feedbackCharCount.classList.remove('text-muted');
+            } else {
+                feedbackCharCount.classList.remove('text-danger');
+                feedbackCharCount.classList.add('text-muted');
+            }
+        });
+        
+        // Reset form when modal is hidden
+        document.getElementById('feedbackModal')?.addEventListener('hidden.bs.modal', () => {
+            document.getElementById('feedbackForm')?.reset();
+            feedbackCharCount.textContent = '0';
+            feedbackCharCount.classList.remove('text-danger');
+            feedbackCharCount.classList.add('text-muted');
+        });
+    }
+    
+    // Help button management - only show floating button once, then move to footer
+    const helpModalOpened = localStorage.getItem('helpModalOpened') === 'true';
+    const footerHelpLink = document.getElementById('footerHelpLink');
+    
+    if (helpModalOpened) {
+        // Help was opened before, show in footer
+        if (footerHelpLink) {
+            footerHelpLink.style.display = 'inline';
+        }
+    } else {
+        // First time - show floating button
+        const floatingHelpButton = document.createElement('button');
+        floatingHelpButton.id = 'helpButton';
+        floatingHelpButton.className = 'btn btn-primary rounded-circle';
+        floatingHelpButton.style.cssText = 'position: fixed; bottom: 20px; right: 20px; z-index: 1050; width: 50px; height: 50px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);';
+        floatingHelpButton.setAttribute('data-bs-toggle', 'modal');
+        floatingHelpButton.setAttribute('data-bs-target', '#helpModal');
+        floatingHelpButton.title = 'Get Help';
+        floatingHelpButton.innerHTML = '<i class="bi bi-question-lg fs-4"></i>';
+        document.body.appendChild(floatingHelpButton);
+    }
+    
+    // Track when help modal is opened
+    document.getElementById('helpModal')?.addEventListener('shown.bs.modal', () => {
+        if (!helpModalOpened) {
+            localStorage.setItem('helpModalOpened', 'true');
+            // Hide floating button and show footer link
+            const floatingBtn = document.getElementById('helpButton');
+            if (floatingBtn) {
+                floatingBtn.remove();
+            }
+            if (footerHelpLink) {
+                footerHelpLink.style.display = 'inline';
+            }
+        }
     });
 
     document.getElementById('commentForm').addEventListener('submit', async (e) => {
@@ -5275,26 +5364,28 @@ Added videos will appear here. You can drag to reorder.
             case 'open-chat':
                 handleOpenChatModal(data.postId);
                 break;
-            case 'send-direct-invite':
+            case 'add-friend-to-circle':
                 {
                     const modal = target.closest('#inviteCircleModal');
                     const circleId = modal.dataset.circleId;
-                    const usernameInput = modal.querySelector('#directInviteUsernameInput');
-                    const username = usernameInput.value.trim();
+                    const username = data.username;
                     if (!username) {
-                        showStatus('Please enter a username.', 'warning');
+                        showStatus('Please select a friend.', 'warning');
                         return;
                     }
                     setButtonLoading(target, true);
                     try {
-                        await apiFetch(`/circles/${circleId}/invite-user`, {
+                        const response = await apiFetch(`/circles/${circleId}/invite-user`, {
                             method: 'POST',
                             body: JSON.stringify({
                                 username
                             })
                         });
-                        showStatus(`Invitation sent to ${username}!`, 'success');
-                        usernameInput.value = '';
+                        showStatus(`${username} has been added to the circle!`, 'success');
+                        // Remove the friend from the list
+                        target.closest('.list-group-item').remove();
+                        // Refresh circles to show the new member
+                        await fetchAndRenderAll();
                     } catch (error) {
                         // apiFetch already shows error message
                     } finally {
@@ -5306,6 +5397,60 @@ Added videos will appear here. You can drag to reorder.
                 {
                     const username = dom.friendUsernameInput?.value.trim();
                     await sendFriendRequest(username);
+                    break;
+                }
+            case 'submit-feedback':
+                {
+                    const feedbackForm = document.getElementById('feedbackForm');
+                    const feedbackType = document.getElementById('feedbackType');
+                    const feedbackMessage = document.getElementById('feedbackMessage');
+                    
+                    if (!feedbackForm || !feedbackType || !feedbackMessage) {
+                        showStatus('Feedback form not found.', 'danger');
+                        return;
+                    }
+                    
+                    // Validate form
+                    if (!feedbackForm.checkValidity()) {
+                        feedbackForm.reportValidity();
+                        return;
+                    }
+                    
+                    const type = feedbackType.value;
+                    const message = feedbackMessage.value.trim();
+                    
+                    if (message.length < 10) {
+                        showStatus('Feedback must be at least 10 characters long.', 'warning');
+                        return;
+                    }
+                    
+                    setButtonLoading(target, true);
+                    try {
+                        const feedbackData = {
+                            type: type,
+                            message: message,
+                            user_agent: navigator.userAgent,
+                            page_url: window.location.href
+                        };
+                        
+                        await apiFetch('/feedback', {
+                            method: 'POST',
+                            body: JSON.stringify(feedbackData)
+                        });
+                        
+                        showStatus('Thank you for your feedback! We appreciate it. 💙', 'success');
+                        
+                        // Close modal and reset form
+                        const modal = bootstrap.Modal.getInstance('#feedbackModal');
+                        if (modal) modal.hide();
+                        feedbackForm.reset();
+                        document.getElementById('feedbackCharCount').textContent = '0';
+                    } catch (error) {
+                        // apiFetch already shows error message
+                        console.error('Failed to submit feedback:', error);
+                    } finally {
+                        setButtonLoading(target, false);
+                    }
                     break;
                 }
             case 'accept-friend':
@@ -5453,52 +5598,6 @@ Added videos will appear here. You can drag to reorder.
             case 'manage-member-kick':
                 handleKickMember(target, data.userId, data.username);
                 break;
-            case 'accept-invite':
-                {
-                    setButtonLoading(target, true);
-                    try {
-                        const response = await apiFetch(`/invitations/${data.inviteId}/accept`, {
-                            method: 'POST'
-                        });
-                        showStatus('Invitation accepted!', 'success');
-                        // Close notifications modal first
-                        const modal = bootstrap.Modal.getInstance('#notificationsModal');
-                        if (modal) modal.hide();
-                        // Get circle_id from data attribute (convert to string if needed)
-                        const circleId = String(data.circleId || '');
-                        // Refresh everything first to ensure circles are loaded
-                        await Promise.all([activityPoller.poll(), fetchAndRenderAll()]);
-                        // Navigate to the circle after refresh completes
-                        if (circleId) {
-                            // Small delay to ensure circles are rendered
-                            setTimeout(() => {
-                                window.location.hash = `#/circle/${circleId}`;
-                            }, 100);
-                        }
-                    } catch (error) {
-                        console.error('Failed to accept invitation:', error);
-                        showStatus(error.message || 'Failed to accept invitation', 'danger');
-                    } finally {
-                        setButtonLoading(target, false);
-                    }
-                    break;
-                }
-            case 'reject-invite':
-                {
-                    setButtonLoading(target, true);
-                    try {
-                        await apiFetch(`/invitations/${data.inviteId}/reject`, {
-                            method: 'POST'
-                        });
-                        showStatus('Invitation declined.', 'info');
-                        await Promise.all([openNotificationsModal(), activityPoller.poll()]);
-                    } catch (e) {
-                        showStatus(e.message, 'danger');
-                    } finally {
-                        setButtonLoading(target, false);
-                    }
-                    break;
-                }
             case 'mark-notification-read':
                 {
                     target.closest('.notification-card').style.opacity = '0.5';
